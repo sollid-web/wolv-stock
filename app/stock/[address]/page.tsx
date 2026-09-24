@@ -55,7 +55,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
   const profRows: [string, any][] = prof && typeof prof === "object"
     ? Object.entries(prof).filter(([k, v]) =>
-        (typeof v === "string" || typeof v === "number") && String(v).trim() !== "" && !/logo|chain|address|url|id$/i.test(k))
+        (typeof v === "string" || typeof v === "number") && String(v).trim() !== "" && !/logo|chain|address|url|id$|^assetType$|^underlyingTicker$|ratio/i.test(k))
     : [];
   const shortRows = profRows.filter(([, v]) => String(v).length <= 120);
   const longRows = profRows.filter(([, v]) => String(v).length > 120);

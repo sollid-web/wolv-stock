@@ -11,6 +11,17 @@ type T = {
   platformId: string;
 };
 
+function Logo({ url, tk }: { url?: string; tk: string }) {
+  const [bad, setBad] = useState(false);
+  if (!url || bad)
+    return (
+      <div className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0 flex items-center justify-center text-[10px] font-black text-[#f0b90b]">
+        {tk.slice(0, 4)}
+      </div>
+    );
+  return <img src={url} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
+}
+
 export default function StockList({ tokens }: { tokens: T[] }) {
   const [q, setQ] = useState("");
   const [plat, setPlat] = useState("all");
@@ -78,9 +89,7 @@ export default function StockList({ tokens }: { tokens: T[] }) {
               className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-4 flex items-center justify-between hover:border-[#f0b90b]/40 transition-colors"
             >
               <div className="flex items-center gap-3 min-w-0">
-                {t.tokenLogoUrl && (
-                  <img src={t.tokenLogoUrl} loading="lazy" className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={t.underlyingTicker} />
-                )}
+                <Logo url={t.tokenLogoUrl} tk={t.underlyingTicker} />
                 <div className="min-w-0">
                   <div className="font-bold text-sm">{t.underlyingTicker}</div>
                   <div className="text-xs text-[#64748b] truncate">

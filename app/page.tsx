@@ -35,8 +35,8 @@ export default async function Home() {
               <img src={p.logoUrl} className="w-5 h-5 rounded-full" alt={p.platformId} />
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
-            <div className="text-[#f0b90b] font-black text-xl">{p.tickerCount}</div>
-            <div className="text-[#64748b] text-xs">tokenized stocks</div>
+            <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>
+            <div className="text-[#64748b] text-xs">on BSC</div>
           </div>
         ))}
         <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
