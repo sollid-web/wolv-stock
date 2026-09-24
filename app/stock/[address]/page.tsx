@@ -48,8 +48,9 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const mult = num(token.tokenToShareRatio) || 1;
   const listed = num(token.tokenPrice) ?? 0;
   const ref = num(token.referencePrice) ?? 0;
+  const refShare = ref / mult; // referencePrice is per TOKEN
   const perShare = q.ok ? q.usd / mult : null;
-  const gap = perShare != null && ref > 0 ? (perShare / ref - 1) * 100 : null;
+  const gap = perShare != null && refShare > 0 ? (perShare / refShare - 1) * 100 : null;
   const isOpen = token.statusInfo?.openState;
   const status = token.statusInfo?.marketStatus ?? (isOpen ? "trading" : "closed");
 
@@ -108,7 +109,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Reference</div>
-                  <div className="font-bold text-sm">${ref.toFixed(3)}</div>
+                  <div className="font-bold text-sm">${refShare.toFixed(3)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Gap</div>
