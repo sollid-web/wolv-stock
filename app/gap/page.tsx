@@ -33,9 +33,10 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
       const q = await quoteUsd(t.tokenContractAddress);
       const mult = num(t.tokenToShareRatio) || 1;
       const ref = num(t.referencePrice);
+      const refShare = ref / mult; // referencePrice is per TOKEN
       const perShare = q.ok ? q.usd / mult : null;
-      const gap = perShare != null && ref > 0 ? (perShare / ref - 1) * 100 : null;
-      vs.push({ t, q, mult, ref, perShare, gap });
+      const gap = perShare != null && refShare > 0 ? (perShare / refShare - 1) * 100 : null;
+      vs.push({ t, q, mult, ref, refShare, perShare, gap });
     }
     const ps = vs.map((v) => v.perShare).filter((x): x is number => x != null);
     const spread = ps.length >= 2 ? (Math.max(...ps) / Math.min(...ps) - 1) * 100 : null;
@@ -93,7 +94,7 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
                         <div className="font-black text-sm">
                           ${v.perShare.toFixed(3)} <span className="text-xs text-[#64748b] font-normal">per share, executable</span>
                         </div>
-                        <div className="text-xs text-[#64748b]">reference ${v.ref.toFixed(3)}</div>
+                        <div className="text-xs text-[#64748b]">reference ${v.refShare.toFixed(3)}</div>
                         {v.gap != null && <div className={`text-xs font-bold ${tone(v.gap)}`}>gap {sgn(v.gap)}</div>}
                         <div className="text-[10px] text-[#64748b] mt-1">
                           {v.mult.toFixed(4)}× shares/token · {v.q.vendor} {v.q.mode} · {Math.round((Date.now() - v.q.ts) / 1000)}s old
