@@ -114,10 +114,10 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       }
 
       setQuoteData(quoteResult);
-      quoteIdRef.current = quoteResult.quoteId?.replace(/-/g, '').toLowerCase() ?? null;
+      quoteIdRef.current = quoteData.quoteId?.replace(/-/g, '').toLowerCase() ?? null;
       
       // Get swap details
-      const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${quoteResult.quoteId}`);
+      const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${cleanQuoteId}`);
       const swapResult = await swapResponse.json();
 
       if (swapResult.error) {
