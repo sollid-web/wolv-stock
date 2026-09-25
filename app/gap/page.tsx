@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getRWATokenList } from "@/lib/binance";
 import { quoteUsd } from "@/lib/quotes";
+import GlobalNav from "@/components/GlobalNav";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,9 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
       <div className="px-4 sm:px-6 pt-6">
         <p className="text-xs text-[#94a3b8] mb-4 leading-relaxed">
           Listed prices are per token, and each token represents a multiplier of shares. This page asks the router what
-          100 USDT actually buys, converts that to a per-share price, and compares it with the reference price.
+          100 USDT actually buys, converts that to a per-share price, and compares it with the reference price. Reference price is a
+          per-share value derived from the on-chain token price according to Binance&apos;s RWA data; it is not an independent
+          stock-market quote. Executable price reflects what the aggregator currently quotes for the token.
         </p>
         <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider font-bold">
           Top {shown.length} of {pairs.length} cross-listed tickers by volume · add ?n=40 for all (slower)
@@ -123,6 +126,8 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
           ))}
         </div>
       </div>
+
+      <GlobalNav />
     </main>
   );
 }

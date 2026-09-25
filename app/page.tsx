@@ -1,11 +1,23 @@
 import { getRWATokenList, getRWAPlatforms } from "@/lib/binance";
 import Link from "next/link";
 import StockList from "@/components/StockList";
+import CategoryTabs from "@/components/CategoryTabs";
+import { RWA_TABS, parseTabId } from "@/lib/rwaData";
+import GlobalNav from "@/components/GlobalNav";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const [platforms, tokens] = await Promise.all([getRWAPlatforms(), getRWATokenList()]);
+export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
+  const { tab } = await searchParams;
+  const tabId = parseTabId(tab); // null = All (no tabId sent to Binance)
+  const tabLabel = RWA_TABS.find((t) => t.id === tabId)?.label;
+  const [platforms, list] = await Promise.all([
+    getRWAPlatforms(),
+    getRWATokenList(undefined, tabId ?? undefined)
+      .then((data: any) => ({ data, err: null as string | null }))
+      .catch((e: any) => ({ data: null as any, err: String(e?.message ?? e).slice(0, 160) })),
+  ]);
+  const tokens = list.data;
   const allTokens: any[] = tokens?.data ?? [];
   const slim = allTokens.map((t) => ({
     tokenContractAddress: t.tokenContractAddress,
@@ -14,6 +26,7 @@ export default async function Home() {
     underlyingName: t.underlyingName,
     tokenName: t.tokenName,
     platformId: t.platformId,
+    tags: Array.isArray(t.tags) ? t.tags : [],
   }));
 
   return (
@@ -46,7 +59,20 @@ export default async function Home() {
         </div>
       </div>
 
-      <StockList tokens={slim} />
+      <CategoryTabs active={tabId} />
+
+      {list.err && (
+        <div className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
+          Couldn&apos;t load {tabLabel ?? "the token list"}: {list.err}
+          {tabId != null && (
+            <> · <Link href="/" className="underline">show all</Link></>
+          )}
+        </div>
+      )}
+
+      <StockList key={tabId ?? "all"} tokens={slim} category={tabLabel} />
+
+      <GlobalNav />
     </main>
   );
 }

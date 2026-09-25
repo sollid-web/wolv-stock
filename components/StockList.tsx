@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { TAG_LABELS, knownTags } from "@/lib/rwaData";
 
 type T = {
   tokenContractAddress: string;
@@ -9,6 +10,14 @@ type T = {
   underlyingName?: string;
   tokenName?: string;
   platformId: string;
+  tags?: string[] | null;
+};
+
+const TAG_STYLE: Record<string, string> = {
+  alpha: "text-purple-300 border-purple-800/60 bg-purple-900/20",
+  communityRecognized: "text-sky-300 border-sky-800/60 bg-sky-900/20",
+  volumeSurge: "text-green-400 border-green-800/60 bg-green-900/20",
+  volumePlunge: "text-red-400 border-red-800/60 bg-red-900/20",
 };
 
 function Logo({ url, tk }: { url?: string; tk: string }) {
@@ -22,7 +31,7 @@ function Logo({ url, tk }: { url?: string; tk: string }) {
   return <img src={url} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
 }
 
-export default function StockList({ tokens }: { tokens: T[] }) {
+export default function StockList({ tokens, category }: { tokens: T[]; category?: string }) {
   const [q, setQ] = useState("");
   const [plat, setPlat] = useState("all");
   const [limit, setLimit] = useState(50);
@@ -75,11 +84,11 @@ export default function StockList({ tokens }: { tokens: T[] }) {
       </div>
 
       <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider font-bold">
-        {rows.length} tokenized stock{rows.length === 1 ? "" : "s"}
+        {rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}
       </div>
 
       {rows.length === 0 ? (
-        <div className="text-sm text-[#64748b] py-8 text-center">No matches. Try a ticker like SPY or a company name.</div>
+        <div className="text-sm text-[#64748b] py-8 text-center">No matches. Try a ticker like SPY, a company name, or another category.</div>
       ) : (
         <div className="grid grid-cols-1 gap-2">
           {rows.slice(0, limit).map((t) => (
@@ -94,6 +103,13 @@ export default function StockList({ tokens }: { tokens: T[] }) {
                   <div className="font-bold text-sm">{t.underlyingTicker}</div>
                   <div className="text-xs text-[#64748b] truncate">
                     {t.underlyingName || t.tokenName?.replace(/\s*\(.*?\)\s*/g, "")}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1 empty:hidden">
+                    {knownTags(t.tags).map((tag) => (
+                      <span key={tag} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${TAG_STYLE[tag]}`}>
+                        {TAG_LABELS[tag]}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>

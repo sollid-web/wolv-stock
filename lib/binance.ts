@@ -44,10 +44,13 @@ async function get(path: string, params: Record<string, string> = {}) {
 }
 
 // RWA — list all tokenized stocks
-export async function getRWATokenList(platform?: string) {
-  return get("/api/v1/dex/market/rwa/tokens",
-    platform ? { platform } : {}
-  );
+// Optional filters per Binance RWA Data docs: platformId (ondo | bstock) and tabId (sector tab, integer).
+// With no arguments the request is unchanged (complete list).
+export async function getRWATokenList(platform?: string, tabId?: number) {
+  const params: Record<string, string> = {};
+  if (platform) params.platformId = platform;
+  if (tabId != null) params.tabId = String(tabId);
+  return get("/api/v1/dex/market/rwa/tokens", params);
 }
 
 // RWA — price for specific tokens
@@ -112,4 +115,111 @@ export async function getRWAQuote(
     amount,
     userWalletAddress: wallet,
   });
+}
+
+// ===== VERIFIED RWA TRADING ENDPOINTS (Phase 2) =====
+
+// Aggregated quote (trading): price to buy `toToken` with USDT on BSC
+// Requires userWalletAddress for RWA/RFQ quotes
+export async function getAggregatorQuote(
+  toToken: string,
+  amount: string,
+  userWalletAddress: string
+) {
+  return get("/api/v1/dex/aggregator/quote", {
+    binanceChainId: "56",
+    fromTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+    toTokenAddress: toToken,
+    amount,
+    userWalletAddress, // Required for RWA/RFQ
+  });
+}
+
+// Get swap details for a quote
+export async function getAggregatorSwap(
+  toToken: string,
+  amount: string,
+  userWalletAddress: string,
+  quoteId: string
+) {
+  return get("/api/v1/dex/aggregator/swap", {
+    binanceChainId: "56",
+    fromTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
+    toTokenAddress: toToken,
+    amount,
+    userWalletAddress,
+    quoteId,
+  });
+}
+
+// Get approval transaction calldata
+export async function getApproveTransaction(
+  tokenContractAddress: string,
+  approveAmount: string,
+  userWalletAddress: string,
+  vendor?: string // Optional vendor parameter for RFQ routes
+) {
+  const params: Record<string, string> = {
+    binanceChainId: "56",
+    tokenContractAddress,
+    approveAmount,
+  };
+
+  if (vendor) {
+    params.vendor = vendor;
+  }
+
+  return get("/api/v1/dex/aggregator/approve-transaction", params);
+}
+
+// Submit a signed order
+export async function submitOrder(
+  requestId: string, // UUID v4 idempotency key
+  userSignature: string, // EIP-712 signature of rfq.typedDataToSign
+  vendor: string, // Must match rfq.vendor from swap response
+  quoteId: string // rfq.orderId from /swap response
+) {
+  // Note: This is a POST request with JSON body
+  const timestamp = new Date().toISOString();
+  const path = "/api/v1/dex/aggregator/order/submit";
+  const requestPath = "/build" + path;
+  const body = JSON.stringify({
+    requestId,
+    userSignature,
+    vendor,
+    quoteId,
+    // signingScheme is optional per docs
+  });
+
+  const preHash = timestamp + "POST" + requestPath + body;
+  const signature = crypto
+    .createHmac("sha256", SECRET_KEY)
+    .update(preHash, "utf8")
+    .digest("base64");
+
+  const headers = {
+    "X-OC-APIKEY": API_KEY,
+    "X-OC-TIMESTAMP": timestamp,
+    "X-OC-SIGN": signature,
+    "Content-Type": "application/json",
+  };
+
+  await rateLimit();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body,
+    // No next: { revalidate } for POST requests
+  });
+
+  const json = await res.json();
+  if (!json.success && json.code !== 0) {
+    throw new Error(`API error ${json.code}: ${json.msg}`);
+  }
+  return json;
+}
+
+// Get order status by orderId
+export async function getOrderStatus(orderId: string) {
+  return get(`/api/v1/dex/aggregator/order/${orderId}`, {});
 }

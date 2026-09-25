@@ -1,6 +1,8 @@
 import { getRWATokenList, getRWAMarketData, getRWAProfile } from "@/lib/binance";
 import { quoteUsd } from "@/lib/quotes";
 import Link from "next/link";
+import { buildProtectionRows } from "@/lib/rwaData";
+import GlobalNav from "@/components/GlobalNav";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
   const md = market?.data?.marketData ?? {};
   const prof = profile?.data ?? null;
+  const protectionRows = buildProtectionRows(prof);
   const mult = num(token.tokenToShareRatio) || 1;
   const listed = num(token.tokenPrice) ?? 0;
   const ref = num(token.referencePrice) ?? 0;
@@ -87,6 +90,16 @@ export default async function StockPage({ params }: { params: Promise<{ address:
         </span>
       </nav>
 
+      <div className="mb-6">
+        <Link
+          href={`/trade/${address}`}
+          className="w-full bg-[#f0b90b] hover:bg-[#f0b90b]/90 text-black font-bold py-3 px-6 rounded-xl text-lg flex items-center justify-center gap-2 transition-colors"
+        >
+          Trade This Asset
+          <span className="text-xs">→</span>
+        </Link>
+      </div>
+
       <div className="px-4 sm:px-6 pt-6 space-y-4">
         <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>
@@ -120,7 +133,8 @@ export default async function StockPage({ params }: { params: Promise<{ address:
               </div>
               <div className="text-xs text-[#64748b] leading-relaxed">
                 What 100 USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult.toFixed(4)} shares per token.
-                Outside regular hours the reference can be stale or defined differently between issuers.
+                Reference price is a per-share value derived from the on-chain token price according to Binance&apos;s RWA data;
+                it is not an independent stock-market quote. Executable price reflects what the aggregator currently quotes for the token.
               </div>
             </>
           ) : (
@@ -159,6 +173,36 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           )}
         </div>
 
+        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+          <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Protections &amp; Reports</div>
+          <p className="text-xs text-[#94a3b8] leading-relaxed mb-3">
+            Investor protection and reporting information supplied through the RWA profile.
+          </p>
+          {protectionRows.length === 0 ? (
+            <div className="text-xs text-[#64748b]">No protection reports currently available.</div>
+          ) : (
+            <>
+              <div className="space-y-2 text-sm">
+                {protectionRows.map((r) => (
+                  <div key={r.key} className="flex items-center justify-between gap-4 border-b border-[#1b1b35] pb-2 last:border-none last:pb-0">
+                    <span className="text-[#64748b]">{r.label}</span>
+                    {r.url ? (
+                      <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-bold text-[#f0b90b] text-right">
+                        View report ↗
+                      </a>
+                    ) : (
+                      <span className="text-xs text-[#64748b] text-right">Listed · no report link provided</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#64748b] mt-3 leading-relaxed">
+                Reports are published by the issuing platform. WOLV does not verify their contents.
+              </p>
+            </>
+          )}
+        </div>
+
         {errs.length > 0 && (
           <div className="text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
             {errs.map((e) => <div key={e}>{e}</div>)}
@@ -169,6 +213,8 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           <div className="text-xs text-[#64748b]">Issued by</div>
           <span className="text-sm font-bold capitalize text-[#f0b90b]">{token.platformId}</span>
         </div>
+
+        <GlobalNav />
       </div>
     </main>
   );
