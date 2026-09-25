@@ -114,8 +114,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       }
 
       setQuoteData(quoteResult);
-      quoteIdRef.current = quoteResult.quoteId;
-
+      quoteIdRef.current = quoteResult.quoteId?.replace(/-/g, '').toLowerCase() ?? null;
+      
       // Get swap details
       const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${quoteResult.quoteId}`);
       const swapResult = await swapResponse.json();

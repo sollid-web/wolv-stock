@@ -9,7 +9,7 @@ export const PRIMARY_TABS: RwaTab[] = [
   { id: 2, label: "SpaceX" },
   { id: 3, label: "Upcoming Earnings" },
   { id: 4, label: "AI Chips" },
-  { id: 9, label: "Magnificent 7" },
+  { id: 9, label: "Mag 7" },
   { id: 11, label: "ETF" },
 ];
 
