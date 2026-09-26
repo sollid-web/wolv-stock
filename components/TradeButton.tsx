@@ -258,34 +258,40 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   // Submit the signed order
   const handleSubmitOrder = async () => {
     if (!quoteData || !swapData || !provider) return;
-
     if (isRFQ && !userSignature) return;
-
-    // SWAP mode: tx data already in swapData from fetchQuote
-    if (!isRFQ) {
-      const tx = (swapData as any).data;
-      if (!tx?.to || !tx?.data) {
-        setSubmitError("Swap transaction data missing — try getting a fresh quote");
-        setIsSubmitting(false);
-        return;
-      }
-      const txHash = await signTransaction({
-        to: tx.to,
-        data: tx.data,
-        value: tx.value ?? "0x0",
-      });
-      setTransactionStatus({
-        status: "pending",
-        transactionHash: txHash ?? undefined,
-        orderId: quoteData.quoteId,
-      });
-      startPollingTransactionStatus(quoteData.quoteId);
-      return;
-    }
 
     setIsSubmitting(true);
     setSubmitError(null);
     setTransactionStatus(null);
+
+    // SWAP mode: tx data already in swapData from fetchQuote
+    if (!isRFQ) {
+      try {
+        const tx = (swapData as any).data?.tx ?? (swapData as any).tx;
+        if (!tx?.to || !tx?.data) {
+          throw new Error("Swap transaction data missing — try getting a fresh quote");
+        }
+        const txHash = await signTransaction({
+          to: tx.to,
+          data: tx.data,
+          value: tx.value ?? "0x0",
+          gas: tx.gas,
+          gasPrice: tx.gasPrice,
+        });
+        setTransactionStatus({
+          status: "pending",
+          transactionHash: txHash ?? undefined,
+          orderId: quoteData.quoteId,
+        });
+        startPollingTransactionStatus(quoteData.quoteId);
+      } catch (err: any) {
+        setSubmitError(err.message || "Failed to send swap transaction");
+        console.error("Swap execution error:", err);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     try {
       // Generate a UUID v4 for requestId (simplified)
