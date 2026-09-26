@@ -1,5 +1,4 @@
-
-  const router = useRouter();"use client";
+"use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
@@ -9,7 +8,8 @@ import GlobalNav from "@/components/GlobalNav";
 
 export const dynamic = "force-dynamic";
 
-export default async function TradePage({ params }: { params: Promise<{ address: string }> }) {
+export default async function TradePage({
+  const router = useRouter(); params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
   const token = tokens?.data?.find((t: any) => t.tokenContractAddress.toLowerCase() === address.toLowerCase());
