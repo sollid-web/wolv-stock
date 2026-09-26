@@ -30,7 +30,15 @@ export async function GET(
     }
 
     const result = await getAggregatorQuote(toToken, amount, userWalletAddress);
-    return NextResponse.json(result);
+    // Aggregator returns an array — take the best (first) quote
+    const quote = result?.data?.[0] ?? null;
+    if (!quote) {
+      return NextResponse.json(
+        { error: "No quote returned from aggregator" },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json(quote);
   } catch (error: any) {
     console.error("Error in quote API:", error);
     return NextResponse.json(
