@@ -374,17 +374,19 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   }, [token.address, address]);
 
   // Disable submit button when conditions aren't met
+  // SWAP mode: no signing needed — execute directly once quote+swap are ready
+  // RFQ mode: requires typedDataToSign + userSignature before executing
+  const isRFQ = swapData?.executionMode === "RFQ";
   const canExecute =
     isConnected &&
     !!address &&
     !!provider &&
     !!quoteData &&
     !!swapData &&
-    !!typedDataToSign &&
-    !!userSignature &&
     !isLoading &&
     !isSubmitting &&
-    !isApproving;
+    !isApproving &&
+    (isRFQ ? (!!typedDataToSign && !!userSignature) : true);
 
   // Show connection status and errors
   if (isConnecting) {
