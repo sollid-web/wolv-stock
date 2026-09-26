@@ -141,7 +141,8 @@ export async function getAggregatorSwap(
   toToken: string,
   amount: string,
   userWalletAddress: string,
-  quoteId: string
+  quoteId: string,
+  slippagePercent: string = "0.5"
 ) {
   return get("/api/v1/dex/aggregator/swap", {
     binanceChainId: "56",
@@ -150,6 +151,7 @@ export async function getAggregatorSwap(
     amount,
     userWalletAddress,
     quoteId,
+    slippagePercent,
   });
 }
 
