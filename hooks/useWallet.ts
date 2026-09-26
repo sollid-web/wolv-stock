@@ -48,24 +48,23 @@ export function useWallet() {
 
   // Silent auto-reconnect on page load — only checks injected wallet,
   // never triggers WalletConnect modal
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = window as any;
   useEffect(() => {
-    const storedAddress = window.localStorage.getItem("walletAddress");
+    if (typeof window === "undefined") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = window as any;
+    const storedAddress = win.localStorage.getItem("walletAddress");
     if (!storedAddress || address || isConnecting) return;
-    if (typeof window === "undefined" || !win.ethereum) return;
+    if (!win.ethereum) return;
 
     (async () => {
       try {
-        // Use eth_accounts (not eth_requestAccounts) — no popup
         const accounts: string[] = await win.ethereum.request({
           method: "eth_accounts",
         });
         if (accounts.length === 0) {
-          window.localStorage.removeItem("walletAddress");
+          win.localStorage.removeItem("walletAddress");
           return;
         }
-        // Wallet already unlocked — reconnect silently
         const { ethers } = await import("ethers");
         const p = new ethers.BrowserProvider(win.ethereum);
         const signer = await p.getSigner();
@@ -73,7 +72,7 @@ export function useWallet() {
         setProvider(p);
         setAddress(addr);
       } catch {
-        window.localStorage.removeItem("walletAddress");
+        win.localStorage.removeItem("walletAddress");
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
