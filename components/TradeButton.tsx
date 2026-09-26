@@ -120,8 +120,6 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       
       // Get swap details
       const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${encodeURIComponent(cleanQuoteId)}`);
-      // Get swap details
-      const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${encodeURIComponent(cleanQuoteId)}`);
       const swapResult = await swapResponse.json();
 
       if (swapResult.error) {
