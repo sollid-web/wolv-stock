@@ -1,4 +1,7 @@
+
+  const router = useRouter();"use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { notFound } from "next/navigation";
 import { getRWATokenList } from "@/lib/binance";
 import TradeButton from "@/components/TradeButton";
@@ -32,7 +35,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
   return (
     <main className="min-h-screen bg-[#07070f] text-white">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
-        <Link href="/" className="text-[#64748b] text-xl">←</Link>
+        <button onClick={() => router.back()} className="text-[#64748b] text-xl cursor-pointer">←</button>
         {token.tokenLogoUrl && (
           <img
             src={token.tokenLogoUrl}

@@ -46,23 +46,36 @@ export function useWallet() {
     disconnectWallet();
   }, []);
 
-  // Auto-reconnect on page load if we have a stored address
+  // Silent auto-reconnect on page load — only checks injected wallet,
+  // never triggers WalletConnect modal
   useEffect(() => {
-    // Check if we have a stored address from previous session
     const storedAddress = window.localStorage.getItem("walletAddress");
-    if (storedAddress && !address && !isConnecting) {
-      // Try to reconnect
-      connect().then(() => {
-        // We don't need the provider here; the connect function will set state
-        // If reconnect fails, the error will be set and we can clear stored address
-        // However, we don't have a way to know if it failed from here.
-        // We'll rely on the error state being set by connect.
-        // For simplicity, we'll just call connect and let it handle state.
-        // If we want to clear stored address on failure, we would need to know the outcome.
-        // We'll leave it as is for now, and maybe improve later.
-      });
-    }
-  }, [address, connect, isConnecting]);
+    if (!storedAddress || address || isConnecting) return;
+    if (typeof window === "undefined" || !window.ethereum) return;
+
+    (async () => {
+      try {
+        // Use eth_accounts (not eth_requestAccounts) — no popup
+        const accounts: string[] = await window.ethereum.request({
+          method: "eth_accounts",
+        });
+        if (accounts.length === 0) {
+          window.localStorage.removeItem("walletAddress");
+          return;
+        }
+        // Wallet already unlocked — reconnect silently
+        const { ethers } = await import("ethers");
+        const p = new ethers.BrowserProvider(window.ethereum);
+        const signer = await p.getSigner();
+        const addr = await signer.getAddress();
+        setProvider(p);
+        setAddress(addr);
+      } catch {
+        window.localStorage.removeItem("walletAddress");
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen for account changes
   useEffect(() => {
