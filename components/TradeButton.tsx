@@ -271,12 +271,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         if (!tx?.to || !tx?.data) {
           throw new Error("Swap transaction data missing — try getting a fresh quote");
         }
-          to: tx.to,
-  data: tx.data,
-  value: tx.value ?? "0x0",
-  gas: tx.gas,
-  gasPrice: tx.gasPrice,
-});const txHash = await signTransaction({
+        const txHash = await signTransaction({
           to: tx.to,
           data: tx.data,
           value: tx.value ?? "0x0",
