@@ -48,15 +48,17 @@ export function useWallet() {
 
   // Silent auto-reconnect on page load — only checks injected wallet,
   // never triggers WalletConnect modal
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const win = window as any;
   useEffect(() => {
     const storedAddress = window.localStorage.getItem("walletAddress");
     if (!storedAddress || address || isConnecting) return;
-    if (typeof window === "undefined" || !window.ethereum) return;
+    if (typeof window === "undefined" || !win.ethereum) return;
 
     (async () => {
       try {
         // Use eth_accounts (not eth_requestAccounts) — no popup
-        const accounts: string[] = await window.ethereum.request({
+        const accounts: string[] = await win.ethereum.request({
           method: "eth_accounts",
         });
         if (accounts.length === 0) {
@@ -65,7 +67,7 @@ export function useWallet() {
         }
         // Wallet already unlocked — reconnect silently
         const { ethers } = await import("ethers");
-        const p = new ethers.BrowserProvider(window.ethereum);
+        const p = new ethers.BrowserProvider(win.ethereum);
         const signer = await p.getSigner();
         const addr = await signer.getAddress();
         setProvider(p);
