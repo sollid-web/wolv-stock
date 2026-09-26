@@ -160,8 +160,12 @@ export async function signTransaction(
 ): Promise<string | null> {
   try {
     const signer = await provider.getSigner();
-    const signedTx = await signer.signTransaction(transaction);
-    return signedTx;
+    // sendTransaction handles the full MetaMask mobile round-trip correctly.
+    // signTransaction only signs without broadcasting — causes MetaMask mobile
+    // to hang on splash screen on Android (no callback fires after app switch).
+    const tx = await signer.sendTransaction(transaction);
+    await tx.wait(1); // wait for 1 confirmation
+    return tx.hash;
   } catch (error) {
     console.error("Failed to sign transaction:", error);
     return null;
