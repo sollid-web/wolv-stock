@@ -113,9 +113,12 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         throw new Error(quoteResult.error);
       }
 
-      const quotePayload = (quoteResult.data ?? quoteResult) as Record<string, any>;
-      const cleanQuoteId = String(quotePayload.quoteId ?? "").replace(/-/g, "").toLowerCase();
-      setQuoteData({ ...quotePayload, quoteId: cleanQuoteId } as QuoteData);
+      // quoteId may be at top level or nested under .data depending on API route
+      const rawQuoteId: string = quoteResult?.quoteId
+        ?? quoteResult?.data?.quoteId
+        ?? "";
+      const cleanQuoteId = String(rawQuoteId).replace(/-/g, "").toLowerCase();
+      setQuoteData({ ...quoteResult, quoteId: cleanQuoteId } as QuoteData);
       quoteIdRef.current = cleanQuoteId;
       
       // Get swap details
