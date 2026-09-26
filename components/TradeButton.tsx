@@ -24,6 +24,13 @@ type QuoteData = {
 };
 
 type SwapData = {
+  data?: {
+    to: string;
+    data: string;
+    value?: string;
+    gas?: string;
+    gasPrice?: string;
+  };
   executionMode: string;
   rfq?: {
     vendor: string;
@@ -133,6 +140,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       }
 
       setSwapData(swapResult);
+      console.log("swapResult shape:", JSON.stringify(swapResult, null, 2));
 
       // If this is an RFQ, extract the typed data for signing
       if (swapResult.executionMode === "RFQ" && swapResult.rfq && swapResult.rfq.typedDataToSign) {
@@ -249,7 +257,31 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
   // Submit the signed order
   const handleSubmitOrder = async () => {
-    if (!userSignature || !quoteData || !swapData || !provider) return;
+    if (!quoteData || !swapData || !provider) return;
+
+    if (isRFQ && !userSignature) return;
+
+    // SWAP mode: tx data already in swapData from fetchQuote
+    if (!isRFQ) {
+      const tx = (swapData as any).data;
+      if (!tx?.to || !tx?.data) {
+        setSubmitError("Swap transaction data missing — try getting a fresh quote");
+        setIsSubmitting(false);
+        return;
+      }
+      const txHash = await signTransaction({
+        to: tx.to,
+        data: tx.data,
+        value: tx.value ?? "0x0",
+      });
+      setTransactionStatus({
+        status: "pending",
+        transactionHash: txHash ?? undefined,
+        orderId: quoteData.quoteId,
+      });
+      startPollingTransactionStatus(quoteData.quoteId);
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitError(null);
@@ -577,7 +609,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           </div>
           <button
             onClick={handleSign}
-            disabled={isLoading || !userSignature}
+            disabled={isLoading || !!userSignature}
             style={{
               backgroundColor: !userSignature ? "#3b82f6" : "#374151",
               color: "white",
