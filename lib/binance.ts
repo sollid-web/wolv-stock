@@ -24,6 +24,7 @@ function makeHeaders(method: string, path: string, body = "") {
     "X-OC-APIKEY": API_KEY,
     "X-OC-TIMESTAMP": timestamp,
     "X-OC-SIGN": signature,
+    "X-OC-RECV-WINDOW": "60000",
   };
 }
 

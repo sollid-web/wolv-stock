@@ -112,6 +112,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       if (quoteResult.error) {
         throw new Error(quoteResult.error);
       }
+      if (!quoteResult?.quoteId && !quoteResult?.data?.quoteId) {
+        throw new Error("Quote failed — no quoteId returned. Check API key and clock sync.");
+      }
 
       // quoteId may be at top level or nested under .data depending on API route
       const rawQuoteId: string = quoteResult?.quoteId
