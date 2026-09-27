@@ -168,14 +168,26 @@ export async function signTransaction(
   try {
     const signer = await provider.getSigner();
     const address = await signer.getAddress();
-    const txParams = [{
+
+    // Create base transaction object for estimation and sending
+    const baseTx = {
       from: address,
       to: transaction.to as string,
       data: transaction.data as string,
       value: transaction.value
         ? "0x" + BigInt(transaction.value.toString()).toString(16)
         : "0x0",
+    };
+
+    // Estimate gas for the transaction
+    const gasLimit = await provider.estimateGas(baseTx);
+
+    // Create final transaction object with gas limit
+    const txParams = [{
+      ...baseTx,
+      gas: "0x" + gasLimit.toString(16), // Convert to hex string
     }];
+
     // Route through WalletConnect if that was the connection method —
     // Trust Wallet and MetaMask mobile require WC relay for tx approval.
     // Falls back to window.ethereum for desktop injected wallets.
@@ -185,8 +197,9 @@ export async function signTransaction(
       params: txParams,
     });
     return txHash as string;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to sign transaction:", error);
+    // If gas estimation fails, we want to surface this error
     return null;
   }
 }
