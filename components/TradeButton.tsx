@@ -276,12 +276,15 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           data: tx.data,
           value: tx.value ?? "0x0",
         });
+        if (!txHash) {
+          throw new Error("Failed to send swap transaction");
+        }
         setTransactionStatus({
           status: "pending",
-          transactionHash: txHash ?? undefined,
-          orderId: quoteData.quoteId,
+          transactionHash: txHash,
+          orderId: undefined,
         });
-        startPollingTransactionStatus(quoteData.quoteId);
+        startPollingBlockchainTransaction(txHash);
       } catch (err: any) {
         setSubmitError(err.message || "Failed to send swap transaction");
         console.error("Swap execution error:", err);
@@ -376,6 +379,56 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         }
       } catch (err) {
         console.error("Error polling transaction status:", err);
+        // Continue polling despite errors
+      }
+    }, 5000);
+
+    setPollInterval(interval);
+  };
+
+  // Poll for blockchain transaction status (for SWAP mode)
+  const startPollingBlockchainTransaction = (txHash: string) => {
+    // Clear any existing interval
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+
+    // Set up polling every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        // Check if provider is available
+        if (!provider) {
+          console.error("Wallet provider not available, stopping polling");
+          clearInterval(interval);
+          setPollInterval(null);
+          return;
+        }
+
+        // Get transaction receipt from blockchain
+        const receipt = await provider.getTransactionReceipt(txHash);
+
+        if (receipt) {
+          // Transaction has been mined
+          setTransactionStatus(prev => ({
+            ...prev!,
+            status: receipt.status === 1 ? "confirmed" : "failed",
+            // Keep the existing transactionHash
+            // Add block number if needed
+          }));
+
+          // Stop polling since we have a final status
+          clearInterval(interval);
+          setPollInterval(null);
+        } else {
+          // Transaction is still pending
+          setTransactionStatus(prev => ({
+            ...prev!,
+            status: "pending",
+            // Keep the existing transactionHash
+          }));
+        }
+      } catch (err) {
+        console.error("Error polling blockchain transaction status:", err);
         // Continue polling despite errors
       }
     }, 5000);
