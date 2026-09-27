@@ -160,12 +160,22 @@ export async function signTransaction(
 ): Promise<string | null> {
   try {
     const signer = await provider.getSigner();
-    // sendTransaction handles the full MetaMask mobile round-trip correctly.
-    // signTransaction only signs without broadcasting — causes MetaMask mobile
-    // to hang on splash screen on Android (no callback fires after app switch).
-    const tx = await signer.sendTransaction(transaction);
-    await tx.wait(1); // wait for 1 confirmation
-    return tx.hash;
+    const address = await signer.getAddress();
+    // Use eth_sendTransaction directly — works correctly on MetaMask and
+    // Trust Wallet mobile. signer.sendTransaction() loses the callback
+    // after the app switch on Android.
+    const txHash = await (window as any).ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{
+        from: address,
+        to: transaction.to as string,
+        data: transaction.data as string,
+        value: transaction.value
+          ? "0x" + BigInt(transaction.value.toString()).toString(16)
+          : "0x0",
+      }],
+    });
+    return txHash as string;
   } catch (error) {
     console.error("Failed to sign transaction:", error);
     return null;
