@@ -1,5 +1,9 @@
 import { ethers } from "ethers";
 
+// Module-level reference to WalletConnect provider for transaction routing
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let wcProvider: any = null;
+
 /**
  * Connect to user's wallet (MetaMask, WalletConnect, etc.)
  * @returns Promise with wallet provider or null if connection failed
@@ -93,6 +97,9 @@ export async function connectWallet(): Promise<ethers.BrowserProvider | null> {
       // Connect to WalletConnect (this will trigger the QR modal)
       await walletConnectProvider.connect();
 
+      // Store raw WC provider so signTransaction can route through it
+      wcProvider = walletConnectProvider;
+
       // Wrap the WalletConnect provider with ethers BrowserProvider
       const provider = new ethers.BrowserProvider(walletConnectProvider);
       return provider;
@@ -161,19 +168,21 @@ export async function signTransaction(
   try {
     const signer = await provider.getSigner();
     const address = await signer.getAddress();
-    // Use eth_sendTransaction directly — works correctly on MetaMask and
-    // Trust Wallet mobile. signer.sendTransaction() loses the callback
-    // after the app switch on Android.
-    const txHash = await (window as any).ethereum.request({
+    const txParams = [{
+      from: address,
+      to: transaction.to as string,
+      data: transaction.data as string,
+      value: transaction.value
+        ? "0x" + BigInt(transaction.value.toString()).toString(16)
+        : "0x0",
+    }];
+    // Route through WalletConnect if that was the connection method —
+    // Trust Wallet and MetaMask mobile require WC relay for tx approval.
+    // Falls back to window.ethereum for desktop injected wallets.
+    const requestProvider = wcProvider ?? (window as any).ethereum;
+    const txHash = await requestProvider.request({
       method: "eth_sendTransaction",
-      params: [{
-        from: address,
-        to: transaction.to as string,
-        data: transaction.data as string,
-        value: transaction.value
-          ? "0x" + BigInt(transaction.value.toString()).toString(16)
-          : "0x0",
-      }],
+      params: txParams,
     });
     return txHash as string;
   } catch (error) {
