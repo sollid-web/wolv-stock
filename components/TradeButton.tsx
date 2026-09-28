@@ -3,6 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
+import {
+  getPendingTradeByHash,
+  getPendingTrades,
+  savePendingTrade,
+  updateTradeStatus,
+  clearResolvedTrades,
+} from "@/lib/trades";
 
 type TokenInfo = {
   address: string;
@@ -77,8 +84,109 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
 
+  // Restored pending trade from localStorage across navigations
+  const [restoredTrade, setRestoredTrade] = useState<{
+    transactionHash: string;
+    status: 'pending' | 'confirmed' | 'failed';
+    submitError?: string;
+  } | null>(null);
+
   // Ref to store the latest quote ID for polling
   const quoteIdRef = useRef<string | null>(null);
+
+  // Poll for transaction status
+  const startPollingTransactionStatus = (orderId: string) => {
+    // Clear any existing interval
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+
+    // Set up polling every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        const statusResponse = await fetch(`/api/order/${orderId}`);
+        const statusResult = await statusResponse.json();
+
+        if (statusResult.error) {
+          throw new Error(statusResult.error);
+        }
+
+        // Update transaction status based on response
+        // This would need to be adjusted based on actual Binance API response format
+        setTransactionStatus(prev => ({
+          ...prev!,
+          status: statusResult.status || "pending",
+          transactionHash: statusResult.transactionHash,
+          // Add other relevant fields as needed
+        }));
+
+        // Stop polling if transaction is confirmed or failed
+        if (statusResult.status === "confirmed" || statusResult.status === "failed") {
+          clearInterval(interval);
+          setPollInterval(null);
+        }
+      } catch (err) {
+        console.error("Error polling transaction status:", err);
+        // Continue polling despite errors
+      }
+    }, 5000);
+
+    setPollInterval(interval);
+  };
+
+  // Poll for blockchain transaction status (for SWAP mode)
+  const startPollingBlockchainTransaction = (txHash: string) => {
+    // Clear any existing interval
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+
+    // Set up polling every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        // Check if provider is available
+        if (!provider) {
+          console.error("Wallet provider not available, stopping polling");
+          clearInterval(interval);
+          setPollInterval(null);
+          return;
+        }
+
+        // Get transaction receipt from blockchain
+        const receipt = await provider.getTransactionReceipt(txHash);
+
+        if (receipt) {
+          // Transaction has been mined - update status
+          const finalStatus = receipt.status === 1 ? "confirmed" : "failed";
+          setTransactionStatus(prev => ({
+            ...prev!,
+            status: finalStatus,
+            // Keep the existing transactionHash
+            // Add block number if needed
+          }));
+
+          // Persist final status in localStorage for recovery
+          updateTradeStatus(txHash, { status: finalStatus });
+
+          // Stop polling since we have a final status
+          clearInterval(interval);
+          setPollInterval(null);
+        } else {
+          // Transaction is still pending
+          setTransactionStatus(prev => ({
+            ...prev!,
+            status: "pending",
+            // Keep the existing transactionHash
+          }));
+        }
+      } catch (err) {
+        console.error("Error polling blockchain transaction status:", err);
+        // Continue polling despite errors
+      }
+    }, 5000);
+
+    setPollInterval(interval);
+  };
 
   // Fetch quote when manually requested (not automatic)
   const fetchQuote = async () => {
@@ -155,6 +263,48 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       setIsLoading(false);
     }
   };
+
+  // Rehydrate pending trade from localStorage when wallet connects
+  useEffect(() => {
+    if (!address || !provider) {
+      setRestoredTrade(null);
+      return;
+    }
+
+    // Get all pending trades from localStorage
+    const trades = getPendingTrades();
+    // Find trades matching current wallet and chain (any status)
+    const chainId = 56; // BSC Mainnet
+    const matchingTrade = trades.find(
+      (t) =>
+        t.walletAddress.toLowerCase() === address.toLowerCase() &&
+        t.chainId === chainId
+    );
+
+    if (matchingTrade) {
+      console.log("[DIAG] Restored trade:", matchingTrade);
+      setRestoredTrade({
+        transactionHash: matchingTrade.transactionHash,
+        status: matchingTrade.status,
+        submitError: matchingTrade.submitError,
+      });
+      // Also set transaction status for UI
+      setTransactionStatus({
+        status: matchingTrade.status,
+        transactionHash: matchingTrade.transactionHash,
+        orderId: matchingTrade.quoteId,
+      });
+      // Resume polling for this transaction ONLY if it's still pending
+      if (matchingTrade.status === "pending") {
+        // Use appropriate polling function based on trade mode
+        if (matchingTrade.tradeMode === "SWAP") {
+          startPollingBlockchainTransaction(matchingTrade.transactionHash);
+        } else if (matchingTrade.tradeMode === "RFQ") {
+          startPollingTransactionStatus(matchingTrade.quoteId ?? matchingTrade.transactionHash);
+        }
+      }
+    }
+  }, [address, provider]);
 
   // Handle USDT amount change
   const handleUsdtAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -264,10 +414,14 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setSubmitError(null);
     setTransactionStatus(null);
 
-    // SWAP mode: tx data already in swapData from fetchQuote
+    // SWAP mode: get fresh swap calldata now to avoid stale quote rejection
     if (!isRFQ) {
       try {
-        const tx = (swapData as any).data?.tx ?? (swapData as any).tx;
+        const amountInWei = (parseFloat(usdtAmount || "10") * 10 ** 18).toString(10);
+        const freshSwap = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${encodeURIComponent(quoteData.quoteId)}`);
+        const freshSwapResult = await freshSwap.json();
+        if (freshSwapResult.error) throw new Error(freshSwapResult.error);
+        const tx = freshSwapResult?.data?.tx ?? freshSwapResult?.tx ?? (swapData as any).data?.tx ?? (swapData as any).tx;
         if (!tx?.to || !tx?.data) {
           throw new Error("Swap transaction data missing — try getting a fresh quote");
         }
@@ -275,10 +429,26 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           to: tx.to,
           data: tx.data,
           value: tx.value ?? "0x0",
-        }, true);
+        });
         if (!txHash) {
           throw new Error("Failed to send swap transaction");
         }
+
+        // Persist pending trade for recovery across navigation
+        savePendingTrade({
+          transactionHash: txHash,
+          walletAddress: address!,
+          chainId: 56,
+          tokenAddress: token.address,
+          symbol: token.symbol,
+          tradeMode: "SWAP",
+          usdtAmount: usdtAmount,
+          quotedTokenAmount: quoteData?.toTokenAmount,
+          quoteId: quoteData?.quoteId,
+          timestamp: Date.now(),
+          status: "pending",
+        });
+
         setTransactionStatus({
           status: "pending",
           transactionHash: txHash,
@@ -286,7 +456,14 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         });
         startPollingBlockchainTransaction(txHash);
       } catch (err: any) {
-        setSubmitError(err.message || "Failed to send swap transaction");
+        // Check if user rejected the transaction
+        if (err?.code === 4001 || err?.message?.includes("rejected") || err?.message?.includes("denied")) {
+          setSubmitError("Transaction rejected in wallet.");
+        } else if (err?.code === -32000 || err?.message?.includes("insufficient funds")) {
+          setSubmitError("Insufficient BNB to pay network fees.");
+        } else {
+          setSubmitError(err.message || "Failed to send swap transaction");
+        }
         console.error("Swap execution error:", err);
       } finally {
         setIsSubmitting(false);
@@ -330,13 +507,29 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       }
 
       // Set initial transaction status
+      const orderId = submitResult.orderId || quoteId;
       setTransactionStatus({
         status: "pending",
-        orderId: submitResult.orderId || quoteId
+        orderId
+      });
+
+      // Save pending trade for recovery across navigation
+      savePendingTrade({
+        transactionHash: "", // Will be updated when we get the hash from API polling
+        walletAddress: address!,
+        chainId: 56,
+        tokenAddress: token.address,
+        symbol: token.symbol,
+        tradeMode: swapData.executionMode,
+        usdtAmount: usdtAmount,
+        quotedTokenAmount: quoteData?.toTokenAmount,
+        quoteId: orderId,
+        timestamp: Date.now(),
+        status: "pending",
       });
 
       // Start polling for transaction status
-      startPollingTransactionStatus(submitResult.orderId || quoteId);
+      startPollingTransactionStatus(orderId);
 
     } catch (err: any) {
       setSubmitError(err.message || "Failed to submit order");
@@ -347,95 +540,6 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   };
 
   // Poll for transaction status
-  const startPollingTransactionStatus = (orderId: string) => {
-    // Clear any existing interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-
-    // Set up polling every 5 seconds
-    const interval = setInterval(async () => {
-      try {
-        const statusResponse = await fetch(`/api/order/${orderId}`);
-        const statusResult = await statusResponse.json();
-
-        if (statusResult.error) {
-          throw new Error(statusResult.error);
-        }
-
-        // Update transaction status based on response
-        // This would need to be adjusted based on actual Binance API response format
-        setTransactionStatus(prev => ({
-          ...prev!,
-          status: statusResult.status || "pending",
-          transactionHash: statusResult.transactionHash,
-          // Add other relevant fields as needed
-        }));
-
-        // Stop polling if transaction is confirmed or failed
-        if (statusResult.status === "confirmed" || statusResult.status === "failed") {
-          clearInterval(interval);
-          setPollInterval(null);
-        }
-      } catch (err) {
-        console.error("Error polling transaction status:", err);
-        // Continue polling despite errors
-      }
-    }, 5000);
-
-    setPollInterval(interval);
-  };
-
-  // Poll for blockchain transaction status (for SWAP mode)
-  const startPollingBlockchainTransaction = (txHash: string) => {
-    // Clear any existing interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-
-    // Set up polling every 5 seconds
-    const interval = setInterval(async () => {
-      try {
-        // Check if provider is available
-        if (!provider) {
-          console.error("Wallet provider not available, stopping polling");
-          clearInterval(interval);
-          setPollInterval(null);
-          return;
-        }
-
-        // Get transaction receipt from blockchain
-        const receipt = await provider.getTransactionReceipt(txHash);
-
-        if (receipt) {
-          // Transaction has been mined
-          setTransactionStatus(prev => ({
-            ...prev!,
-            status: receipt.status === 1 ? "confirmed" : "failed",
-            // Keep the existing transactionHash
-            // Add block number if needed
-          }));
-
-          // Stop polling since we have a final status
-          clearInterval(interval);
-          setPollInterval(null);
-        } else {
-          // Transaction is still pending
-          setTransactionStatus(prev => ({
-            ...prev!,
-            status: "pending",
-            // Keep the existing transactionHash
-          }));
-        }
-      } catch (err) {
-        console.error("Error polling blockchain transaction status:", err);
-        // Continue polling despite errors
-      }
-    }, 5000);
-
-    setPollInterval(interval);
-  };
-
   // Clean up poll interval on unmount
   useEffect(() => {
     return () => {
@@ -482,13 +586,22 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
+        <p className="text-xs text-[#64748b]">Restoring wallet...</p>
+      </div>
+    );
+  }
+
+  if (isConnecting) {
+    return (
+      <div style={{ textAlign: "center", padding: "2rem" }}>
+        <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
         <p className="text-xs text-[#64748b]">Connecting to wallet...</p>
       </div>
     );
   }
 
   // If there's an error and we're not connecting, show wallet selector instead of just error
-  if (error && !isConnecting) {
+  if (error && !isConnecting && !isConnected) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <WalletSelector
@@ -501,7 +614,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   }
 
   // If not connected and no error, show wallet selector to help user connect
-  if (!isConnected) {
+  if (!isConnected && !isConnecting) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <WalletSelector
