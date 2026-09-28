@@ -275,7 +275,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           to: tx.to,
           data: tx.data,
           value: tx.value ?? "0x0",
-        });
+        }, true);
         if (!txHash) {
           throw new Error("Failed to send swap transaction");
         }

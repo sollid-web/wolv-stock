@@ -159,11 +159,13 @@ export async function signTypedData(
  * Sign a transaction (for approval or other transactions)
  * @param provider - Ethereum provider
  * @param transaction - Transaction to sign
+ * @param skipEstimateGas - Optional flag to skip gas estimation (for SWAP transactions)
  * @returns Promise with signed transaction or null if signing failed
  */
 export async function signTransaction(
   provider: ethers.BrowserProvider,
-  transaction: ethers.TransactionRequest
+  transaction: ethers.TransactionRequest,
+  skipEstimateGas = false
 ): Promise<string | null> {
   try {
     const signer = await provider.getSigner();
@@ -186,35 +188,53 @@ export async function signTransaction(
     };
 
     // --- DIAGNOSTIC: estimateGas stage ---
-    console.log("[DIAG] estimateGas START");
-    console.log("[DIAG] estimateGas input fields:", {
-      from: baseTx.from,
-      to: baseTx.to,
-      dataLength: baseTx.data ? baseTx.data.length : 0,
-      value: baseTx.value,
-    });
+    // For SWAP mode, skip the mandatory estimateGas call because it throws
+    // CALL_EXCEPTION before the wallet UI ever opens, blocking eth_sendTransaction.
+    // The wallet will estimate gas internally when the user confirms the tx.
+    let txParams: any[];
 
-    let gasLimit;
-    try {
-      gasLimit = await provider.estimateGas(baseTx);
-      console.log("[DIAG] estimateGas SUCCESS:", gasLimit.toString());
-    } catch (gasErr: any) {
-      console.error("[DIAG] estimateGas FAILED:", gasErr);
-      console.error("[DIAG] estimateGas error detail:", {
-        message: gasErr?.message,
-        code: gasErr?.code,
-        name: gasErr?.name,
-        stack: gasErr?.stack,
-        nested: gasErr?.error ?? gasErr?.data ?? gasErr?.info,
+    if (skipEstimateGas) {
+      console.log("[DIAG] estimateGas SKIPPED (skipEstimateGas=true for SWAP mode)");
+      txParams = [{
+        from: baseTx.from,
+        to: baseTx.to,
+        data: baseTx.data,
+        value: baseTx.value,
+      }];
+    } else {
+      console.log("[DIAG] estimateGas START");
+      console.log("[DIAG] estimateGas input fields:", {
+        from: baseTx.from,
+        to: baseTx.to,
+        dataLength: baseTx.data ? baseTx.data.length : 0,
+        value: baseTx.value,
       });
-      throw gasErr;
-    }
 
-    // Create final transaction object with gas limit
-    const txParams = [{
-      ...baseTx,
-      gas: "0x" + gasLimit.toString(16), // Convert to hex string
-    }];
+      let gasLimit;
+      try {
+        gasLimit = await provider.estimateGas(baseTx);
+        console.log("[DIAG] estimateGas SUCCESS:", gasLimit.toString());
+      } catch (gasErr: any) {
+        console.error("[DIAG] estimateGas FAILED:", gasErr);
+        console.error("[DIAG] estimateGas error detail:", {
+          message: gasErr?.message,
+          code: gasErr?.code,
+          name: gasErr?.name,
+          stack: gasErr?.stack,
+          nested: gasErr?.error ?? gasErr?.data ?? gasErr?.info,
+        });
+        throw gasErr;
+      }
+
+      // Create final transaction object with gas limit
+      txParams = [{
+        from: baseTx.from,
+        to: baseTx.to,
+        data: baseTx.data,
+        value: baseTx.value,
+        gas: "0x" + gasLimit.toString(16), // Convert to hex string
+      }];
+    }
 
     // --- DIAGNOSTIC: provider selection for eth_sendTransaction ---
     const requestProvider = wcProvider ?? (window as any).ethereum;

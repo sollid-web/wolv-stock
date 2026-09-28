@@ -131,7 +131,7 @@ export function useWallet() {
     disconnect,
     signTypedData: (typedData: Record<string, any>) =>
       provider ? signTypedData(provider, typedData) : Promise.resolve(null),
-    signTransaction: (transaction: ethers.TransactionRequest) =>
-      provider ? signTransaction(provider, transaction) : Promise.resolve(null),
+    signTransaction: (transaction: ethers.TransactionRequest, skipEstimateGas?: boolean) =>
+      provider ? signTransaction(provider, transaction, skipEstimateGas) : Promise.resolve(null),
   };
 }
