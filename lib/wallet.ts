@@ -169,6 +169,12 @@ export async function signTransaction(
     const signer = await provider.getSigner();
     const address = await signer.getAddress();
 
+    // --- DIAGNOSTIC: wallet connection context ---
+    console.log("[DIAG] === signTransaction start ===");
+    console.log("[DIAG] wcProvider initialized:", wcProvider !== null);
+    console.log("[DIAG] window.ethereum exists:", !!(window as any).ethereum);
+    console.log("[DIAG] wallet address:", address);
+
     // Create base transaction object for estimation and sending
     const baseTx = {
       from: address,
@@ -179,8 +185,30 @@ export async function signTransaction(
         : "0x0",
     };
 
-    // Estimate gas for the transaction
-    const gasLimit = await provider.estimateGas(baseTx);
+    // --- DIAGNOSTIC: estimateGas stage ---
+    console.log("[DIAG] estimateGas START");
+    console.log("[DIAG] estimateGas input fields:", {
+      from: baseTx.from,
+      to: baseTx.to,
+      dataLength: baseTx.data ? baseTx.data.length : 0,
+      value: baseTx.value,
+    });
+
+    let gasLimit;
+    try {
+      gasLimit = await provider.estimateGas(baseTx);
+      console.log("[DIAG] estimateGas SUCCESS:", gasLimit.toString());
+    } catch (gasErr: any) {
+      console.error("[DIAG] estimateGas FAILED:", gasErr);
+      console.error("[DIAG] estimateGas error detail:", {
+        message: gasErr?.message,
+        code: gasErr?.code,
+        name: gasErr?.name,
+        stack: gasErr?.stack,
+        nested: gasErr?.error ?? gasErr?.data ?? gasErr?.info,
+      });
+      throw gasErr;
+    }
 
     // Create final transaction object with gas limit
     const txParams = [{
@@ -188,19 +216,38 @@ export async function signTransaction(
       gas: "0x" + gasLimit.toString(16), // Convert to hex string
     }];
 
-    // Route through WalletConnect if that was the connection method —
-    // Trust Wallet and MetaMask mobile require WC relay for tx approval.
-    // Falls back to window.ethereum for desktop injected wallets.
+    // --- DIAGNOSTIC: provider selection for eth_sendTransaction ---
     const requestProvider = wcProvider ?? (window as any).ethereum;
+    console.log("[DIAG] requestProvider selected:", wcProvider !== null ? "WalletConnect provider" : "window.ethereum (injected)");
+    console.log("[DIAG] requestProvider exists:", !!requestProvider);
+
+    // --- DIAGNOSTIC: eth_sendTransaction stage ---
+    console.log("[DIAG] eth_sendTransaction START");
+    console.log("[DIAG] eth_sendTransaction params:", {
+      from: txParams[0].from,
+      to: txParams[0].to,
+      dataLength: txParams[0].data ? txParams[0].data.length : 0,
+      value: txParams[0].value,
+      gas: txParams[0].gas,
+    });
+
     const txHash = await requestProvider.request({
       method: "eth_sendTransaction",
       params: txParams,
     });
+    console.log("[DIAG] eth_sendTransaction SUCCESS:", txHash);
     return txHash as string;
   } catch (error: any) {
-    console.error("Failed to sign transaction:", error);
-    // If gas estimation fails, we want to surface this error
-    return null;
+    // --- DIAGNOSTIC: surface the real error instead of swallowing it ---
+    console.error("[DIAG] signTransaction FAILED:", error);
+    console.error("[DIAG] signTransaction error detail:", {
+      message: error?.message,
+      code: error?.code,
+      name: error?.name,
+      stack: error?.stack,
+      nested: error?.error ?? error?.data ?? error?.info,
+    });
+    throw error;
   }
 }
 
