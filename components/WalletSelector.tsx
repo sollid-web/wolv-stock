@@ -1,18 +1,20 @@
-import { useWallet } from "@/hooks/useWallet";
-
 interface WalletSelectorProps {
   isConnecting: boolean;
   error: string | null;
   onConnect: () => Promise<void>;
 }
 
+// NOTE: this component intentionally does NOT call useWallet() itself.
+// It previously did, which meant it was creating a second, independent
+// wallet-state instance alongside whatever parent already called
+// useWallet() (before useWallet became a shared context). It only ever
+// used the onConnect prop anyway, so the extra hook call was dead code
+// that could still fire its own connect/listener effects.
 export default function WalletSelector({
   isConnecting,
   error,
   onConnect
 }: WalletSelectorProps) {
-  const { connect } = useWallet();
-
   return (
     <div className="text-center py-8">
       {!isConnecting && (

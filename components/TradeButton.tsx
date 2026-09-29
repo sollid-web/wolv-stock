@@ -3,13 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
-import {
-  getPendingTradeByHash,
-  getPendingTrades,
-  savePendingTrade,
-  updateTradeStatus,
-  clearResolvedTrades,
-} from "@/lib/trades";
+import NetworkSwitchModal from "@/components/NetworkSwitchModal";
 
 type TokenInfo = {
   address: string;
@@ -31,14 +25,14 @@ type QuoteData = {
 };
 
 type SwapData = {
-  data?: {
+  executionMode: string;
+  tx?: {
+    from: string;
     to: string;
     data: string;
     value?: string;
     gas?: string;
-    gasPrice?: string;
   };
-  executionMode: string;
   rfq?: {
     vendor: string;
     orderId: string;
@@ -46,8 +40,11 @@ type SwapData = {
 };
 
 type ApprovalData = {
+  tokenContractAddress: string;
   spender: string;
   calldata: string;
+  approveAmount: string;
+  gasLimit?: string;
 };
 
 type TransactionStatus = {
@@ -56,16 +53,33 @@ type TransactionStatus = {
   orderId?: string;
 };
 
+const redactSensitiveSwapResponse = (payload: any) => {
+  if (!payload || typeof payload !== "object") return payload;
+
+  const redacted = JSON.parse(JSON.stringify(payload));
+
+  if (redacted?.rfq?.typedDataToSign) {
+    delete redacted.rfq.typedDataToSign;
+  }
+
+  return redacted;
+};
+
 export default function TradeButton({ token }: { token: TokenInfo }) {
   const {
     provider,
     address,
     isConnected,
+    isCorrectNetwork,
     isConnecting,
+    isInitializing,
     error,
     connect,
+    switchToBscMainnet,
     signTypedData,
-    signTransaction
+    signTransaction,
+    waitForTransaction,
+    readAllowance,
   } = useWallet();
 
   // State variables
@@ -82,116 +96,21 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
-
-  // Restored pending trade from localStorage across navigations
-  const [restoredTrade, setRestoredTrade] = useState<{
-    transactionHash: string;
-    status: 'pending' | 'confirmed' | 'failed';
-    submitError?: string;
-  } | null>(null);
 
   // Ref to store the latest quote ID for polling
   const quoteIdRef = useRef<string | null>(null);
-
-  // Poll for transaction status
-  const startPollingTransactionStatus = (orderId: string) => {
-    // Clear any existing interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-
-    // Set up polling every 5 seconds
-    const interval = setInterval(async () => {
-      try {
-        const statusResponse = await fetch(`/api/order/${orderId}`);
-        const statusResult = await statusResponse.json();
-
-        if (statusResult.error) {
-          throw new Error(statusResult.error);
-        }
-
-        // Update transaction status based on response
-        // This would need to be adjusted based on actual Binance API response format
-        setTransactionStatus(prev => ({
-          ...prev!,
-          status: statusResult.status || "pending",
-          transactionHash: statusResult.transactionHash,
-          // Add other relevant fields as needed
-        }));
-
-        // Stop polling if transaction is confirmed or failed
-        if (statusResult.status === "confirmed" || statusResult.status === "failed") {
-          clearInterval(interval);
-          setPollInterval(null);
-        }
-      } catch (err) {
-        console.error("Error polling transaction status:", err);
-        // Continue polling despite errors
-      }
-    }, 5000);
-
-    setPollInterval(interval);
-  };
-
-  // Poll for blockchain transaction status (for SWAP mode)
-  const startPollingBlockchainTransaction = (txHash: string) => {
-    // Clear any existing interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-
-    // Set up polling every 5 seconds
-    const interval = setInterval(async () => {
-      try {
-        // Check if provider is available
-        if (!provider) {
-          console.error("Wallet provider not available, stopping polling");
-          clearInterval(interval);
-          setPollInterval(null);
-          return;
-        }
-
-        // Get transaction receipt from blockchain
-        const receipt = await provider.getTransactionReceipt(txHash);
-
-        if (receipt) {
-          // Transaction has been mined - update status
-          const finalStatus = receipt.status === 1 ? "confirmed" : "failed";
-          setTransactionStatus(prev => ({
-            ...prev!,
-            status: finalStatus,
-            // Keep the existing transactionHash
-            // Add block number if needed
-          }));
-
-          // Persist final status in localStorage for recovery
-          updateTradeStatus(txHash, { status: finalStatus });
-
-          // Stop polling since we have a final status
-          clearInterval(interval);
-          setPollInterval(null);
-        } else {
-          // Transaction is still pending
-          setTransactionStatus(prev => ({
-            ...prev!,
-            status: "pending",
-            // Keep the existing transactionHash
-          }));
-        }
-      } catch (err) {
-        console.error("Error polling blockchain transaction status:", err);
-        // Continue polling despite errors
-      }
-    }, 5000);
-
-    setPollInterval(interval);
-  };
 
   // Fetch quote when manually requested (not automatic)
   const fetchQuote = async () => {
     if (!isConnected || !provider || !token.address || !usdtAmount) {
       setQuoteError("Please connect wallet and enter USDT amount");
+      return;
+    }
+
+    if (!isCorrectNetwork) {
+      setQuoteError("Switch to Binance Smart Chain Mainnet to continue.");
       return;
     }
 
@@ -238,20 +157,36 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       const cleanQuoteId = String(rawQuoteId).replace(/-/g, "").toLowerCase();
       setQuoteData({ ...quoteResult, quoteId: cleanQuoteId } as QuoteData);
       quoteIdRef.current = cleanQuoteId;
-      
+
       // Get swap details
       const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${encodeURIComponent(cleanQuoteId)}`);
-      const swapResult = await swapResponse.json();
+      const rawSwapText = await swapResponse.clone().text();
+      const rawSwapObject = rawSwapText ? JSON.parse(rawSwapText) : null;
+      const swapResult = rawSwapObject?.data ?? rawSwapObject;
 
-      if (swapResult.error) {
+      console.log("===== SWAP TX FORENSIC START =====");
+      console.log("[SwapForensics] usdtAmount", usdtAmount);
+      console.log("[SwapForensics] amountInWei", amountInWei);
+      console.log("[SwapForensics] quoteId", cleanQuoteId);
+      console.log("[SwapForensics] executionMode", swapResult?.executionMode ?? null);
+      console.log("[SwapForensics] raw /api/swap response before transformation", redactSensitiveSwapResponse(rawSwapObject));
+      console.log("[SwapForensics] exact object returned by /api/swap before transformation", redactSensitiveSwapResponse(rawSwapObject));
+      console.log("[SwapForensics] unwrapped payload used by app", redactSensitiveSwapResponse(swapResult));
+      console.log("===== SWAP TX FORENSIC END =====");
+
+      if (swapResult?.error) {
         throw new Error(swapResult.error);
       }
 
       setSwapData(swapResult);
-      console.log("swapResult shape:", JSON.stringify(swapResult, null, 2));
+
+      if (swapResult?.executionMode === "SWAP") {
+        const vendor = swapResult?.routerResult?.vendorName ?? swapResult?.vendorName;
+        await checkApproval(amountInWei, vendor);
+      }
 
       // If this is an RFQ, extract the typed data for signing
-      if (swapResult.executionMode === "RFQ" && swapResult.rfq && swapResult.rfq.typedDataToSign) {
+      if (swapResult?.executionMode === "RFQ" && swapResult.rfq && swapResult.rfq.typedDataToSign) {
         setTypedDataToSign(swapResult.rfq.typedDataToSign);
       } else {
         setTypedDataToSign(null);
@@ -263,48 +198,6 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       setIsLoading(false);
     }
   };
-
-  // Rehydrate pending trade from localStorage when wallet connects
-  useEffect(() => {
-    if (!address || !provider) {
-      setRestoredTrade(null);
-      return;
-    }
-
-    // Get all pending trades from localStorage
-    const trades = getPendingTrades();
-    // Find trades matching current wallet and chain (any status)
-    const chainId = 56; // BSC Mainnet
-    const matchingTrade = trades.find(
-      (t) =>
-        t.walletAddress.toLowerCase() === address.toLowerCase() &&
-        t.chainId === chainId
-    );
-
-    if (matchingTrade) {
-      console.log("[DIAG] Restored trade:", matchingTrade);
-      setRestoredTrade({
-        transactionHash: matchingTrade.transactionHash,
-        status: matchingTrade.status,
-        submitError: matchingTrade.submitError,
-      });
-      // Also set transaction status for UI
-      setTransactionStatus({
-        status: matchingTrade.status,
-        transactionHash: matchingTrade.transactionHash,
-        orderId: matchingTrade.quoteId,
-      });
-      // Resume polling for this transaction ONLY if it's still pending
-      if (matchingTrade.status === "pending") {
-        // Use appropriate polling function based on trade mode
-        if (matchingTrade.tradeMode === "SWAP") {
-          startPollingBlockchainTransaction(matchingTrade.transactionHash);
-        } else if (matchingTrade.tradeMode === "RFQ") {
-          startPollingTransactionStatus(matchingTrade.quoteId ?? matchingTrade.transactionHash);
-        }
-      }
-    }
-  }, [address, provider]);
 
   // Handle USDT amount change
   const handleUsdtAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -330,7 +223,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   };
 
   // Check if approval is needed and get approval transaction data
-  const checkApproval = async () => {
+  const checkApproval = async (amount?: string, vendor?: string) => {
     if (!isConnected || !provider || !token.address || !usdtAmount) return;
 
     setIsApproving(true);
@@ -339,27 +232,47 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
     try {
       // Convert USDT amount to wei (18 decimals)
-      const amountInWei = (parseFloat(usdtAmount) * 10 ** 18).toString(10);
+      const amountInWei = amount ?? (parseFloat(usdtAmount) * 10 ** 18).toString(10);
+      const params = new URLSearchParams({
+        tokenContractAddress: "0x55d398326f99059ff775485246999027b3197955",
+        approveAmount: amountInWei,
+        userWalletAddress: address ?? "",
+      });
+      if (vendor) params.set("vendor", vendor);
 
-      // For now, we'll assume approval is needed and get the approval transaction data
-      // In a more sophisticated implementation, we would check the current allowance first
-      const approveResponse = await fetch(`/api/approve-transaction?tokenContractAddress=${token.address}&approveAmount=${amountInWei}&userWalletAddress=${address}`);
+      const approveResponse = await fetch(`/api/approve-transaction?${params}`);
       const approveResult = await approveResponse.json();
 
       if (approveResult.error) {
         throw new Error(approveResult.error);
       }
 
-      // Assuming the response contains the spender and calldata for approval
-      // This would need to be adjusted based on actual Binance API response format
-      if (approveResult.data && approveResult.data.spender && approveResult.data.calldata) {
+      const approvalTransaction = Array.isArray(approveResult.data)
+        ? approveResult.data[0]
+        : approveResult.data;
+      if (
+        approvalTransaction?.dexContractAddress &&
+        approvalTransaction?.data
+      ) {
+        const tokenContractAddress = "0x55d398326f99059ff775485246999027b3197955";
+        const currentAllowance = await readAllowance(
+          tokenContractAddress,
+          approvalTransaction.dexContractAddress
+        );
+        if (currentAllowance !== null && currentAllowance >= BigInt(amountInWei)) {
+          setApprovalData(null);
+          return;
+        }
+
         setApprovalData({
-          spender: approveResult.data.spender,
-          calldata: approveResult.data.calldata
+          tokenContractAddress,
+          spender: approvalTransaction.dexContractAddress,
+          calldata: approvalTransaction.data,
+          approveAmount: amountInWei,
+          gasLimit: approvalTransaction.gasLimit,
         });
       } else {
-        // If no approval data is returned, assume no approval is needed
-        setApprovalData(null);
+        throw new Error("Binance did not return a valid USDT approval transaction");
       }
     } catch (err: any) {
       setApprovalError(err.message || "Failed to get approval transaction");
@@ -373,103 +286,117 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const handleApprove = async () => {
     if (!approvalData || !provider) return;
 
+    setIsApproving(true);
     setApprovalError(null);
     try {
       // Create a transaction request for the approval
       const transactionRequest = {
-        to: approvalData.spender,
+        to: approvalData.tokenContractAddress,
         data: approvalData.calldata,
+        gas: approvalData.gasLimit,
       };
 
-      const signedTx = await signTransaction(transactionRequest);
-      if (signedTx) {
-        // In a real implementation, we would send the signed transaction to the network
-        // and wait for confirmation. For now, we'll simulate approval success.
-        // A complete implementation would:
-        // 1. Send the signed transaction to the Ethereum/BSC network
-        // 2. Wait for transaction confirmation
-        // 3. Then proceed with the trade
+      const transactionHash = await signTransaction(transactionRequest);
+      if (!transactionHash) {
+        throw new Error("Wallet did not submit the approval transaction");
+      }
 
-        // For this implementation, we'll assume approval is successful immediately
-        // and proceed to allow the user to sign and submit the trade
-        console.log("Approval transaction signed:", signedTx);
+      const allowanceConfirmed = (async () => {
+        const deadline = Date.now() + 60_000;
+        while (Date.now() < deadline) {
+          const currentAllowance = await readAllowance(
+            approvalData.tokenContractAddress,
+            approvalData.spender
+          );
+          if (
+            currentAllowance !== null &&
+            currentAllowance >= BigInt(approvalData.approveAmount)
+          ) {
+            return true;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+        }
+        return false;
+      })();
+      const approvalConfirmed = await Promise.race([
+        waitForTransaction(transactionHash).then((receiptStatus) => {
+          if (receiptStatus === "confirmed") return true;
+          if (receiptStatus === "failed") return false;
+          return allowanceConfirmed;
+        }),
+        allowanceConfirmed,
+      ]);
 
-        // In a real app, we would wait for confirmation here
-        // For now, we'll just clear the approval data and let the user proceed
+      if (approvalConfirmed) {
         setApprovalData(null);
       } else {
-        setApprovalError("Failed to sign approval transaction");
+        setApprovalError("Could not confirm approval. Check the transaction on BscScan, then click Get Quote to refresh allowance status.");
       }
     } catch (err: any) {
-      setApprovalError(err.message || "Failed to sign approval transaction");
+      setApprovalError(err.message || "Failed to submit approval transaction");
+    } finally {
+      setIsApproving(false);
     }
   };
 
   // Submit the signed order
   const handleSubmitOrder = async () => {
-    if (!quoteData || !swapData || !provider) return;
-    if (isRFQ && !userSignature) return;
+    if (!quoteData || !swapData || !provider || !address) return;
 
-    setIsSubmitting(true);
-    setSubmitError(null);
-    setTransactionStatus(null);
+    if (swapData.executionMode === "SWAP") {
+      const tx = swapData.tx;
+      if (!tx?.from || !tx.to || !tx.data) {
+        setSubmitError("Swap response is missing its transaction details");
+        return;
+      }
+      if (tx.from.toLowerCase() !== address.toLowerCase()) {
+        setSubmitError("Swap transaction wallet does not match the connected wallet");
+        return;
+      }
 
-    // SWAP mode: get fresh swap calldata now to avoid stale quote rejection
-    if (!isRFQ) {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setTransactionStatus(null);
+
       try {
-        const amountInWei = (parseFloat(usdtAmount || "10") * 10 ** 18).toString(10);
-        const freshSwap = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${encodeURIComponent(quoteData.quoteId)}`);
-        const freshSwapResult = await freshSwap.json();
-        if (freshSwapResult.error) throw new Error(freshSwapResult.error);
-        const tx = freshSwapResult?.data?.tx ?? freshSwapResult?.tx ?? (swapData as any).data?.tx ?? (swapData as any).tx;
-        if (!tx?.to || !tx?.data) {
-          throw new Error("Swap transaction data missing — try getting a fresh quote");
-        }
-        const txHash = await signTransaction({
+        const transactionHash = await signTransaction({
           to: tx.to,
           data: tx.data,
-          value: tx.value ?? "0x0",
+          value: tx.value,
+          gas: tx.gas,
         });
-        if (!txHash) {
-          throw new Error("Failed to send swap transaction");
-        }
 
-        // Persist pending trade for recovery across navigation
-        savePendingTrade({
-          transactionHash: txHash,
-          walletAddress: address!,
-          chainId: 56,
-          tokenAddress: token.address,
-          symbol: token.symbol,
-          tradeMode: "SWAP",
-          usdtAmount: usdtAmount,
-          quotedTokenAmount: quoteData?.toTokenAmount,
-          quoteId: quoteData?.quoteId,
-          timestamp: Date.now(),
-          status: "pending",
-        });
+        if (!transactionHash) {
+          throw new Error("Wallet did not submit the swap transaction");
+        }
 
         setTransactionStatus({
           status: "pending",
-          transactionHash: txHash,
-          orderId: undefined,
+          transactionHash,
         });
-        startPollingBlockchainTransaction(txHash);
+        void waitForTransaction(transactionHash).then((receiptStatus) => {
+          setTransactionStatus((current) =>
+            current?.transactionHash === transactionHash
+              ? { ...current, status: receiptStatus }
+              : current
+          );
+        });
       } catch (err: any) {
-        // Check if user rejected the transaction
-        if (err?.code === 4001 || err?.message?.includes("rejected") || err?.message?.includes("denied")) {
-          setSubmitError("Transaction rejected in wallet.");
-        } else if (err?.code === -32000 || err?.message?.includes("insufficient funds")) {
-          setSubmitError("Insufficient BNB to pay network fees.");
-        } else {
-          setSubmitError(err.message || "Failed to send swap transaction");
-        }
-        console.error("Swap execution error:", err);
+        setSubmitError(err.message || "Failed to submit swap transaction");
       } finally {
         setIsSubmitting(false);
       }
       return;
     }
+
+    if (swapData.executionMode !== "RFQ" || !userSignature) {
+      setSubmitError("This swap execution mode is not supported");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+    setTransactionStatus(null);
 
     try {
       // Generate a UUID v4 for requestId (simplified)
@@ -507,29 +434,13 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       }
 
       // Set initial transaction status
-      const orderId = submitResult.orderId || quoteId;
       setTransactionStatus({
         status: "pending",
-        orderId
-      });
-
-      // Save pending trade for recovery across navigation
-      savePendingTrade({
-        transactionHash: "", // Will be updated when we get the hash from API polling
-        walletAddress: address!,
-        chainId: 56,
-        tokenAddress: token.address,
-        symbol: token.symbol,
-        tradeMode: swapData.executionMode,
-        usdtAmount: usdtAmount,
-        quotedTokenAmount: quoteData?.toTokenAmount,
-        quoteId: orderId,
-        timestamp: Date.now(),
-        status: "pending",
+        orderId: submitResult.orderId || quoteId
       });
 
       // Start polling for transaction status
-      startPollingTransactionStatus(orderId);
+      startPollingTransactionStatus(submitResult.orderId || quoteId);
 
     } catch (err: any) {
       setSubmitError(err.message || "Failed to submit order");
@@ -540,6 +451,45 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   };
 
   // Poll for transaction status
+  const startPollingTransactionStatus = (orderId: string) => {
+    // Clear any existing interval
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+
+    // Set up polling every 5 seconds
+    const interval = setInterval(async () => {
+      try {
+        const statusResponse = await fetch(`/api/order/${orderId}`);
+        const statusResult = await statusResponse.json();
+
+        if (statusResult.error) {
+          throw new Error(statusResult.error);
+        }
+
+        // Update transaction status based on response
+        // This would need to be adjusted based on actual Binance API response format
+        setTransactionStatus(prev => ({
+          ...prev!,
+          status: statusResult.status || "pending",
+          transactionHash: statusResult.transactionHash,
+          // Add other relevant fields as needed
+        }));
+
+        // Stop polling if transaction is confirmed or failed
+        if (statusResult.status === "confirmed" || statusResult.status === "failed") {
+          clearInterval(interval);
+          setPollInterval(null);
+        }
+      } catch (err) {
+        console.error("Error polling transaction status:", err);
+        // Continue polling despite errors
+      }
+    }, 5000);
+
+    setPollInterval(interval);
+  };
+
   // Clean up poll interval on unmount
   useEffect(() => {
     return () => {
@@ -566,12 +516,17 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setQuoteError(null);
   }, [token.address, address]);
 
-  // Disable submit button when conditions aren't met
-  // SWAP mode: no signing needed — execute directly once quote+swap are ready
-  // RFQ mode: requires typedDataToSign + userSignature before executing
-  const isRFQ = swapData?.executionMode === "RFQ";
+  // Whether THIS quote's execution mode requires an EIP-712 signature at
+  // all. RFQ quotes do (typedDataToSign comes back from /api/swap); a
+  // direct-execution quote does not, and never will have typedDataToSign
+  // set. The old code required !!userSignature unconditionally, which made
+  // the button impossible to enable whenever typedDataToSign was still
+  // null - i.e. exactly the case the button is rendered for.
+  const requiresTypedDataSignature = !!typedDataToSign;
+
   const canExecute =
     isConnected &&
+    isCorrectNetwork &&
     !!address &&
     !!provider &&
     !!quoteData &&
@@ -579,14 +534,39 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     !isLoading &&
     !isSubmitting &&
     !isApproving &&
-    (isRFQ ? (!!typedDataToSign && !!userSignature) : true);
+    !approvalError &&
+    (!requiresTypedDataSignature || !!userSignature);
 
-  // Show connection status and errors
-  if (isConnecting) {
+  if (process.env.NODE_ENV !== "production") {
+    // Dev-only visibility into the gating logic. No signatures or other
+    // sensitive wallet data are logged - only booleans/flags.
+    // eslint-disable-next-line no-console
+    console.debug("[TradeButton] canExecute inputs", {
+      hasAddress: !!address,
+      hasProvider: !!provider,
+      hasQuote: !!quoteData,
+      hasSwapData: !!swapData,
+      hasTypedData: !!typedDataToSign,
+      hasUserSignature: !!userSignature,
+      isLoading,
+      isSubmitting,
+      isApproving,
+      requiresTypedDataSignature,
+      canExecute,
+    });
+  }
+
+  // Show connection status and errors.
+  // isInitializing covers the brief silent "do we already have an
+  // authorized wallet?" check on first mount - it must never be confused
+  // with isConnecting (which only reflects an explicit user-clicked
+  // Connect in progress), or refreshing the page would flash the
+  // WalletSelector / "Connecting..." UI before settling.
+  if (isInitializing) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
-        <p className="text-xs text-[#64748b]">Restoring wallet...</p>
+        <p className="text-xs text-[#64748b]">Checking wallet connection...</p>
       </div>
     );
   }
@@ -601,7 +581,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   }
 
   // If there's an error and we're not connecting, show wallet selector instead of just error
-  if (error && !isConnecting && !isConnected) {
+  if (error && !isConnecting) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <WalletSelector
@@ -614,7 +594,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   }
 
   // If not connected and no error, show wallet selector to help user connect
-  if (!isConnected && !isConnecting) {
+  if (!isConnected) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <WalletSelector
@@ -626,8 +606,23 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     );
   }
 
+  const handleNetworkSwitch = async () => {
+    setIsSwitchingNetwork(true);
+    try {
+      await switchToBscMainnet();
+    } finally {
+      setIsSwitchingNetwork(false);
+    }
+  };
+
   return (
     <div style={{ border: "1px solid #374151", borderRadius: "0.5rem", padding: "1rem", margin: "0.5rem 0" }}>
+      <NetworkSwitchModal
+        open={isConnected && !isCorrectNetwork}
+        isSwitching={isSwitchingNetwork}
+        onSwitch={handleNetworkSwitch}
+        onClose={() => undefined}
+      />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
         <h3 style={{ margin: 0, fontSize: "1.125rem" }}>Trade {token.symbol}</h3>
         <span style={{ fontSize: "0.875rem", color: isConnected ? "#10b981" : "#ef4444" }}>
@@ -638,6 +633,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       <div style={{ fontSize: "0.875rem", color: "#9ca3af", marginBottom: "0.5rem" }}>
         Wallet: {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected"}
       </div>
+      {!isCorrectNetwork && (
+        <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "0.5rem", backgroundColor: "#7f1d1d", color: "#fecaca", fontSize: "0.75rem", fontWeight: 700 }}>
+          Unsupported network detected. Switch to Binance Smart Chain Mainnet before trading.
+        </div>
+      )}
 
       {/* USDT Amount Input */}
       <div style={{ marginBottom: "1rem" }}>
@@ -819,8 +819,16 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         </div>
       )}
 
-      {/* Submit Order Button */}
-      {!typedDataToSign && !approvalData && quoteData && swapData && (
+      {/* Submit Order Button.
+          Rendered whenever we have a quote to act on, regardless of
+          whether this quote requires typed-data signing - the typed-data
+          panel above (when present) and canExecute together gate whether
+          it's actually clickable. Previously this required
+          !typedDataToSign, which meant the button was rendered ONLY in
+          the case where canExecute's `!!typedDataToSign` term made it
+          permanently false - i.e. the button could be visible but could
+          never become enabled. */}
+      {!approvalData && quoteData && swapData && (
         <div style={{ marginTop: "1rem" }}>
           <button
             onClick={handleSubmitOrder}
@@ -911,6 +919,18 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               marginTop: "0.5rem"
             }}>
               Transaction failed.
+            </div>
+          )}
+          {transactionStatus.status === "unverified" && (
+            <div style={{
+              backgroundColor: "#78350f",
+              color: "#fef3c7",
+              borderRadius: "0.25rem",
+              padding: "0.5rem",
+              fontSize: "0.75rem",
+              marginTop: "0.5rem"
+            }}>
+              Confirmation could not be verified yet. Check BscScan before retrying.
             </div>
           )}
         </div>

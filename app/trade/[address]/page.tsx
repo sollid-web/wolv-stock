@@ -4,11 +4,11 @@ import { getRWATokenList } from "@/lib/binance";
 import TradeButton from "@/components/TradeButton";
 import GlobalNav from "@/components/GlobalNav";
 import BackButton from "@/components/BackButton";
+import SmartRouterStatus from "@/components/SmartRouterStatus";
 
 export const dynamic = "force-dynamic";
 
-export default async function TradePage({
-  params }: { params: Promise<{ address: string }> }) {
+export default async function TradePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
   const token = tokens?.data?.find((t: any) => t.tokenContractAddress.toLowerCase() === address.toLowerCase());
@@ -34,7 +34,7 @@ export default async function TradePage({
   return (
     <main className="min-h-screen bg-[#07070f] text-white">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
-        <BackButton />
+        <BackButton fallbackHref="/trade" className="text-[#64748b] text-xl" />
         {token.tokenLogoUrl && (
           <img
             src={token.tokenLogoUrl}
@@ -51,6 +51,7 @@ export default async function TradePage({
       </nav>
 
       <div className="px-4 sm:px-6 pt-6">
+        <SmartRouterStatus ticker={tokenInfo.symbol} />
         <TradeButton token={tokenInfo} />
       </div>
 

@@ -9,14 +9,19 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.24.0",
+    "@tanstack/react-query": "^5.62.0",
     "@walletconnect/ethereum-provider": "^2.25.0",
-    "@walletconnect/modal": "^2.7.0",
-    "@walletconnect/web3wallet": "^1.16.1",
-    "ethers": "^6.7.0",
+    "@x402/core": "^2.27.0",
+    "@x402/evm": "^2.27.0",
+    "@x402/extensions": "^2.27.0",
+    "@x402/svm": "^2.27.0",
     "lightweight-charts": "^5.2.1",
     "next": "16.3.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "viem": "^2.21.0",
+    "wagmi": "^2.14.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
