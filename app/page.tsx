@@ -49,18 +49,31 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
-          <span className="font-bold text-lg tracking-wide">WOLV Stock Terminal</span>
+    <main className="min-h-screen bg-[#07070f] text-white pb-20">
+      <nav className="sticky top-0 z-10 border-b border-white/[0.08] bg-[#0a0a14]/90 px-4 py-4 backdrop-blur-xl sm:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-3" aria-label="WOLV Stock Terminal home">
+            <div className="grid size-9 place-items-center rounded-xl bg-[#f0b90b] text-sm font-black text-black shadow-[0_0_24px_rgba(240,185,11,0.2)]">W</div>
+            <div>
+              <span className="block text-sm font-black tracking-[0.18em] text-white">WOLV</span>
+              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:block">Stock Terminal</span>
+            </div>
+          </Link>
+          <Link href="/gap" className="rounded-full border border-[#f0b90b]/40 bg-[#f0b90b]/10 px-3 py-2 text-xs font-bold text-[#f0b90b] transition hover:bg-[#f0b90b]/20 sm:px-4">
+            Executable prices <span aria-hidden="true">→</span>
+          </Link>
         </div>
-        <Link href="/gap" className="text-xs font-bold px-3 py-1 rounded-full bg-[#f0b90b]/10 border border-[#f0b90b]/30 text-[#f0b90b]">
-          📊 Executable Prices
-        </Link>
       </nav>
 
-      <div className="px-4 sm:px-6 pt-5 pb-4 flex gap-3 overflow-x-auto">
+      <section className="mx-auto max-w-7xl px-4 pb-5 pt-8 sm:px-8 sm:pt-12">
+        <div className="max-w-2xl">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#f0b90b]/25 bg-[#f0b90b]/[0.08] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[#f0b90b]"><span className="size-1.5 rounded-full bg-[#f0b90b]" /> BSC tokenized markets</div>
+          <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">Explore tokenized stocks<br className="hidden sm:block" /> built for onchain trading.</h1>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">Discover compliant spot assets across leading issuers. Compare venues, inspect live execution paths, and trade with confidence.</p>
+        </div>
+      </section>
+
+      <div className="mx-auto flex max-w-7xl gap-3 overflow-x-auto px-4 pb-6 sm:px-8">
         {platforms?.data?.map((p) => (
           <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">

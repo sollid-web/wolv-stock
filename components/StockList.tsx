@@ -68,14 +68,24 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
     }`;
 
   return (
-    <div className="px-4 sm:px-6 pb-10">
-      <input
-        type="search"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setLimit(50); }}
-        placeholder="Search ticker or company (e.g. NVDA)"
-        className="w-full mb-3 bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 text-sm text-white placeholder-slate-400 outline-none focus:border-[#f0b90b]/50"
-      />
+    <div className="mx-auto max-w-7xl px-4 pb-10 sm:px-8">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Asset directory</p>
+          <p className="mt-1 text-sm text-slate-400">Choose a stock to view its market and trade route.</p>
+        </div>
+        <label className="relative block w-full sm:max-w-sm">
+          <span className="sr-only">Search ticker or company</span>
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">⌕</span>
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setLimit(50); }}
+            placeholder="Search ticker or company"
+            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#f0b90b]/60 focus:bg-white/[0.06]"
+          />
+        </label>
+      </div>
       <div className="flex gap-2 mb-4 flex-wrap">
         <button className={chip(plat === "all")} onClick={() => { setPlat("all"); setLimit(50); }}>
           All
@@ -99,7 +109,7 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
             <Link
               key={t.tokenContractAddress}
               href={`/stock/${t.tokenContractAddress}`}
-              className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-5 flex items-center justify-between hover:border-[#f0b90b]/40 transition-colors"
+              className="group flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-4 transition hover:-translate-y-0.5 hover:border-[#f0b90b]/50 hover:bg-white/[0.06] sm:px-5"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Logo url={t.tokenLogoUrl} tk={t.underlyingTicker} />
