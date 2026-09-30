@@ -5,7 +5,6 @@ import { isValidUsdtAmount, usdtAmountToWei } from "@/lib/apiValidation";
 import { useWallet } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
-import HackathonAccessNotice from "@/components/HackathonAccessNotice";
 import { useIsHydrated } from "@/hooks/useIsHydrated";
 
 type TokenInfo = {
@@ -20,6 +19,7 @@ type QuoteData = {
   toTokenAmount: string;
   priceImpactPercent?: number | string;
   executionMode: string;
+  vendorName?: string;
   rfq?: {
     vendor: string;
     orderId: string;
@@ -62,6 +62,17 @@ type SimulationResult = {
   balanceChanges: { contractAddress?: string; tokenType?: string; change?: string; owner?: string }[];
   allowanceChanges: { tokenAddress?: string; owner?: string; spender?: string; preAmount?: string; postAmount?: string }[];
 };
+
+function displayOrderStatus(status: string): string {
+  switch (status.toUpperCase()) {
+    case "FILLED":
+      return "confirmed";
+    case "FAILED":
+      return "failed";
+    default:
+      return status.toLowerCase();
+  }
+}
 
 async function simulateTransaction(from: string, to: string, data: string, value = "0"): Promise<SimulationResult> {
   const response = await fetch("/api/transaction-simulate", {
@@ -136,6 +147,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [requiresFreshQuote, setRequiresFreshQuote] = useState(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rfqRequestIdRef = useRef<string | null>(null);
 
   // Ref to store the latest quote ID for polling
   const quoteIdRef = useRef<string | null>(null);
@@ -174,6 +186,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
     try {
       const amountInWei = usdtAmountToWei(usdtAmount);
+      rfqRequestIdRef.current = null;
       const quoteParams = new URLSearchParams({
         toToken: token.address,
         amount: amountInWei,
@@ -185,26 +198,43 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       if (quoteResult.error) {
         throw new Error(quoteResult.error);
       }
-      if (!quoteResult?.quoteId && !quoteResult?.data?.quoteId) {
+      const rawQuoteId = quoteResult?.quoteId ?? quoteResult?.data?.quoteId;
+      if (typeof rawQuoteId !== "string" || !rawQuoteId) {
         throw new Error("Quote failed — no quoteId returned. Check API key and clock sync.");
       }
 
-      // quoteId may be at top level or nested under .data depending on API route
-      const rawQuoteId: string = quoteResult?.quoteId
-        ?? quoteResult?.data?.quoteId
-        ?? "";
-      const cleanQuoteId = String(rawQuoteId).replace(/-/g, "").toLowerCase();
-      setQuoteData({ ...quoteResult, quoteId: cleanQuoteId } as QuoteData);
-      quoteIdRef.current = cleanQuoteId;
+      setQuoteData({ ...quoteResult, quoteId: rawQuoteId } as QuoteData);
+      quoteIdRef.current = rawQuoteId;
+
+      const executionMode = quoteResult?.executionMode ?? quoteResult?.data?.executionMode;
+      if (executionMode === "SWAP") {
+        if (await checkApproval(amountInWei)) return;
+      } else if (executionMode === "RFQ") {
+        const vendorName = quoteResult?.vendorName ?? quoteResult?.data?.vendorName;
+        if (typeof vendorName !== "string" || !vendorName) {
+          throw new Error("RFQ quote is missing the vendor name required for approval");
+        }
+        if (await checkApproval(amountInWei, vendorName)) return;
+      } else {
+        throw new Error("Quote returned an unsupported execution mode");
+      }
 
       // Get swap details
-      const swapResponse = await fetch(`/api/swap?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}&quoteId=${encodeURIComponent(cleanQuoteId)}`);
-      const rawSwapText = await swapResponse.clone().text();
-      const rawSwapObject = rawSwapText ? JSON.parse(rawSwapText) : null;
+      const swapParams = new URLSearchParams({
+        toToken: token.address,
+        amount: amountInWei,
+        userWalletAddress: address ?? "",
+        quoteId: rawQuoteId,
+      });
+      const swapResponse = await fetch(`/api/swap?${swapParams}`);
+      const rawSwapObject = await swapResponse.json();
       const swapResult = rawSwapObject?.data ?? rawSwapObject;
 
-      if (swapResult?.error) {
-        throw new Error(swapResult.error);
+      if (!swapResponse.ok || swapResult?.error) {
+        throw new Error(swapResult?.error || "Swap service is temporarily unavailable");
+      }
+      if (swapResult?.executionMode !== executionMode) {
+        throw new Error("Quote and swap returned different execution modes");
       }
 
       setSwapData(swapResult);
@@ -214,13 +244,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         if (!address || !transaction?.from || !transaction.to || !transaction.data || transaction.from.toLowerCase() !== address.toLowerCase()) {
           throw new Error("Swap response is missing valid transaction details for this wallet");
         }
-        const vendor = swapResult?.routerResult?.vendorName ?? swapResult?.vendorName;
-        const approvalRequired = await checkApproval(amountInWei, vendor);
-        if (!approvalRequired) {
-          setSwapSimulation(await simulateTransaction(address, transaction.to, transaction.data, transaction.value ?? "0"));
-        } else {
-          setSwapSimulation(null);
-        }
+        setSwapSimulation(await simulateTransaction(address, transaction.to, transaction.data, transaction.value ?? "0"));
       }
 
       // If this is an RFQ, extract the typed data for signing
@@ -241,6 +265,16 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const handleUsdtAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUsdtAmount(e.target.value);
     setQuoteError(null);
+    setQuoteData(null);
+    setSwapData(null);
+    setSwapSimulation(null);
+    setApprovalSimulation(null);
+    setApprovalData(null);
+    setTypedDataToSign(null);
+    setUserSignature(null);
+    setSubmitError(null);
+    setApprovalError(null);
+    rfqRequestIdRef.current = null;
   };
 
   // Sign the typed data
@@ -470,14 +504,15 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setTransactionStatus(null);
 
     try {
-      const requestId = crypto.randomUUID();
+      const requestId = rfqRequestIdRef.current ?? crypto.randomUUID();
+      rfqRequestIdRef.current = requestId;
 
       // Extract required data from swap response
       const vendor = swapData.rfq?.vendor;
-      const quoteId = quoteData.quoteId;
+      const quoteId = swapData.rfq?.orderId;
 
       if (!vendor || !quoteId) {
-        throw new Error("Missing required data for order submission");
+        throw new Error("RFQ swap response is missing its vendor or order ID");
       }
 
       const submitResponse = await fetch(`/api/order/submit`, {
@@ -496,18 +531,20 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
       const submitResult = await submitResponse.json();
 
-      if (submitResult.error) {
-        throw new Error(submitResult.error);
+      if (!submitResponse.ok || submitResult.error) {
+        throw new Error(submitResult.error || "Order submission failed");
+      }
+      const order = submitResult.data;
+      if (typeof order?.orderId !== "string" || !order.orderId) {
+        throw new Error("Order submission response is missing its order ID");
       }
 
-      // Set initial transaction status
       setTransactionStatus({
-        status: "pending",
-        orderId: submitResult.orderId || quoteId
+        status: typeof order.status === "string" ? displayOrderStatus(order.status) : "pending",
+        orderId: order.orderId,
       });
 
-      // Start polling for transaction status
-      startPollingTransactionStatus(submitResult.orderId || quoteId);
+      startPollingTransactionStatus(order.orderId);
 
     } catch (err: any) {
       setSubmitError(err.message || "Failed to submit order");
@@ -534,17 +571,18 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           throw new Error(statusResult.error);
         }
 
-        // Update transaction status based on response
-        // This would need to be adjusted based on actual Binance API response format
-        setTransactionStatus(prev => ({
-          ...prev!,
-          status: statusResult.status || "pending",
-          transactionHash: statusResult.transactionHash,
-          // Add other relevant fields as needed
-        }));
+        const order = statusResult?.data;
+        if (!order || typeof order.status !== "string") {
+          throw new Error("Order status response is missing its status");
+        }
+        const status = order.status.toUpperCase();
+        setTransactionStatus((current) => current ? {
+          ...current,
+          status: displayOrderStatus(status),
+          transactionHash: order.txHash ?? current.transactionHash,
+        } : current);
 
-        // Stop polling if transaction is confirmed or failed
-        if (statusResult.status === "confirmed" || statusResult.status === "failed") {
+        if (status === "FILLED" || status === "FAILED") {
           clearInterval(interval);
           if (pollIntervalRef.current === interval) pollIntervalRef.current = null;
         }
@@ -582,6 +620,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setSubmitError(null);
     setApprovalError(null);
     setQuoteError(null);
+    rfqRequestIdRef.current = null;
   }, [token.address, address]);
 
   // Whether THIS quote's execution mode requires an EIP-712 signature at
@@ -591,6 +630,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   // the button impossible to enable whenever typedDataToSign was still
   // null - i.e. exactly the case the button is rendered for.
   const requiresTypedDataSignature = !!typedDataToSign;
+  const executionPending = !!transactionStatus &&
+    !["confirmed", "failed"].includes(transactionStatus.status.toLowerCase());
 
   const canExecute =
     isConnected &&
@@ -604,6 +645,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     !isLoading &&
     !isSubmitting &&
     !isApproving &&
+    !transactionStatus &&
     !approvalError &&
     (!requiresTypedDataSignature || !!userSignature);
 
@@ -689,7 +731,6 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
   return (
     <div style={{ border: "1px solid #374151", borderRadius: "0.5rem", padding: "1rem", margin: "0.5rem 0" }}>
-      <HackathonAccessNotice />
       <NetworkSwitchModal
         open={isConnected && !isCorrectNetwork}
         isSwitching={isSwitchingNetwork}
@@ -724,6 +765,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
             value={usdtAmount}
             onChange={handleUsdtAmountChange}
             placeholder="Enter USDT amount"
+            disabled={isLoading || isApproving || isSubmitting || executionPending}
             style={{
               flex: 1,
               padding: "0.5rem",
@@ -736,15 +778,15 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           />
           <button
             onClick={fetchQuote}
-            disabled={isLoading || !isConnected || !isValidUsdtAmount(usdtAmount)}
+            disabled={isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || executionPending}
             style={{
-              backgroundColor: isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) ? "#374151" : "#3b82f6",
+              backgroundColor: isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || executionPending ? "#374151" : "#3b82f6",
               color: "white",
               border: "none",
               borderRadius: "0.25rem",
               padding: "0.5rem 1rem",
               fontSize: "0.875rem",
-              cursor: (isLoading || !isConnected || !isValidUsdtAmount(usdtAmount)) ? "not-allowed" : "pointer"
+              cursor: (isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || executionPending) ? "not-allowed" : "pointer"
             }}
           >
             {isLoading ? "Fetching..." : "Get Quote"}
