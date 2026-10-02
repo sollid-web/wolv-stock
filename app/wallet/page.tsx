@@ -4,14 +4,15 @@ import Link from "next/link";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
 import { useWallet } from "@/hooks/useWallet";
-import { useEffect, useState } from "react";
+import { useIsHydrated } from "@/hooks/useIsHydrated";
+import { useState } from "react";
 import GlobalNav from "@/components/GlobalNav";
 
 export const dynamic = "force-dynamic";
 
 export default function WalletPage() {
+  const isHydrated = useIsHydrated();
   const {
-    provider,
     address,
     chainId,
     isConnected,
@@ -19,6 +20,7 @@ export default function WalletPage() {
     isConnecting,
     isInitializing,
     error,
+    walletConnectAvailable,
     connect,
     disconnect,
     switchToBscMainnet,
@@ -44,38 +46,31 @@ export default function WalletPage() {
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 pt-6">
-        {isInitializing && (
+      <div className="mx-auto w-full max-w-md px-4 pt-6 sm:px-6">
+        {(!isHydrated || isInitializing) && (
           <div className="text-center py-8">
             <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full" />
             <p className="mt-2 text-xs text-[#64748b]">Checking wallet connection...</p>
           </div>
         )}
 
-        {!isInitializing && isConnecting && (
+        {isHydrated && !isInitializing && isConnecting && (
           <div className="text-center py-8">
             <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full" />
             <p className="mt-2 text-xs text-[#64748b]">Connecting...</p>
           </div>
         )}
 
-        {!isInitializing && !isConnected && !isConnecting && (
-          <>
-            <div className="text-center py-8">
-              <div className="w-12 h-12 rounded-full bg-[#f0b90b]/20 flex items-center justify-center text-xs font-black">
-                🔌
-              </div>
-              <p className="mt-2 text-xs text-[#64748b]">Wallet not connected</p>
-            </div>
+        {isHydrated && !isInitializing && !isConnected && !isConnecting && (
             <WalletSelector
               isConnecting={isConnecting}
               error={error}
+              walletConnectAvailable={walletConnectAvailable}
               onConnect={connect}
             />
-          </>
         )}
 
-        {!isInitializing && isConnected && !isConnecting && (
+        {isHydrated && !isInitializing && isConnected && !isConnecting && (
           <div className="space-y-6">
             <NetworkSwitchModal
               open={!isCorrectNetwork}

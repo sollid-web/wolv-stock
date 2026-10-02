@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "WOLV Stock Terminal",
-  description: "Tokenized stocks on BNB Chain: listed vs executable prices across Ondo and bStocks",
+  title: "WOLV Spot Lens",
+  description: "Cross-venue BSC spot price monitor for tokenized equities from Ondo and bStocks",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

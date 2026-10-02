@@ -10,7 +10,7 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
 
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={wagmiConfig} reconnectOnMount={typeof window !== "undefined"}>
       <QueryClientProvider client={queryClient}>
         {children}
       </QueryClientProvider>

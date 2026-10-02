@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TAG_LABELS, knownTags } from "@/lib/rwaData";
-import { filterCompliantAssets } from "@/lib/compliance";
+import { filterSpotEligibleAssets } from "@/lib/compliance";
 
 type T = {
   tokenContractAddress: string;
@@ -25,7 +25,7 @@ function Logo({ url, tk }: { url?: string; tk: string }) {
   const [bad, setBad] = useState(false);
   if (!url || bad)
     return (
-      <div className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0 flex items-center justify-center text-[10px] font-black text-[#f0b90b]">
+      <div className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0 flex items-center justify-center text-xs font-black text-[#f0b90b]">
         {tk.slice(0, 4)}
       </div>
     );
@@ -38,7 +38,7 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
   const [limit, setLimit] = useState(50);
 
   // Apply compliance filter to remove leveraged ETFs (SOXL, KORU, MUU)
-  const compliantTokens = useMemo(() => filterCompliantAssets(tokens), [tokens]);
+  const compliantTokens = useMemo(() => filterSpotEligibleAssets(tokens), [tokens]);
 
   const platforms = useMemo(
     () => Array.from(new Set(compliantTokens.map((t) => t.platformId))).sort(),
@@ -68,14 +68,24 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
     }`;
 
   return (
-    <div className="px-4 sm:px-6 pb-10">
-      <input
-        type="search"
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setLimit(50); }}
-        placeholder="Search ticker or company (e.g. NVDA)"
-        className="w-full mb-3 bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 text-sm text-white placeholder-[#64748b] outline-none focus:border-[#f0b90b]/50"
-      />
+    <div className="mx-auto max-w-7xl px-4 pb-10 sm:px-8">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Asset directory</p>
+          <p className="mt-1 text-sm text-slate-400">Choose a stock to view its market and trade route.</p>
+        </div>
+        <label className="relative block w-full sm:max-w-sm">
+          <span className="sr-only">Search ticker or company</span>
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">⌕</span>
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setLimit(50); }}
+            placeholder="Search ticker or company"
+            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#f0b90b]/60 focus:bg-white/[0.06]"
+          />
+        </label>
+      </div>
       <div className="flex gap-2 mb-4 flex-wrap">
         <button className={chip(plat === "all")} onClick={() => { setPlat("all"); setLimit(50); }}>
           All
@@ -87,30 +97,30 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
         ))}
       </div>
 
-      <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider font-bold">
+      <div className="text-xs text-slate-300 mb-3 uppercase tracking-wider font-bold">
         {rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}
       </div>
 
       {rows.length === 0 ? (
-        <div className="text-sm text-[#64748b] py-8 text-center">No matches. Try a ticker like SPY, a company name, or another category.</div>
+        <div className="text-sm text-slate-300 py-8 text-center">No matches. Try a ticker like SPY, a company name, or another category.</div>
       ) : (
         <div className="grid grid-cols-1 gap-2">
           {rows.slice(0, limit).map((t) => (
             <Link
               key={t.tokenContractAddress}
               href={`/stock/${t.tokenContractAddress}`}
-              className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-4 flex items-center justify-between hover:border-[#f0b90b]/40 transition-colors"
+              className="group flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-4 transition hover:-translate-y-0.5 hover:border-[#f0b90b]/50 hover:bg-white/[0.06] sm:px-5"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Logo url={t.tokenLogoUrl} tk={t.underlyingTicker} />
                 <div className="min-w-0">
                   <div className="font-bold text-sm">{t.underlyingTicker}</div>
-                  <div className="text-xs text-[#64748b] truncate">
+                  <div className="text-xs text-slate-300 truncate">
                     {t.underlyingName || t.tokenName?.replace(/\s*\(.*?\)\s*/g, "")}
                   </div>
                   <div className="flex flex-wrap gap-1 mt-1 empty:hidden">
                     {knownTags(t.tags).map((tag) => (
-                      <span key={tag} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${TAG_STYLE[tag]}`}>
+                      <span key={tag} className={`text-xs font-bold px-2 py-0.5 rounded-full border ${TAG_STYLE[tag]}`}>
                         {TAG_LABELS[tag]}
                       </span>
                     ))}
@@ -118,7 +128,7 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
                 </div>
               </div>
               <div className="text-right shrink-0 ml-3">
-                <div className="text-xs text-[#64748b] capitalize">{t.platformId}</div>
+                <div className="text-xs text-slate-300 capitalize">{t.platformId}</div>
                 <div className="text-xs text-[#f0b90b] font-bold mt-0.5">BSC →</div>
               </div>
             </Link>

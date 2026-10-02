@@ -5,13 +5,16 @@ import TradeButton from "@/components/TradeButton";
 import GlobalNav from "@/components/GlobalNav";
 import BackButton from "@/components/BackButton";
 import SmartRouterStatus from "@/components/SmartRouterStatus";
+import { isSpotEligibleAsset } from "@/lib/compliance";
 
 export const dynamic = "force-dynamic";
 
 export default async function TradePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
-  const token = tokens?.data?.find((t: any) => t.tokenContractAddress.toLowerCase() === address.toLowerCase());
+  const token = tokens?.data?.find((t: any) =>
+    t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
+  );
 
   if (!token) {
     return (

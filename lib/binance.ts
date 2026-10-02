@@ -1,11 +1,15 @@
 import crypto from "crypto";
 
 let lastCall = 0;
+let rateLimitQueue: Promise<void> = Promise.resolve();
 async function rateLimit() {
-  const now = Date.now();
-  const diff = now - lastCall;
-  if (diff < 250) await new Promise(r => setTimeout(r, 250 - diff));
-  lastCall = Date.now();
+  const scheduled = rateLimitQueue.then(async () => {
+    const wait = Math.max(0, lastCall + 250 - Date.now());
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastCall = Date.now();
+  });
+  rateLimitQueue = scheduled.catch(() => undefined);
+  await scheduled;
 }
 
 const API_KEY = process.env.BINANCE_API_KEY!;
@@ -28,20 +32,52 @@ function makeHeaders(method: string, path: string, body = "") {
   };
 }
 
-async function get(path: string, params: Record<string, string> = {}) {
+async function get(path: string, params: Record<string, string> = {}, noStore = false) {
   const query = new URLSearchParams(params).toString();
   const fullPath = query ? `${path}?${query}` : path;
   const headers = makeHeaders("GET", fullPath);
   await rateLimit();
   const res = await fetch(`${BASE_URL}${fullPath}`, {
     headers,
-    next: { revalidate: 60 },
+    ...(noStore ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
   });
   const json = await res.json();
   if (!json.success && json.code !== 0) {
     throw new Error(`API error ${json.code}: ${json.msg}`);
   }
   return json;
+}
+
+async function post(path: string, payload: unknown) {
+  const body = JSON.stringify(payload);
+  const headers = {
+    ...makeHeaders("POST", path, body),
+    "Content-Type": "application/json",
+  };
+  await rateLimit();
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body,
+    cache: "no-store",
+  });
+  const json = await res.json();
+  if (!res.ok || (!json.success && json.code !== 0)) {
+    throw new Error(`API error ${json.code ?? res.status}: ${json.msg ?? "Request failed"}`);
+  }
+  return json;
+}
+
+export async function simulateBscTransaction(
+  from: string,
+  to: string,
+  data: string,
+  value: string
+) {
+  return post("/api/v1/dex/pre-transaction/simulate", {
+    binanceChainId: "56",
+    evmTx: { from, to, value, data },
+  });
 }
 
 // RWA — list all tokenized stocks
@@ -115,7 +151,7 @@ export async function getRWAQuote(
     toTokenAddress: toToken,
     amount,
     userWalletAddress: wallet,
-  });
+  }, true);
 }
 
 // ===== VERIFIED RWA TRADING ENDPOINTS (Phase 2) =====
@@ -133,7 +169,7 @@ export async function getAggregatorQuote(
     toTokenAddress: toToken,
     amount,
     userWalletAddress, // Required for RWA/RFQ
-  });
+  }, true);
 }
 
 // Get swap details for a quote
@@ -152,7 +188,7 @@ export async function getAggregatorSwap(
     userWalletAddress,
     quoteId,
     slippagePercent,
-  });
+  }, true);
 }
 
 // Get approval transaction calldata
@@ -172,7 +208,7 @@ export async function getApproveTransaction(
     params.vendor = vendor;
   }
 
-  return get("/api/v1/dex/aggregator/approve-transaction", params);
+  return get("/api/v1/dex/aggregator/approve-transaction", params, true);
 }
 
 // Submit a signed order
@@ -212,6 +248,7 @@ export async function submitOrder(
     method: "POST",
     headers,
     body,
+    cache: "no-store",
     // No next: { revalidate } for POST requests
   });
 
@@ -224,5 +261,5 @@ export async function submitOrder(
 
 // Get order status by orderId
 export async function getOrderStatus(orderId: string) {
-  return get(`/api/v1/dex/aggregator/order/${orderId}`, {});
+  return get(`/api/v1/dex/aggregator/order/${encodeURIComponent(orderId)}`, {}, true);
 }

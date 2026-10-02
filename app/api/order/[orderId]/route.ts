@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrderStatus } from "@/lib/binance";
+import { isSafeOrderId } from "@/lib/apiValidation";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +18,17 @@ export async function GET(
       );
     }
 
+    if (!isSafeOrderId(orderId)) {
+      return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
+    }
+
     const result = await getOrderStatus(orderId);
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in order status API:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: 500 }
+      { error: "Order status is temporarily unavailable" },
+      { status: 502 }
     );
   }
 }

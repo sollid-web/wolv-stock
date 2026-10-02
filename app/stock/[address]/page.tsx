@@ -2,6 +2,7 @@ import { getRWATokenList, getRWAMarketData, getRWAProfile } from "@/lib/binance"
 import { quoteUsd } from "@/lib/quotes";
 import Link from "next/link";
 import { buildProtectionRows } from "@/lib/rwaData";
+import { isSpotEligibleAsset } from "@/lib/compliance";
 import GlobalNav from "@/components/GlobalNav";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,9 @@ const tone = (g: number | null) =>
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
-  const token = tokens?.data?.find((t: any) => t.tokenContractAddress === address);
+  const token = tokens?.data?.find((t: any) =>
+    t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
+  );
 
   if (!token) return (
     <div className="min-h-screen bg-[#07070f] text-white flex items-center justify-center">

@@ -1,6 +1,2 @@
 allowBuilds:
-  '@reown/appkit': true
-  bufferutil: true
-  keccak: true
   unrs-resolver: false
-  utf-8-validate: true

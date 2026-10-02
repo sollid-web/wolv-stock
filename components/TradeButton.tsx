@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { isValidUsdtAmount, usdtAmountToWei } from "@/lib/apiValidation";
 import { useWallet } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
+import HackathonAccessNotice from "@/components/HackathonAccessNotice";
+import { useIsHydrated } from "@/hooks/useIsHydrated";
 
 type TokenInfo = {
   address: string;
@@ -53,27 +56,59 @@ type TransactionStatus = {
   orderId?: string;
 };
 
-const redactSensitiveSwapResponse = (payload: any) => {
-  if (!payload || typeof payload !== "object") return payload;
-
-  const redacted = JSON.parse(JSON.stringify(payload));
-
-  if (redacted?.rfq?.typedDataToSign) {
-    delete redacted.rfq.typedDataToSign;
-  }
-
-  return redacted;
+type SimulationResult = {
+  status: string;
+  failReason: string | null;
+  balanceChanges: { contractAddress?: string; tokenType?: string; change?: string; owner?: string }[];
+  allowanceChanges: { tokenAddress?: string; owner?: string; spender?: string; preAmount?: string; postAmount?: string }[];
 };
 
+async function simulateTransaction(from: string, to: string, data: string, value = "0"): Promise<SimulationResult> {
+  const response = await fetch("/api/transaction-simulate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to, data, value }),
+  });
+  const result = await response.json() as SimulationResult & { error?: string };
+  if (!response.ok) {
+    throw new Error(result.error || "Transaction preflight is unavailable; no transaction was sent");
+  }
+  if (result.status.toUpperCase() !== "SUCCESS") {
+    throw new Error(result.failReason || "Transaction preflight failed; no transaction was sent");
+  }
+  return result;
+}
+
+function SimulationSummary({ title, result }: { title: string; result: SimulationResult }) {
+  return (
+    <div role="status" style={{ backgroundColor: "#064e3b", color: "#dcfce7", borderRadius: "0.25rem", padding: "0.5rem", margin: "0.5rem 0", fontSize: "0.75rem" }}>
+      <div>{title}: {result.status}</div>
+      {result.balanceChanges.map((change, index) => (
+        <div key={`${change.owner ?? "owner"}-${change.contractAddress ?? "native"}-${index}`} style={{ wordBreak: "break-all" }}>
+          Balance change: {change.change ?? "unknown"} raw units · {change.contractAddress || "native asset"}
+        </div>
+      ))}
+      {result.allowanceChanges.map((change, index) => (
+        <div key={`${change.owner ?? "owner"}-${change.spender ?? "spender"}-${index}`} style={{ wordBreak: "break-all" }}>
+          Allowance: {change.preAmount ?? "?"} → {change.postAmount ?? "?"} raw units · {change.tokenAddress || "token"} · spender {change.spender || "unknown"}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function TradeButton({ token }: { token: TokenInfo }) {
+  const isHydrated = useIsHydrated();
   const {
     provider,
     address,
+    chainId,
     isConnected,
     isCorrectNetwork,
     isConnecting,
     isInitializing,
     error,
+    walletConnectAvailable,
     connect,
     switchToBscMainnet,
     signTypedData,
@@ -86,6 +121,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [usdtAmount, setUsdtAmount] = useState("10"); // Default 10 USDT
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null);
   const [swapData, setSwapData] = useState<SwapData | null>(null);
+  const [swapSimulation, setSwapSimulation] = useState<SimulationResult | null>(null);
+  const [approvalSimulation, setApprovalSimulation] = useState<SimulationResult | null>(null);
   const [typedDataToSign, setTypedDataToSign] = useState<any>(null);
   const [userSignature, setUserSignature] = useState<string | null>(null);
   const [approvalData, setApprovalData] = useState<ApprovalData | null>(null);
@@ -97,7 +134,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
-  const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
+  const [requiresFreshQuote, setRequiresFreshQuote] = useState(false);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Ref to store the latest quote ID for polling
   const quoteIdRef = useRef<string | null>(null);
@@ -118,6 +156,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setQuoteError(null);
     setQuoteData(null);
     setSwapData(null);
+    setSwapSimulation(null);
+    setApprovalSimulation(null);
+    setRequiresFreshQuote(false);
     setTypedDataToSign(null);
     setUserSignature(null);
     setApprovalData(null);
@@ -126,21 +167,19 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setApprovalError(null);
 
     // Clear any existing poll interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      setPollInterval(null);
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
 
     try {
-      // Convert USDT amount to wei (18 decimals)
-      const amountInWei = (parseFloat(usdtAmount) * 10 ** 18).toString(10);
-
-      // Validate amount
-      if (parseFloat(usdtAmount) <= 0) {
-        throw new Error("USDT amount must be greater than 0");
-      }
-
-      const quoteResponse = await fetch(`/api/quote?toToken=${token.address}&amount=${amountInWei}&userWalletAddress=${address}`);
+      const amountInWei = usdtAmountToWei(usdtAmount);
+      const quoteParams = new URLSearchParams({
+        toToken: token.address,
+        amount: amountInWei,
+        userWalletAddress: address ?? "",
+      });
+      const quoteResponse = await fetch(`/api/quote?${quoteParams}`);
       const quoteResult = await quoteResponse.json();
 
       if (quoteResult.error) {
@@ -164,16 +203,6 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       const rawSwapObject = rawSwapText ? JSON.parse(rawSwapText) : null;
       const swapResult = rawSwapObject?.data ?? rawSwapObject;
 
-      console.log("===== SWAP TX FORENSIC START =====");
-      console.log("[SwapForensics] usdtAmount", usdtAmount);
-      console.log("[SwapForensics] amountInWei", amountInWei);
-      console.log("[SwapForensics] quoteId", cleanQuoteId);
-      console.log("[SwapForensics] executionMode", swapResult?.executionMode ?? null);
-      console.log("[SwapForensics] raw /api/swap response before transformation", redactSensitiveSwapResponse(rawSwapObject));
-      console.log("[SwapForensics] exact object returned by /api/swap before transformation", redactSensitiveSwapResponse(rawSwapObject));
-      console.log("[SwapForensics] unwrapped payload used by app", redactSensitiveSwapResponse(swapResult));
-      console.log("===== SWAP TX FORENSIC END =====");
-
       if (swapResult?.error) {
         throw new Error(swapResult.error);
       }
@@ -181,8 +210,17 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       setSwapData(swapResult);
 
       if (swapResult?.executionMode === "SWAP") {
+        const transaction = swapResult.tx;
+        if (!address || !transaction?.from || !transaction.to || !transaction.data || transaction.from.toLowerCase() !== address.toLowerCase()) {
+          throw new Error("Swap response is missing valid transaction details for this wallet");
+        }
         const vendor = swapResult?.routerResult?.vendorName ?? swapResult?.vendorName;
-        await checkApproval(amountInWei, vendor);
+        const approvalRequired = await checkApproval(amountInWei, vendor);
+        if (!approvalRequired) {
+          setSwapSimulation(await simulateTransaction(address, transaction.to, transaction.data, transaction.value ?? "0"));
+        } else {
+          setSwapSimulation(null);
+        }
       }
 
       // If this is an RFQ, extract the typed data for signing
@@ -209,6 +247,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const handleSign = async () => {
     if (!typedDataToSign || !provider) return;
 
+    if (chainId !== 56) {
+      setSubmitError("Switch to BNB Smart Chain before signing");
+      return;
+    }
+
     setSubmitError(null);
     try {
       const signature = await signTypedData(typedDataToSign);
@@ -223,8 +266,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   };
 
   // Check if approval is needed and get approval transaction data
-  const checkApproval = async (amount?: string, vendor?: string) => {
-    if (!isConnected || !provider || !token.address || !usdtAmount) return;
+  const checkApproval = async (amount?: string, vendor?: string): Promise<boolean> => {
+    if (!isConnected || !provider || !token.address || !usdtAmount) {
+      setApprovalError("Connect a wallet and enter a USDT amount before checking approval");
+      return true;
+    }
 
     setIsApproving(true);
     setApprovalError(null);
@@ -232,9 +278,10 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
     try {
       // Convert USDT amount to wei (18 decimals)
-      const amountInWei = amount ?? (parseFloat(usdtAmount) * 10 ** 18).toString(10);
+      const amountInWei = amount ?? usdtAmountToWei(usdtAmount);
       const params = new URLSearchParams({
         tokenContractAddress: "0x55d398326f99059ff775485246999027b3197955",
+        toToken: token.address,
         approveAmount: amountInWei,
         userWalletAddress: address ?? "",
       });
@@ -261,8 +308,17 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         );
         if (currentAllowance !== null && currentAllowance >= BigInt(amountInWei)) {
           setApprovalData(null);
-          return;
+          setApprovalSimulation(null);
+          return false;
         }
+
+        if (!address) throw new Error("Connect a wallet before simulating approval");
+        const simulation = await simulateTransaction(
+          address,
+          tokenContractAddress,
+          approvalTransaction.data
+        );
+        setApprovalSimulation(simulation);
 
         setApprovalData({
           tokenContractAddress,
@@ -271,12 +327,14 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           approveAmount: amountInWei,
           gasLimit: approvalTransaction.gasLimit,
         });
+        return true;
       } else {
         throw new Error("Binance did not return a valid USDT approval transaction");
       }
     } catch (err: any) {
       setApprovalError(err.message || "Failed to get approval transaction");
       console.error("Approval error:", err);
+      return true;
     } finally {
       setIsApproving(false);
     }
@@ -285,6 +343,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   // Sign and submit approval transaction
   const handleApprove = async () => {
     if (!approvalData || !provider) return;
+
+    if (!address || chainId !== 56) {
+      setApprovalError("Reconnect on BNB Smart Chain before approving");
+      return;
+    }
 
     setIsApproving(true);
     setApprovalError(null);
@@ -296,10 +359,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         gas: approvalData.gasLimit,
       };
 
+      setApprovalSimulation(await simulateTransaction(address, transactionRequest.to, transactionRequest.data));
+
       const transactionHash = await signTransaction(transactionRequest);
-      if (!transactionHash) {
-        throw new Error("Wallet did not submit the approval transaction");
-      }
 
       const allowanceConfirmed = (async () => {
         const deadline = Date.now() + 60_000;
@@ -329,6 +391,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
       if (approvalConfirmed) {
         setApprovalData(null);
+        setApprovalSimulation(null);
+        setSwapSimulation(null);
+        setRequiresFreshQuote(true);
       } else {
         setApprovalError("Could not confirm approval. Check the transaction on BscScan, then click Get Quote to refresh allowance status.");
       }
@@ -343,6 +408,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const handleSubmitOrder = async () => {
     if (!quoteData || !swapData || !provider || !address) return;
 
+    if (chainId !== 56) {
+      setSubmitError("Switch to BNB Smart Chain before executing this trade");
+      return;
+    }
+
     if (swapData.executionMode === "SWAP") {
       const tx = swapData.tx;
       if (!tx?.from || !tx.to || !tx.data) {
@@ -353,22 +423,23 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         setSubmitError("Swap transaction wallet does not match the connected wallet");
         return;
       }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(tx.to) || !/^0x(?:[a-fA-F0-9]{2})+$/.test(tx.data)) {
+        setSubmitError("Swap response contains invalid transaction data");
+        return;
+      }
 
       setIsSubmitting(true);
       setSubmitError(null);
       setTransactionStatus(null);
 
       try {
+        setSwapSimulation(await simulateTransaction(address, tx.to, tx.data, tx.value ?? "0"));
         const transactionHash = await signTransaction({
           to: tx.to,
           data: tx.data,
           value: tx.value,
           gas: tx.gas,
         });
-
-        if (!transactionHash) {
-          throw new Error("Wallet did not submit the swap transaction");
-        }
 
         setTransactionStatus({
           status: "pending",
@@ -399,12 +470,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setTransactionStatus(null);
 
     try {
-      // Generate a UUID v4 for requestId (simplified)
-      const requestId = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === "x" ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      });
+      const requestId = crypto.randomUUID();
 
       // Extract required data from swap response
       const vendor = swapData.rfq?.vendor;
@@ -423,7 +489,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           requestId,
           userSignature,
           vendor,
-          quoteId
+          quoteId,
+          toToken: token.address
         }),
       });
 
@@ -453,8 +520,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   // Poll for transaction status
   const startPollingTransactionStatus = (orderId: string) => {
     // Clear any existing interval
-    if (pollInterval) {
-      clearInterval(pollInterval);
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
     }
 
     // Set up polling every 5 seconds
@@ -479,7 +546,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         // Stop polling if transaction is confirmed or failed
         if (statusResult.status === "confirmed" || statusResult.status === "failed") {
           clearInterval(interval);
-          setPollInterval(null);
+          if (pollIntervalRef.current === interval) pollIntervalRef.current = null;
         }
       } catch (err) {
         console.error("Error polling transaction status:", err);
@@ -487,23 +554,24 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       }
     }, 5000);
 
-    setPollInterval(interval);
+    pollIntervalRef.current = interval;
   };
 
   // Clean up poll interval on unmount
   useEffect(() => {
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
     };
   }, []);
 
   // Reset state when token or address changes
   useEffect(() => {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      setPollInterval(null);
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
     setQuoteData(null);
     setSwapData(null);
@@ -531,6 +599,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     !!provider &&
     !!quoteData &&
     !!swapData &&
+    (swapData.executionMode !== "SWAP" || swapSimulation?.status.toUpperCase() === "SUCCESS") &&
+    !requiresFreshQuote &&
     !isLoading &&
     !isSubmitting &&
     !isApproving &&
@@ -562,7 +632,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   // with isConnecting (which only reflects an explicit user-clicked
   // Connect in progress), or refreshing the page would flash the
   // WalletSelector / "Connecting..." UI before settling.
-  if (isInitializing) {
+  if (!isHydrated || isInitializing) {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
@@ -587,6 +657,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         <WalletSelector
           isConnecting={isConnecting}
           error={error}
+          walletConnectAvailable={walletConnectAvailable}
           onConnect={connect}
         />
       </div>
@@ -600,6 +671,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         <WalletSelector
           isConnecting={isConnecting}
           error={error}
+          walletConnectAvailable={walletConnectAvailable}
           onConnect={connect}
         />
       </div>
@@ -617,6 +689,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
   return (
     <div style={{ border: "1px solid #374151", borderRadius: "0.5rem", padding: "1rem", margin: "0.5rem 0" }}>
+      <HackathonAccessNotice />
       <NetworkSwitchModal
         open={isConnected && !isCorrectNetwork}
         isSwitching={isSwitchingNetwork}
@@ -646,7 +719,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         </label>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={usdtAmount}
             onChange={handleUsdtAmountChange}
             placeholder="Enter USDT amount"
@@ -662,15 +736,15 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           />
           <button
             onClick={fetchQuote}
-            disabled={isLoading || !isConnected || !usdtAmount || parseFloat(usdtAmount) <= 0}
+            disabled={isLoading || !isConnected || !isValidUsdtAmount(usdtAmount)}
             style={{
-              backgroundColor: isLoading || !isConnected || !usdtAmount || parseFloat(usdtAmount) <= 0 ? "#374151" : "#3b82f6",
+              backgroundColor: isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) ? "#374151" : "#3b82f6",
               color: "white",
               border: "none",
               borderRadius: "0.25rem",
               padding: "0.5rem 1rem",
               fontSize: "0.875rem",
-              cursor: (isLoading || !isConnected || !usdtAmount || parseFloat(usdtAmount) <= 0) ? "not-allowed" : "pointer"
+              cursor: (isLoading || !isConnected || !isValidUsdtAmount(usdtAmount)) ? "not-allowed" : "pointer"
             }}
           >
             {isLoading ? "Fetching..." : "Get Quote"}
@@ -710,6 +784,12 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               Execution Mode: {swapData.executionMode}
             </div>
           )}
+          {swapData?.executionMode === "SWAP" && swapData.tx?.to && (
+            <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", wordBreak: "break-all" }}>
+              Transaction destination: {swapData.tx.to}
+            </div>
+          )}
+          {swapSimulation && <SimulationSummary title="Binance transaction preflight" result={swapSimulation} />}
           {swapData && swapData.rfq && swapData.rfq.vendor && (
             <div style={{ fontSize: "0.75rem", marginTop: "0.125rem" }}>
               Vendor: {swapData.rfq.vendor}
@@ -725,6 +805,10 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginBottom: "0.5rem" }}>
             To trade {token.symbol}, you need to approve the USDT token for spending by the trading contract.
           </p>
+          <p style={{ fontSize: "0.75rem", color: "#fbbf24", marginBottom: "0.5rem", wordBreak: "break-all" }}>
+            Spender: {approvalData.spender} · Allowance: {usdtAmount} USDT
+          </p>
+          {approvalSimulation && <SimulationSummary title="Approval preflight" result={approvalSimulation} />}
           <button
             onClick={handleApprove}
             disabled={isApproving}
@@ -752,6 +836,12 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               {approvalError}
             </div>
           )}
+        </div>
+      )}
+
+      {approvalError && !approvalData && !isApproving && (
+        <div role="alert" style={{ backgroundColor: "#7f1d1d", color: "#fecaca", borderRadius: "0.25rem", padding: "0.5rem", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+          {approvalError}
         </div>
       )}
 
@@ -830,6 +920,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           never become enabled. */}
       {!approvalData && quoteData && swapData && (
         <div style={{ marginTop: "1rem" }}>
+          {requiresFreshQuote && (
+            <div role="status" style={{ backgroundColor: "#064e3b", color: "#dcfce7", borderRadius: "0.25rem", padding: "0.5rem", fontSize: "0.75rem", marginBottom: "0.5rem" }}>
+              USDT approval confirmed. Get a fresh quote to continue the trade.
+            </div>
+          )}
           <button
             onClick={handleSubmitOrder}
             disabled={!canExecute || isSubmitting}

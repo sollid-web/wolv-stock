@@ -20,6 +20,7 @@ export const wagmiConfig = createConfig({
   connectors: [
     injected(),
     ...(walletConnectProjectId
+      && typeof window !== "undefined"
       ? [
           walletConnect({
             projectId: walletConnectProjectId,
