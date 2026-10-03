@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 const QUOTE_AMOUNT_USDT = 100;
 const MAX_CONCURRENT_QUOTES = 4;
+const MAX_RELIABLE_GAP_PERCENT = 20;
 
 type RwaToken = RwaAssetRecord;
 
@@ -22,12 +23,15 @@ type VenueResult = {
   executablePerShare: number | null;
   referenceGap: number | null;
   stale: boolean;
+  unreliable: boolean;
 };
 
 type OpportunityRow = {
   ticker: string;
   venues: VenueResult[];
   crossVenueSpread: number | null;
+  statusMismatch: boolean;
+  statuses: string[];
 };
 
 function numberValue(value: unknown): number {
@@ -46,7 +50,7 @@ function tone(value: number | null): string {
 
 function marketLabel(token: RwaToken): string {
   const status = token.statusInfo?.marketStatus;
-  if (typeof status === "string" && status.trim()) return status;
+  if (typeof status === "string" && status.trim()) return status.trim().toLowerCase();
   if (token.statusInfo?.openState === true) return "open";
   if (token.statusInfo?.openState === false) return "closed";
   return "status unavailable";
@@ -87,6 +91,7 @@ async function buildVenueResult(token: RwaToken): Promise<VenueResult> {
     executablePerShare,
     referenceGap,
     stale: !isQuoteFresh(quote),
+    unreliable: referenceGap != null && Math.abs(referenceGap) > MAX_RELIABLE_GAP_PERCENT,
   };
 }
 
@@ -112,15 +117,16 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
   const rows = await mapWithConcurrency(shown, MAX_CONCURRENT_QUOTES, async (pair): Promise<OpportunityRow> => {
     const venues = await mapWithConcurrency(pair.venues, MAX_CONCURRENT_QUOTES, buildVenueResult);
     const prices = venues
-      .filter((venue) => !venue.stale)
+      .filter((venue) => !venue.stale && !venue.unreliable)
       .map((venue) => venue.executablePerShare)
       .filter((value): value is number => value != null && value > 0);
     const crossVenueSpread = prices.length >= 2 ? (Math.max(...prices) / Math.min(...prices) - 1) * 100 : null;
-    return { ticker: pair.ticker, venues, crossVenueSpread };
+    const statuses = Array.from(new Set(venues.map((venue) => marketLabel(venue.token)).filter((status) => status !== "status unavailable")));
+    return { ticker: pair.ticker, venues, crossVenueSpread, statusMismatch: statuses.length > 1, statuses };
   });
 
   const unusual = all
-    .filter((token) => Math.abs(numberValue(token.tokenToShareRatio) - 1) > 0.5)
+    .filter((token) => token.underlyingTicker && numberValue(token.tokenToShareRatio) > 0 && Math.abs(numberValue(token.tokenToShareRatio) - 1) > 0.5)
     .sort((a, b) => Math.abs(numberValue(b.tokenToShareRatio) - 1) - Math.abs(numberValue(a.tokenToShareRatio) - 1));
 
   return (
@@ -138,7 +144,7 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
           WOLV compares two different signals: Binance RWA reference data and what the aggregator currently quotes for a spot buy. Prices are normalized by each token&apos;s shares-per-token multiplier. A raw difference is not guaranteed profit; fees, gas, liquidity, slippage, quote age, and market status still matter.
         </div>
         <div className="mb-3 text-xs font-bold uppercase tracking-wider text-[#64748b]">
-          Top {shown.length} of {pairs.length} cross-listed tickers by volume · add ?n=40 for all
+          Showing {shown.length} of {pairs.length} cross-listed tickers by volume · {all.length} eligible BSC asset records · add ?n=40 for all
         </div>
 
         <div className="mb-8 space-y-3">
@@ -147,12 +153,17 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="font-bold">{row.ticker}</div>
                 <div className={`text-right text-xs font-bold ${tone(row.crossVenueSpread)}`}>
-                  {row.crossVenueSpread == null ? "cross-venue comparison unavailable" : `${signedPercent(row.crossVenueSpread)} executable spread per share`}
+                  {row.crossVenueSpread == null ? "reliable spread unavailable" : `${signedPercent(row.crossVenueSpread)} executable spread per share`}
                 </div>
               </div>
+              {row.statusMismatch && (
+                <div role="status" className="mb-3 rounded-lg border border-yellow-900/60 bg-yellow-900/10 p-2 text-xs leading-relaxed text-yellow-400">
+                  Venue market statuses differ ({row.statuses.join(" vs ")}); this comparison may reflect different trading sessions rather than a real gap.
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {row.venues.map((venue) => {
-                  const quoteIsUsable = venue.quote.ok && !venue.stale;
+                  const quoteIsUsable = venue.quote.ok && !venue.stale && !venue.unreliable;
                   return (
                     <Link key={venue.token.tokenContractAddress} href={`/stock/${venue.token.tokenContractAddress}`} className={`block rounded-lg border p-3 ${venue.stale ? "border-yellow-900/60" : "border-[#1b1b35]"}`}>
                       <div className="mb-2 flex items-center gap-2">
@@ -162,19 +173,19 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
                       </div>
                       {venue.quote.ok ? (
                         <>
-                          <div className="text-sm font-black">
-                            ${venue.executablePerShare?.toFixed(3) ?? "n/a"} <span className="text-xs font-normal text-[#64748b]">per share, executable</span>
+                          <div className={`text-sm font-black ${venue.unreliable ? "text-yellow-400" : ""}`}>
+                            {venue.unreliable ? "Unreliable quote" : `$${venue.executablePerShare?.toFixed(3) ?? "n/a"} `}<span className="text-xs font-normal text-[#64748b]">{venue.unreliable ? "not used for ranking" : "per share, executable"}</span>
                           </div>
                           <div className="text-xs text-[#64748b]">
                             reference {venue.referencePerShare == null ? "n/a" : `$${venue.referencePerShare.toFixed(3)}`} · {venue.multiplier.toFixed(4)}× shares/token
                           </div>
                           <div className={`text-xs font-bold ${tone(venue.referenceGap)}`}>
-                            {venue.referenceGap == null ? "reference comparison unavailable" : `reference difference ${signedPercent(venue.referenceGap)}`}
+                            {venue.unreliable ? "Unreliable quote — excluded from spread ranking" : venue.referenceGap == null ? "reference comparison unavailable" : `reference difference ${signedPercent(venue.referenceGap)}`}
                           </div>
                           <div className="mt-1 text-[10px] text-[#64748b]">
                             {venue.quote.vendor} · {venue.quote.mode} · impact {venue.quote.impact == null ? "n/a" : `${venue.quote.impact}%`} · {quoteAgeSeconds(venue.quote)}s old
                           </div>
-                          {!quoteIsUsable && <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-yellow-500">Refresh before trading: quote is stale</div>}
+                          {!quoteIsUsable && <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-yellow-500">{venue.unreliable ? `Unreliable quote: gap exceeds ${MAX_RELIABLE_GAP_PERCENT}%` : "Refresh before trading: quote is stale"}</div>}
                         </>
                       ) : (
                         <div className="text-xs text-yellow-500">Quote unavailable: {venue.quote.err}</div>

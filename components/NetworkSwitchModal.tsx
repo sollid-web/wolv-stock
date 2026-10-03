@@ -47,7 +47,7 @@ export default function NetworkSwitchModal({
         </button>
 
         <p className="mt-3 text-center text-[11px] uppercase tracking-[0.18em] text-[#64748b]">
-          Required before WOLV Terminal interaction
+          Required before WOLV Spot Lens interaction
         </p>
       </div>
     </div>

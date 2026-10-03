@@ -43,7 +43,7 @@ export default function WalletPage() {
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
-          <span className="font-bold text-lg tracking-wide">WOLV Stock Terminal</span>
+          <span className="font-bold text-lg tracking-wide">WOLV Spot Lens</span>
         </div>
       </nav>
 

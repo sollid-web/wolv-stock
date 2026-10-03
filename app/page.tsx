@@ -53,11 +53,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
     <main className="min-h-screen bg-[#07070f] text-white pb-20">
       <nav className="sticky top-0 z-10 border-b border-white/[0.08] bg-[#0a0a14]/90 px-4 py-4 backdrop-blur-xl sm:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3" aria-label="WOLV Stock Terminal home">
+          <Link href="/" className="flex items-center gap-3" aria-label="WOLV Spot Lens home">
             <div className="grid size-9 place-items-center rounded-xl bg-[#f0b90b] text-sm font-black text-black shadow-[0_0_24px_rgba(240,185,11,0.2)]">W</div>
             <div>
               <span className="block text-sm font-black tracking-[0.18em] text-white">WOLV</span>
-              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:block">Stock Terminal</span>
+            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:block">Spot Lens</span>
             </div>
           </Link>
           <Link href="/gap" className="rounded-full border border-[#f0b90b]/40 bg-[#f0b90b]/10 px-3 py-2 text-xs font-bold text-[#f0b90b] transition hover:bg-[#f0b90b]/20 sm:px-4">

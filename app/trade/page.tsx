@@ -40,7 +40,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
-          <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Stock Terminal</span>
+          <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Spot Lens</span>
         </div>
         <div className="flex items-center gap-2">
             <Link href="/" className="text-xs text-[#64748b] hover:text-white sm:text-sm">
