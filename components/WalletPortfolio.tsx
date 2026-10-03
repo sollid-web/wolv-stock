@@ -50,6 +50,7 @@ export default function WalletPortfolio({ address, enabled }: { address: string;
   const [data, setData] = useState<PortfolioResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!enabled || !address) {
@@ -79,7 +80,7 @@ export default function WalletPortfolio({ address, enabled }: { address: string;
       .finally(() => setIsLoading(false));
 
     return () => controller.abort();
-  }, [address, enabled]);
+  }, [address, enabled, retryKey]);
 
   if (!enabled) {
     return (
@@ -99,6 +100,13 @@ export default function WalletPortfolio({ address, enabled }: { address: string;
         <div className="font-bold">Holdings unavailable</div>
         <div className="mt-1">{error}</div>
         <div className="mt-2 text-red-400/80">No transaction or signing action was performed.</div>
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mt-3 rounded-lg border border-red-400/40 px-3 py-2 font-bold text-red-200 hover:border-red-300"
+        >
+          Retry read-only lookup
+        </button>
       </div>
     );
   }
