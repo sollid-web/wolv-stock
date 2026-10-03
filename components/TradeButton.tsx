@@ -35,6 +35,8 @@ type SwapData = {
     data: string;
     value?: string;
     gas?: string;
+    gasPrice?: string;
+    maxPriorityFeePerGas?: string;
   };
   rfq?: {
     vendor: string;
@@ -48,6 +50,8 @@ type ApprovalData = {
   calldata: string;
   approveAmount: string;
   gasLimit?: string;
+  gasPrice?: string;
+  maxPriorityFeePerGas?: string;
 };
 
 type TransactionStatus = {
@@ -124,8 +128,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     switchToBscMainnet,
     signTypedData,
     signTransaction,
+    broadcastTransaction,
     waitForTransaction,
-    readAllowance,
   } = useWallet();
 
   // State variables
@@ -336,22 +340,32 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         approvalTransaction?.data
       ) {
         const tokenContractAddress = "0x55d398326f99059ff775485246999027b3197955";
-        const currentAllowance = await readAllowance(
-          tokenContractAddress,
-          approvalTransaction.dexContractAddress
-        );
-        if (currentAllowance !== null && currentAllowance >= BigInt(amountInWei)) {
-          setApprovalData(null);
-          setApprovalSimulation(null);
-          return false;
-        }
-
         if (!address) throw new Error("Connect a wallet before simulating approval");
         const simulation = await simulateTransaction(
           address,
           tokenContractAddress,
           approvalTransaction.data
         );
+        const allowanceChange = simulation.allowanceChanges.find((change) =>
+          change.tokenAddress?.toLowerCase() === tokenContractAddress.toLowerCase() &&
+          change.owner?.toLowerCase() === address.toLowerCase() &&
+          change.spender?.toLowerCase() === approvalTransaction.dexContractAddress.toLowerCase()
+        );
+        if (!allowanceChange || typeof allowanceChange.preAmount !== "string") {
+          throw new Error("Binance simulation did not return the current USDT allowance");
+        }
+        let currentAllowance: bigint;
+        try {
+          currentAllowance = BigInt(allowanceChange.preAmount);
+        } catch {
+          throw new Error("Binance simulation returned an invalid USDT allowance");
+        }
+        if (currentAllowance >= BigInt(amountInWei)) {
+          setApprovalData(null);
+          setApprovalSimulation(null);
+          return false;
+        }
+
         setApprovalSimulation(simulation);
 
         setApprovalData({
@@ -360,6 +374,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           calldata: approvalTransaction.data,
           approveAmount: amountInWei,
           gasLimit: approvalTransaction.gasLimit,
+          gasPrice: approvalTransaction.gasPrice,
+          maxPriorityFeePerGas: approvalTransaction.maxPriorityFeePerGas,
         });
         return true;
       } else {
@@ -391,45 +407,27 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         to: approvalData.tokenContractAddress,
         data: approvalData.calldata,
         gas: approvalData.gasLimit,
+        gasPrice: approvalData.gasPrice,
+        maxPriorityFeePerGas: approvalData.maxPriorityFeePerGas,
       };
 
       setApprovalSimulation(await simulateTransaction(address, transactionRequest.to, transactionRequest.data));
 
-      const transactionHash = await signTransaction(transactionRequest);
+      const signedTransaction = await signTransaction(transactionRequest);
+      if (!signedTransaction) throw new Error("Wallet did not sign the approval transaction");
+      const transactionHash = await broadcastTransaction(signedTransaction);
+      if (!transactionHash) throw new Error("Binance did not return a transaction hash for the approval");
+      const approvalStatus = await waitForTransaction(transactionHash);
 
-      const allowanceConfirmed = (async () => {
-        const deadline = Date.now() + 60_000;
-        while (Date.now() < deadline) {
-          const currentAllowance = await readAllowance(
-            approvalData.tokenContractAddress,
-            approvalData.spender
-          );
-          if (
-            currentAllowance !== null &&
-            currentAllowance >= BigInt(approvalData.approveAmount)
-          ) {
-            return true;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 2_000));
-        }
-        return false;
-      })();
-      const approvalConfirmed = await Promise.race([
-        waitForTransaction(transactionHash).then((receiptStatus) => {
-          if (receiptStatus === "confirmed") return true;
-          if (receiptStatus === "failed") return false;
-          return allowanceConfirmed;
-        }),
-        allowanceConfirmed,
-      ]);
-
-      if (approvalConfirmed) {
+      if (approvalStatus === "confirmed") {
         setApprovalData(null);
         setApprovalSimulation(null);
         setSwapSimulation(null);
         setRequiresFreshQuote(true);
+      } else if (approvalStatus === "failed") {
+        setApprovalError("The approval transaction failed on-chain. Review it in your wallet, then request a new quote.");
       } else {
-        setApprovalError("Could not confirm approval. Check the transaction on BscScan, then click Get Quote to refresh allowance status.");
+        setApprovalError("Binance has not indexed the approval yet. Verify its status with Binance before continuing.");
       }
     } catch (err: any) {
       setApprovalError(err.message || "Failed to submit approval transaction");
@@ -468,12 +466,17 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
       try {
         setSwapSimulation(await simulateTransaction(address, tx.to, tx.data, tx.value ?? "0"));
-        const transactionHash = await signTransaction({
+        const signedTransaction = await signTransaction({
           to: tx.to,
           data: tx.data,
           value: tx.value,
           gas: tx.gas,
+          gasPrice: tx.gasPrice,
+          maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
         });
+        if (!signedTransaction) throw new Error("Wallet did not sign the swap transaction");
+        const transactionHash = await broadcastTransaction(signedTransaction);
+        if (!transactionHash) throw new Error("Binance did not return a transaction hash for the swap");
 
         setTransactionStatus({
           status: "pending",

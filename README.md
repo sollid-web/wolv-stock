@@ -9,8 +9,8 @@ The project currently lists Ondo and bStocks assets. It does not execute perps, 
 
 - **RWA Data API:** token/platform lists, sector filtering, token metadata, issuer profile, and reference-price fields.
 - **Trading API:** aggregator quotes, transaction details, approval transaction data, and order submission/status where returned by the API.
-- **BSC JSON-RPC:** allowance and receipt reads.
-- **Transaction API:** Binance-signed BSC transaction simulation before wallet approval/swap prompts; the UI shows predicted balance and allowance changes. The app broadcasts through the user's connected wallet, not Binance's broadcast endpoint.
+- **Transaction API:** Binance-signed BSC transaction simulation before wallet approval/swap prompts; the UI uses simulation allowance changes to check USDT authorization and shows predicted balance changes. The connected wallet signs transactions locally, then Binance broadcasts them.
+- **Wallet API:** Binance transaction-detail queries for BSC approval and swap status.
 - **Not yet integrated:** portfolio API, Agentic Wallet/Wallet Skills, and BNB Agent Studio.
 
 Trade-related API requests use uncached fetches. Binance credentials are read only by server-side code. Never put `BINANCE_API_KEY` or `BINANCE_SECRET_KEY` in a `NEXT_PUBLIC_` variable or commit them.

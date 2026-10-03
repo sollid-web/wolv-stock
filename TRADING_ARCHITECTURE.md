@@ -9,14 +9,14 @@ The main-track product is a BSC spot cross-venue monitor for tokenized equities.
 1. Server-rendered pages use the RWA Data API for token/platform lists, categories, metadata, and issuer profiles.
 2. The gap view calls the aggregator quote endpoint for the candidate token addresses and compares executable prices with the listed reference fields.
 3. The browser requests a quote from `/api/quote`, then transaction details from `/api/swap`. Both API routes validate address/amount formats and verify the target is in the cached RWA list and passes the spot-only metadata filter.
-4. For `SWAP` responses, the server validates the transaction payload and runs Binance Transaction API simulation through `/api/transaction-simulate`. The UI shows predicted balance/allowance changes. The browser repeats simulation immediately before prompting the connected wallet to approve/send on BSC mainnet.
+4. For `SWAP` responses, the server validates the transaction payload and runs Binance Transaction API simulation through `/api/transaction-simulate`. The UI uses simulation allowance changes to decide whether USDT approval is needed and shows predicted balance changes. Immediately before each approval or swap, the browser simulates again, asks the connected wallet to sign locally, then sends the signed transaction through `/api/transaction/broadcast` to Binance's Transaction API.
 5. For `RFQ` responses, the browser signs the returned EIP-712 data and posts the signature, vendor, quote ID, idempotency UUID, and selected target address to `/api/order/submit`. The server rechecks spot eligibility before Binance receives the order submission. Status is polled through `/api/order/[orderId]`.
-6. Approval and order-status requests use no-store fetches. Catalog requests use a 60-second cache. Outbound Binance requests are serialized at a 250 ms minimum interval per server process.
+6. Approval and order-status requests use no-store fetches. BSC approval and swap status are polled through `/api/transaction-status`, backed by Binance Wallet API transaction details. Catalog requests use a 60-second cache. Outbound Binance requests are serialized at a 250 ms minimum interval per server process.
 
 ## Credential And Signing Boundaries
 
 - `BINANCE_API_KEY` and `BINANCE_SECRET_KEY` are read in server-side `lib/binance.ts`; do not expose either through a `NEXT_PUBLIC_` variable.
-- Wallet transaction signing and EIP-712 signing happen through the connected wallet in the browser. Private keys are not sent to the app server.
+- EVM transaction signing and EIP-712 signing happen through the connected wallet in the browser. The signed raw EVM transaction is sent to the app server only for forwarding to Binance's broadcast endpoint; private keys are never sent to the app server or Binance.
 - The order-submit route validates request shape and forwards the signature to Binance. It does **not** independently recover or verify the signer locally.
 - The current transaction destination is supplied by the upstream swap response. The app checks its address shape and simulates the call, but does not maintain an allowlist of Binance router contracts. Confirm official router destinations before treating this as a production custody/security review.
 
@@ -28,7 +28,6 @@ The hackathon and Binance Web3 developer product have restricted-region and sanc
 
 ## Explicitly Not Integrated
 
-- Binance Transaction API broadcasting: simulation is integrated; transaction broadcast remains with the user's connected wallet. The app does not use Binance's optional broadcast endpoint.
 - Binance Wallet/Address Portfolio API, Agentic Wallet/Wallet Skills, and BNB Agent Studio.
 - Distributed per-client API rate limiting. The current Binance request queue is process-local and is not sufficient by itself for a horizontally scaled public deployment.
 - Automated local EIP-712 signer recovery and persistent replay tracking. Binance remains the external order-submission boundary.

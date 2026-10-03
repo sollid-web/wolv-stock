@@ -5,7 +5,6 @@ import {
   useAccount,
   useConnect,
   useDisconnect,
-  useSendTransaction,
   useSignTypedData,
   useSwitchChain,
   useWalletClient,
@@ -16,6 +15,8 @@ interface TxRequest {
   data: string;
   value?: bigint | string;
   gas?: bigint | string;
+  gasPrice?: bigint | string;
+  maxPriorityFeePerGas?: bigint | string;
 }
 
 interface WalletHookValue {
@@ -38,9 +39,9 @@ interface WalletHookValue {
   disconnect: () => void;
   switchToBscMainnet: () => Promise<void>;
   signTypedData: (typedData: Record<string, any>) => Promise<string | null>;
-  signTransaction: (transaction: TxRequest) => Promise<string>;
+  signTransaction: (transaction: TxRequest) => Promise<string | null>;
+  broadcastTransaction: (signedTransaction: string) => Promise<string | null>;
   waitForTransaction: (hash: string) => Promise<"confirmed" | "failed" | "unverified">;
-  readAllowance: (tokenAddress: string, spenderAddress: string) => Promise<bigint | null>;
 }
 
 function readConnectionError(error: unknown): string {
@@ -137,7 +138,6 @@ export function useWallet(): WalletHookValue {
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
   const { signTypedDataAsync } = useSignTypedData();
-  const { sendTransactionAsync } = useSendTransaction();
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Prefer an already-injected wallet (MetaMask, Trust Wallet, etc.);
@@ -244,44 +244,65 @@ export function useWallet(): WalletHookValue {
     [address, signTypedDataAsync]
   );
 
-  // NOTE - real behavior change vs. the old implementation, flagged
-  // explicitly: the previous lib/wallet.ts signTransaction() only SIGNED a
-  // transaction (signer.signTransaction) and never broadcast it - the old
-  // handleApprove() in TradeButton.tsx just logged the signed tx and
-  // pretended approval succeeded. wagmi/viem doesn't expose an equivalent
-  // "sign only, don't send" primitive for a plain transaction the way
-  // ethers did, so this now actually sends the transaction via wagmi's
-  // useSendTransaction and returns the resulting tx hash instead of a
-  // signed raw tx string. Call sites that only checked truthiness of the
-  // return value are unaffected; anything that assumed the tx was NOT yet
-  // broadcast needs to be revisited.
   const signTransaction = useCallback(
-    async (transaction: TxRequest): Promise<string> => {
-      if (!address) throw new Error("Wallet account is unavailable; reconnect and retry");
-      if (chainId !== 56) throw new Error("Switch to BNB Smart Chain before sending the transaction");
+    async (transaction: TxRequest): Promise<string | null> => {
+      if (!address || !walletClient) throw new Error("Wallet account is unavailable; reconnect and retry");
+      if (chainId !== 56) throw new Error("Switch to BNB Smart Chain before signing the transaction");
 
-      const sendRequest = {
-        to: transaction.to as `0x${string}`,
-        data: transaction.data as `0x${string}`,
-        value:
-          transaction.value !== undefined
-            ? BigInt(transaction.value)
-            : undefined,
-        gas:
-          transaction.gas !== undefined
-            ? BigInt(transaction.gas)
-            : undefined,
-      };
+      const hasEip1559Fees = transaction.maxPriorityFeePerGas !== undefined;
+      if (hasEip1559Fees && transaction.gasPrice === undefined) {
+        throw new Error("Binance swap response is missing the EIP-1559 max fee");
+      }
 
       try {
-        const hash = await sendTransactionAsync(sendRequest);
-        return hash;
+        return await walletClient.signTransaction({
+          account: address as `0x${string}`,
+          chain: walletClient.chain,
+          to: transaction.to as `0x${string}`,
+          data: transaction.data as `0x${string}`,
+          value: transaction.value !== undefined ? BigInt(transaction.value) : undefined,
+          gas: transaction.gas !== undefined ? BigInt(transaction.gas) : undefined,
+          ...(hasEip1559Fees
+            ? {
+                maxFeePerGas: BigInt(transaction.gasPrice!),
+                maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas!),
+              }
+            : transaction.gasPrice !== undefined
+              ? { gasPrice: BigInt(transaction.gasPrice) }
+              : {}),
+        });
       } catch (err) {
-        console.error("Failed to send transaction:", err);
+        console.error("Failed to sign transaction:", err);
+        const message = getWalletTransactionError(err);
+        if (/eth_signtransaction|method not supported/i.test(message)) {
+          throw new Error("This wallet cannot sign raw transactions required for Binance broadcast. Connect a wallet that supports eth_signTransaction; wallet-side broadcasting is disabled.");
+        }
+        throw new Error(message);
+      }
+    },
+    [address, chainId, walletClient]
+  );
+
+  const broadcastTransaction = useCallback(
+    async (signedTransaction: string): Promise<string | null> => {
+      if (!address) return null;
+      try {
+        const response = await fetch("/api/transaction/broadcast", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, signedTransaction }),
+        });
+        const result = await response.json();
+        if (!response.ok || result?.code !== 0) {
+          throw new Error(result?.error || result?.msg || "Binance broadcast failed");
+        }
+        return typeof result?.data?.txHash === "string" ? result.data.txHash : null;
+      } catch (err) {
+        console.error("Failed to broadcast transaction through Binance:", err);
         throw new Error(getWalletTransactionError(err));
       }
     },
-    [address, chainId, sendTransactionAsync]
+    [address]
   );
 
   const waitForTransaction = useCallback(
@@ -290,10 +311,8 @@ export function useWallet(): WalletHookValue {
       let lastError: unknown;
       while (Date.now() < deadline) {
         try {
-          const response = await fetch("/api/bsc", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "receipt", hash }),
+          const response = await fetch(`/api/transaction-status?txHash=${encodeURIComponent(hash)}`, {
+            cache: "no-store",
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "Receipt lookup failed");
@@ -308,31 +327,6 @@ export function useWallet(): WalletHookValue {
       return "unverified";
     },
     []
-  );
-
-  const readAllowance = useCallback(
-    async (tokenAddress: string, spenderAddress: string): Promise<bigint | null> => {
-      if (!address) return null;
-      try {
-        const response = await fetch("/api/bsc", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "allowance",
-            tokenAddress,
-            owner: address,
-            spender: spenderAddress,
-          }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || "Allowance lookup failed");
-        return BigInt(result.allowance);
-      } catch (err) {
-        console.error("Failed to read token allowance:", err);
-        return null;
-      }
-    },
-    [address]
   );
 
   return {
@@ -350,7 +344,7 @@ export function useWallet(): WalletHookValue {
     switchToBscMainnet,
     signTypedData,
     signTransaction,
+    broadcastTransaction,
     waitForTransaction,
-    readAllowance,
   };
 }

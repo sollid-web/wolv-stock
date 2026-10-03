@@ -80,6 +80,21 @@ export async function simulateBscTransaction(
   });
 }
 
+export async function broadcastBscTransaction(address: string, signedTransaction: string) {
+  return post("/api/v1/dex/pre-transaction/broadcast-transaction", {
+    binanceChainId: "56",
+    address,
+    signedTransaction,
+  });
+}
+
+export async function getTransactionDetailByTxHash(binanceChainId: string, txHash: string) {
+  return get("/api/v1/dex/post-transaction/transaction-detail-by-txhash", {
+    binanceChainId,
+    txHash,
+  }, true);
+}
+
 // RWA — list all tokenized stocks
 // Optional filters per Binance RWA Data docs: platformId (ondo | bstock) and tabId (sector tab, integer).
 // With no arguments the request is unchanged (complete list).
