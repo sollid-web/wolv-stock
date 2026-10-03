@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAggregatorQuote } from "@/lib/binance";
 import { EVM_ADDRESS_PATTERN, isPositiveUint256 } from "@/lib/apiValidation";
 import { isSpotRwaTokenAddress } from "@/lib/spotAssets";
+import { createQuoteBinding } from "@/lib/quoteBinding";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,23 @@ export async function GET(request: Request) {
         { status: 502 }
       );
     }
-    return NextResponse.json({ ...quote, quoteFetchedAt: Date.now() });
+    const rawQuoteId = typeof quote.quoteId === "string"
+      ? quote.quoteId
+      : typeof quote.orderId === "string" ? quote.orderId : null;
+    if (!rawQuoteId) {
+      return NextResponse.json({ error: "Quote response is missing a quote ID" }, { status: 502 });
+    }
+    const quoteFetchedAt = Date.now();
+    return NextResponse.json({
+      ...quote,
+      quoteFetchedAt,
+      quoteBinding: createQuoteBinding({
+        toToken,
+        amount,
+        wallet: userWalletAddress,
+        quoteId: rawQuoteId,
+      }, quoteFetchedAt),
+    });
   } catch (error: unknown) {
     console.error("Error in quote API:", error);
     return NextResponse.json(

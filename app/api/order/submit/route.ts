@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { submitOrder } from "@/lib/binance";
 import { isSafeOrderId } from "@/lib/apiValidation";
-import { EVM_ADDRESS_PATTERN } from "@/lib/apiValidation";
+import { EVM_ADDRESS_PATTERN, isPositiveUint256 } from "@/lib/apiValidation";
 import { isSpotRwaTokenAddress } from "@/lib/spotAssets";
+import { verifyQuoteBinding } from "@/lib/quoteBinding";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +17,15 @@ export async function POST(
       userSignature,
       vendor,
       quoteId,
-      toToken
+      toToken,
+      amount,
+      userWalletAddress,
+      quoteBinding,
     } = body;
 
-    if (!requestId || !userSignature || !vendor || !quoteId || !toToken) {
+    if (!requestId || !userSignature || !vendor || !quoteId || !toToken || !amount || !userWalletAddress || !quoteBinding) {
       return NextResponse.json(
-        { error: "Missing required parameters: requestId, userSignature, vendor, quoteId, toToken" },
+        { error: "Missing required parameters: requestId, userSignature, vendor, quoteId, toToken, amount, userWalletAddress, quoteBinding" },
         { status: 400 }
       );
     }
@@ -29,8 +33,16 @@ export async function POST(
     if (typeof userSignature !== "string" || !/^0x(?:[a-fA-F0-9]{128}|[a-fA-F0-9]{130})$/.test(userSignature) ||
         typeof vendor !== "string" || vendor.length > 128 || /[\r\n]/.test(vendor) ||
         typeof quoteId !== "string" || !isSafeOrderId(quoteId) ||
-        typeof toToken !== "string" || !EVM_ADDRESS_PATTERN.test(toToken)) {
+        typeof toToken !== "string" || !EVM_ADDRESS_PATTERN.test(toToken) ||
+        typeof amount !== "string" || !isPositiveUint256(amount) ||
+        typeof userWalletAddress !== "string" || !EVM_ADDRESS_PATTERN.test(userWalletAddress) ||
+        typeof quoteBinding !== "string") {
       return NextResponse.json({ error: "Invalid signature, vendor, or quote ID" }, { status: 400 });
+    }
+
+    const binding = verifyQuoteBinding(quoteBinding, { toToken, amount, wallet: userWalletAddress, quoteId });
+    if (!binding.ok) {
+      return NextResponse.json({ error: binding.reason }, { status: 409 });
     }
 
     if (!await isSpotRwaTokenAddress(toToken)) {

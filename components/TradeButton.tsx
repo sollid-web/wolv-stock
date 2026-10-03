@@ -15,6 +15,7 @@ type TokenInfo = {
 
 type QuoteData = {
   quoteId: string;
+  quoteBinding: string;
   fromTokenAmount: string;
   toTokenAmount: string;
   priceImpactPercent?: number | string;
@@ -69,6 +70,8 @@ type SimulationResult = {
 };
 
 const QUOTE_TTL_MS = 30_000;
+
+type ExecutionPhase = "idle" | "signing" | "broadcasting" | "confirming" | "submitting";
 
 function displayOrderStatus(status: string): string {
   switch (status.toUpperCase()) {
@@ -153,6 +156,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [userSignature, setUserSignature] = useState<string | null>(null);
   const [approvalData, setApprovalData] = useState<ApprovalData | null>(null);
   const [transactionStatus, setTransactionStatus] = useState<TransactionStatus | null>(null);
+  const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
@@ -193,6 +197,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setTransactionStatus(null);
     setSubmitError(null);
     setApprovalError(null);
+    setExecutionPhase("idle");
 
     // Clear any existing poll interval
     if (pollIntervalRef.current) {
@@ -217,6 +222,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       const rawQuoteId = quoteResult?.quoteId ?? quoteResult?.data?.quoteId;
       if (typeof rawQuoteId !== "string" || !rawQuoteId) {
         throw new Error("Quote failed — no quoteId returned. Check API key and clock sync.");
+      }
+      if (typeof quoteResult?.quoteBinding !== "string" || !quoteResult.quoteBinding) {
+        throw new Error("Quote failed — no server quote binding returned. Refresh and retry.");
       }
 
       const quoteFetchedAt = typeof quoteResult?.quoteFetchedAt === "number" ? quoteResult.quoteFetchedAt : 0;
@@ -243,6 +251,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         amount: amountInWei,
         userWalletAddress: address ?? "",
         quoteId: rawQuoteId,
+        quoteBinding: quoteResult.quoteBinding,
       });
       const swapResponse = await fetch(`/api/swap?${swapParams}`);
       const rawSwapObject = await swapResponse.json();
@@ -487,6 +496,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
       try {
         setSwapSimulation(await simulateTransaction(address, tx.to, tx.data, tx.value ?? "0"));
+        setExecutionPhase("signing");
         const signedTransaction = await signTransaction({
           to: tx.to,
           data: tx.data,
@@ -496,6 +506,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
         });
         if (!signedTransaction) throw new Error("Wallet did not sign the swap transaction");
+        setExecutionPhase("broadcasting");
         const transactionHash = await broadcastTransaction(signedTransaction);
         if (!transactionHash) throw new Error("Binance did not return a transaction hash for the swap");
 
@@ -503,12 +514,14 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           status: "pending",
           transactionHash,
         });
+        setExecutionPhase("confirming");
         void waitForTransaction(transactionHash).then((receiptStatus) => {
           setTransactionStatus((current) =>
             current?.transactionHash === transactionHash
               ? { ...current, status: receiptStatus }
               : current
           );
+          setExecutionPhase("idle");
         });
       } catch (err: unknown) {
         setSubmitError(errorMessage(err, "Failed to submit swap transaction"));
@@ -526,6 +539,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setIsSubmitting(true);
     setSubmitError(null);
     setTransactionStatus(null);
+    setExecutionPhase("submitting");
 
     try {
       const requestId = rfqRequestIdRef.current ?? crypto.randomUUID();
@@ -549,7 +563,10 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           userSignature,
           vendor,
           quoteId,
-          toToken: token.address
+          toToken: token.address,
+          amount: usdtAmountToWei(usdtAmount),
+          userWalletAddress: address,
+          quoteBinding: quoteData.quoteBinding,
         }),
       });
 
@@ -567,6 +584,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         status: typeof order.status === "string" ? displayOrderStatus(order.status) : "pending",
         orderId: order.orderId,
       });
+      setExecutionPhase("confirming");
 
       startPollingTransactionStatus(order.orderId);
 
@@ -609,6 +627,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         if (status === "FILLED" || status === "FAILED") {
           clearInterval(interval);
           if (pollIntervalRef.current === interval) pollIntervalRef.current = null;
+          setExecutionPhase("idle");
         }
       } catch (err) {
         console.error("Error polling transaction status:", err);
@@ -653,6 +672,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setSubmitError(null);
     setApprovalError(null);
     setQuoteError(null);
+    setExecutionPhase("idle");
     rfqRequestIdRef.current = null;
   }, [token.address, address]);
 
@@ -1024,7 +1044,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               cursor: canExecute && !isSubmitting ? "pointer" : "not-allowed"
             }}
           >
-            {isSubmitting ? "Submitting..." : "Sign & Execute Trade"}
+            {isSubmitting ? (executionPhase === "submitting" ? "Submitting order..." : "Executing...") : "Sign & Execute Trade"}
           </button>
           {submitError && (
             <div style={{
@@ -1042,18 +1062,26 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       )}
 
       {/* Transaction Status */}
-      {transactionStatus && (
+      {(transactionStatus || executionPhase !== "idle") && (
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginTop: "1rem" }}>
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Transaction Status</div>
+          {executionPhase !== "idle" && (
+            <div role="status" style={{ fontSize: "0.875rem", color: "#f0b90b", marginBottom: "0.25rem" }}>
+              {executionPhase === "signing" && "Waiting for wallet signature..."}
+              {executionPhase === "broadcasting" && "Broadcasting signed transaction through Binance..."}
+              {executionPhase === "submitting" && "Submitting signed RFQ order..."}
+              {executionPhase === "confirming" && "Waiting for Binance/on-chain confirmation..."}
+            </div>
+          )}
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-            Status: {transactionStatus.status}
+              Status: {transactionStatus?.status ?? executionPhase}
           </div>
-          {transactionStatus.orderId && (
+          {transactionStatus?.orderId && (
             <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
               Order ID: {transactionStatus.orderId}
             </div>
           )}
-          {transactionStatus.transactionHash && (
+          {transactionStatus?.transactionHash && (
             <div style={{
               display: "flex",
               flexDirection: "column",
@@ -1076,7 +1104,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               </a>
             </div>
           )}
-          {transactionStatus.status === "confirmed" && (
+          {transactionStatus?.status === "confirmed" && (
             <div style={{
               backgroundColor: "#064e3b",
               color: "#dcfce7",
@@ -1088,7 +1116,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               Transaction confirmed successfully!
             </div>
           )}
-          {transactionStatus.status === "failed" && (
+          {transactionStatus?.status === "failed" && (
             <div style={{
               backgroundColor: "#7f1d1d",
               color: "#fecaca",
@@ -1100,7 +1128,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               Transaction failed.
             </div>
           )}
-          {transactionStatus.status === "unverified" && (
+          {transactionStatus?.status === "unverified" && (
             <div style={{
               backgroundColor: "#78350f",
               color: "#fef3c7",
