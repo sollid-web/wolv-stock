@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         { status: 502 }
       );
     }
-    return NextResponse.json(quote);
+    return NextResponse.json({ ...quote, quoteFetchedAt: Date.now() });
   } catch (error: unknown) {
     console.error("Error in quote API:", error);
     return NextResponse.json(

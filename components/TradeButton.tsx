@@ -18,12 +18,13 @@ type QuoteData = {
   fromTokenAmount: string;
   toTokenAmount: string;
   priceImpactPercent?: number | string;
+  quoteFetchedAt?: number;
   executionMode: string;
   vendorName?: string;
   rfq?: {
     vendor: string;
     orderId: string;
-    typedDataToSign: Record<string, any>;
+    typedDataToSign: Record<string, unknown>;
   };
 };
 
@@ -67,6 +68,8 @@ type SimulationResult = {
   allowanceChanges: { tokenAddress?: string; owner?: string; spender?: string; preAmount?: string; postAmount?: string }[];
 };
 
+const QUOTE_TTL_MS = 30_000;
+
 function displayOrderStatus(status: string): string {
   switch (status.toUpperCase()) {
     case "FILLED":
@@ -76,6 +79,14 @@ function displayOrderStatus(status: string): string {
     default:
       return status.toLowerCase();
   }
+}
+
+function isFreshQuote(quote: QuoteData | null, now: number): boolean {
+  return !!quote?.quoteFetchedAt && now - quote.quoteFetchedAt < QUOTE_TTL_MS;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 async function simulateTransaction(from: string, to: string, data: string, value = "0"): Promise<SimulationResult> {
@@ -138,7 +149,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [swapData, setSwapData] = useState<SwapData | null>(null);
   const [swapSimulation, setSwapSimulation] = useState<SimulationResult | null>(null);
   const [approvalSimulation, setApprovalSimulation] = useState<SimulationResult | null>(null);
-  const [typedDataToSign, setTypedDataToSign] = useState<any>(null);
+  const [typedDataToSign, setTypedDataToSign] = useState<Record<string, unknown> | null>(null);
   const [userSignature, setUserSignature] = useState<string | null>(null);
   const [approvalData, setApprovalData] = useState<ApprovalData | null>(null);
   const [transactionStatus, setTransactionStatus] = useState<TransactionStatus | null>(null);
@@ -150,6 +161,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [requiresFreshQuote, setRequiresFreshQuote] = useState(false);
+  const [quoteNow, setQuoteNow] = useState(0);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rfqRequestIdRef = useRef<string | null>(null);
 
@@ -207,7 +219,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
         throw new Error("Quote failed — no quoteId returned. Check API key and clock sync.");
       }
 
-      setQuoteData({ ...quoteResult, quoteId: rawQuoteId } as QuoteData);
+      const quoteFetchedAt = typeof quoteResult?.quoteFetchedAt === "number" ? quoteResult.quoteFetchedAt : 0;
+      setQuoteData({ ...quoteResult, quoteId: rawQuoteId, quoteFetchedAt } as QuoteData);
+      setQuoteNow(quoteFetchedAt);
       quoteIdRef.current = rawQuoteId;
 
       const executionMode = quoteResult?.executionMode ?? quoteResult?.data?.executionMode;
@@ -257,8 +271,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         setTypedDataToSign(null);
       }
-    } catch (err: any) {
-      setQuoteError(err.message || "Failed to fetch quote");
+    } catch (err: unknown) {
+      setQuoteError(errorMessage(err, "Failed to fetch quote"));
       console.error("Trade error:", err);
     } finally {
       setIsLoading(false);
@@ -270,6 +284,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setUsdtAmount(e.target.value);
     setQuoteError(null);
     setQuoteData(null);
+    setQuoteNow(0);
     setSwapData(null);
     setSwapSimulation(null);
     setApprovalSimulation(null);
@@ -298,8 +313,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         setSubmitError("Failed to sign typed data");
       }
-    } catch (err: any) {
-      setSubmitError(err.message || "Failed to sign typed data");
+    } catch (err: unknown) {
+      setSubmitError(errorMessage(err, "Failed to sign typed data"));
     }
   };
 
@@ -381,8 +396,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         throw new Error("Binance did not return a valid USDT approval transaction");
       }
-    } catch (err: any) {
-      setApprovalError(err.message || "Failed to get approval transaction");
+    } catch (err: unknown) {
+      setApprovalError(errorMessage(err, "Failed to get approval transaction"));
       console.error("Approval error:", err);
       return true;
     } finally {
@@ -429,8 +444,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         setApprovalError("Binance has not indexed the approval yet. Verify its status with Binance before continuing.");
       }
-    } catch (err: any) {
-      setApprovalError(err.message || "Failed to submit approval transaction");
+    } catch (err: unknown) {
+      setApprovalError(errorMessage(err, "Failed to submit approval transaction"));
     } finally {
       setIsApproving(false);
     }
@@ -442,6 +457,12 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
     if (chainId !== 56) {
       setSubmitError("Switch to BNB Smart Chain before executing this trade");
+      return;
+    }
+
+    if (!isFreshQuote(quoteData, quoteNow)) {
+      setRequiresFreshQuote(true);
+      setSubmitError("This quote is stale. Get a fresh quote before signing or submitting a trade.");
       return;
     }
 
@@ -489,8 +510,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
               : current
           );
         });
-      } catch (err: any) {
-        setSubmitError(err.message || "Failed to submit swap transaction");
+      } catch (err: unknown) {
+        setSubmitError(errorMessage(err, "Failed to submit swap transaction"));
       } finally {
         setIsSubmitting(false);
       }
@@ -549,8 +570,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
       startPollingTransactionStatus(order.orderId);
 
-    } catch (err: any) {
-      setSubmitError(err.message || "Failed to submit order");
+    } catch (err: unknown) {
+      setSubmitError(errorMessage(err, "Failed to submit order"));
       console.error("Order submission error:", err);
     } finally {
       setIsSubmitting(false);
@@ -610,11 +631,20 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
   // Reset state when token or address changes
   useEffect(() => {
+    if (!quoteData?.quoteFetchedAt) return;
+    const interval = setInterval(() => setQuoteNow((current) => current + 1000), 1000);
+    return () => clearInterval(interval);
+  }, [quoteData?.quoteFetchedAt]);
+
+  useEffect(() => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
+    // Asset and account changes must clear the prior quote before a new trade can begin.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuoteData(null);
+    setQuoteNow(0);
     setSwapData(null);
     setTypedDataToSign(null);
     setUserSignature(null);
@@ -635,6 +665,10 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   const requiresTypedDataSignature = !!typedDataToSign;
   const executionPending = !!transactionStatus &&
     !["confirmed", "failed"].includes(transactionStatus.status.toLowerCase());
+  const quoteAgeSeconds = quoteData?.quoteFetchedAt
+    ? Math.max(0, Math.floor((quoteNow - quoteData.quoteFetchedAt) / 1000))
+    : null;
+  const quoteIsFresh = isFreshQuote(quoteData, quoteNow);
 
   const canExecute =
     isConnected &&
@@ -643,6 +677,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     !!provider &&
     !!quoteData &&
     !!swapData &&
+    quoteIsFresh &&
     (swapData.executionMode !== "SWAP" || swapSimulation?.status.toUpperCase() === "SUCCESS") &&
     !requiresFreshQuote &&
     !isLoading &&
@@ -822,6 +857,11 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           {quoteData.priceImpactPercent !== undefined && (
             <div style={{ fontSize: "0.75rem", color: "#fbbf24", marginTop: "0.25rem" }}>
               Price Impact: {quoteData.priceImpactPercent}%
+            </div>
+          )}
+          {quoteAgeSeconds !== null && (
+            <div style={{ fontSize: "0.75rem", color: quoteIsFresh ? "#9ca3af" : "#fbbf24", marginTop: "0.25rem" }}>
+              Quote age: {quoteAgeSeconds}s {quoteIsFresh ? "· fresh" : "· stale — refresh before signing"}
             </div>
           )}
           {swapData && swapData.executionMode && (
