@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { EVM_ADDRESS_PATTERN } from "@/lib/apiValidation";
 
 const QUOTE_BINDING_TTL_MS = 30_000;
 
@@ -7,6 +8,7 @@ type QuoteBindingPayload = {
   amount: string;
   wallet: string;
   quoteId: string;
+  approveTarget?: string;
   issuedAt: number;
 };
 
@@ -28,7 +30,7 @@ export function createQuoteBinding(input: Omit<QuoteBindingPayload, "issuedAt">,
 export function verifyQuoteBinding(
   binding: string,
   expected: Omit<QuoteBindingPayload, "issuedAt">
-): { ok: true; issuedAt: number } | { ok: false; reason: string } {
+): { ok: true; issuedAt: number; approveTarget?: string } | { ok: false; reason: string } {
   try {
     if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(binding)) {
       return { ok: false, reason: "Malformed quote binding" };
@@ -62,7 +64,13 @@ export function verifyQuoteBinding(
     ) {
       return { ok: false, reason: "Quote binding does not match this trade" };
     }
-    return { ok: true, issuedAt: payload.issuedAt };
+    if (payload.approveTarget !== undefined && !EVM_ADDRESS_PATTERN.test(payload.approveTarget)) {
+      return { ok: false, reason: "Quote binding contains an invalid spender" };
+    }
+    if (expected.approveTarget !== undefined && payload.approveTarget?.toLowerCase() !== expected.approveTarget.toLowerCase()) {
+      return { ok: false, reason: "Quote binding spender mismatch" };
+    }
+    return { ok: true, issuedAt: payload.issuedAt, approveTarget: payload.approveTarget };
   } catch {
     return { ok: false, reason: "Invalid quote binding" };
   }

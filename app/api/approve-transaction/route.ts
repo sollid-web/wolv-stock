@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getApproveTransaction } from "@/lib/binance";
 import { BSC_USDT_ADDRESS, EVM_ADDRESS_PATTERN, isPositiveUint256 } from "@/lib/apiValidation";
 import { isSpotRwaTokenAddress } from "@/lib/spotAssets";
+import { verifyQuoteBinding } from "@/lib/quoteBinding";
 
 export const dynamic = "force-dynamic";
 
@@ -13,16 +14,23 @@ export async function GET(request: Request) {
     const approveAmount = searchParams.get("approveAmount");
     const userWalletAddress = searchParams.get("userWalletAddress");
     const vendor = searchParams.get("vendor");
+    const quoteId = searchParams.get("quoteId");
+    const quoteBinding = searchParams.get("quoteBinding");
 
-    if (!tokenContractAddress || !toToken || !approveAmount || !userWalletAddress) {
+    if (!tokenContractAddress || !toToken || !approveAmount || !userWalletAddress || !quoteId || !quoteBinding) {
       return NextResponse.json(
-        { error: "Missing required parameters: tokenContractAddress, approveAmount, userWalletAddress" },
+        { error: "Missing required parameters: tokenContractAddress, approveAmount, userWalletAddress, quoteId, quoteBinding" },
         { status: 400 }
       );
     }
 
-    if (tokenContractAddress.toLowerCase() !== BSC_USDT_ADDRESS.toLowerCase() || !EVM_ADDRESS_PATTERN.test(toToken) || !EVM_ADDRESS_PATTERN.test(userWalletAddress) || !isPositiveUint256(approveAmount)) {
+    if (tokenContractAddress.toLowerCase() !== BSC_USDT_ADDRESS.toLowerCase() || !EVM_ADDRESS_PATTERN.test(toToken) || !EVM_ADDRESS_PATTERN.test(userWalletAddress) || !isPositiveUint256(approveAmount) || !/^[a-zA-Z0-9_-]{1,128}$/.test(quoteId)) {
       return NextResponse.json({ error: "Invalid approval token, target asset, wallet, or amount" }, { status: 400 });
+    }
+
+    const binding = verifyQuoteBinding(quoteBinding, { toToken, amount: approveAmount, wallet: userWalletAddress, quoteId });
+    if (!binding.ok || !binding.approveTarget) {
+      return NextResponse.json({ error: binding.ok ? "Quote is missing a validated approval spender" : binding.reason }, { status: 409 });
     }
 
     if (!await isSpotRwaTokenAddress(toToken)) {
@@ -48,6 +56,14 @@ export async function GET(request: Request) {
       userWalletAddress,
       vendor === null ? undefined : vendor // Convert null to undefined for optional param
     );
+    const resultData = (result as { data?: unknown }).data;
+    const approvalTransaction = Array.isArray(resultData) ? resultData[0] : resultData;
+    const spender = approvalTransaction && typeof approvalTransaction === "object" && "dexContractAddress" in approvalTransaction
+      ? (approvalTransaction as { dexContractAddress?: unknown }).dexContractAddress
+      : undefined;
+    if (typeof spender !== "string" || !EVM_ADDRESS_PATTERN.test(spender) || spender.toLowerCase() !== binding.approveTarget.toLowerCase()) {
+      return NextResponse.json({ error: "Approval spender does not match the quoted Binance route" }, { status: 409 });
+    }
     return NextResponse.json(result);
   } catch (error: unknown) {
     console.error("Error in approve-transaction API:", error);

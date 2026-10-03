@@ -45,6 +45,17 @@ export async function GET(request: Request) {
     }
 
     const result = await getAggregatorSwap(toToken, amount, userWalletAddress, quoteId);
+    const resultData = (result as { data?: unknown }).data;
+    if (resultData && typeof resultData === "object" && !Array.isArray(resultData)) {
+      const executionMode = "executionMode" in resultData ? (resultData as { executionMode?: unknown }).executionMode : undefined;
+      const tx = "tx" in resultData ? (resultData as { tx?: unknown }).tx : undefined;
+      if (executionMode === "SWAP" && binding.approveTarget) {
+        const destination = tx && typeof tx === "object" && "to" in tx ? (tx as { to?: unknown }).to : undefined;
+        if (typeof destination !== "string" || !EVM_ADDRESS_PATTERN.test(destination) || destination.toLowerCase() !== binding.approveTarget.toLowerCase()) {
+          return NextResponse.json({ error: "Swap destination does not match the quoted Binance route" }, { status: 409 });
+        }
+      }
+    }
     return NextResponse.json(result);
   } catch (error: unknown) {
     console.error("Error in swap API:", error);

@@ -398,6 +398,8 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         toToken: token.address,
         approveAmount: amountInWei,
         userWalletAddress: address ?? "",
+        quoteId: quoteData?.quoteId ?? "",
+        quoteBinding: quoteData?.quoteBinding ?? "",
       });
       if (vendor) params.set("vendor", vendor);
 

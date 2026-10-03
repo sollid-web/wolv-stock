@@ -53,6 +53,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Quote response is missing a quote ID" }, { status: 502 });
     }
     const quoteFetchedAt = Date.now();
+    const approveTarget = typeof quote.approveTarget === "string" && EVM_ADDRESS_PATTERN.test(quote.approveTarget)
+      ? quote.approveTarget
+      : undefined;
     return NextResponse.json({
       ...quote,
       quoteFetchedAt,
@@ -61,6 +64,7 @@ export async function GET(request: Request) {
         amount,
         wallet: userWalletAddress,
         quoteId: rawQuoteId,
+        approveTarget,
       }, quoteFetchedAt),
     });
   } catch (error: unknown) {
