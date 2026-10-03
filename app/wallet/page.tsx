@@ -7,6 +7,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { useIsHydrated } from "@/hooks/useIsHydrated";
 import { useState } from "react";
 import GlobalNav from "@/components/GlobalNav";
+import WalletPortfolio from "@/components/WalletPortfolio";
 
 export const dynamic = "force-dynamic";
 
@@ -104,13 +105,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">
-              <div className="text-xs text-[#64748b] font-medium mb-2">Portfolio</div>
-              <div className="text-xs text-[#64748b]">
-                Wallet-connected portfolio tracking coming soon.
-                Use the Trade page to buy and sell tokenized assets.
-              </div>
-            </div>
+            {address && <WalletPortfolio address={address} enabled={isCorrectNetwork} />}
 
             <div className="mt-8">
               <button

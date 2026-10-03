@@ -95,6 +95,32 @@ export async function getTransactionDetailByTxHash(binanceChainId: string, txHas
   }, true);
 }
 
+// Read-only wallet holdings, paginated by chain. The documented endpoint
+// returns one chain entry containing tokenAssets for each requested chain.
+export async function getAllTokenBalancesByAddress(
+  address: string,
+  chains = "56",
+  pageSize = "100"
+) {
+  return get("/api/v1/dex/balance/all-token-balances-by-address", {
+    address,
+    chains,
+    excludeRiskToken: "true",
+    page: "1",
+    pageSize,
+  }, true);
+}
+
+// Read-only address portfolio statistics. Per the Binance schema, timeFrame
+// 2 means 7D for this endpoint (it is not shared with leaderboard semantics).
+export async function getPortfolioOverview(address: string, timeFrame = "2") {
+  return get("/api/v1/dex/market/portfolio/overview", {
+    binanceChainId: "56",
+    walletAddress: address,
+    timeFrame,
+  }, true);
+}
+
 // RWA — list all tokenized stocks
 // Optional filters per Binance RWA Data docs: platformId (ondo | bstock) and tabId (sector tab, integer).
 // With no arguments the request is unchanged (complete list).
