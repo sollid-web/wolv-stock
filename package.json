@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build  --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:hardening": "node scripts/hardening-smoke.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
