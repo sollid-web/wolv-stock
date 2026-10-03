@@ -70,6 +70,8 @@ type SimulationResult = {
 };
 
 const QUOTE_TTL_MS = 30_000;
+const ORDER_POLL_INTERVAL_MS = 5_000;
+const MAX_ORDER_POLLS = 12;
 
 type ExecutionPhase = "idle" | "signing" | "broadcasting" | "confirming" | "submitting";
 
@@ -609,8 +611,13 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       clearInterval(pollIntervalRef.current);
     }
 
-    // Set up polling every 5 seconds
+    let pollCount = 0;
+
+    // Set up bounded polling every 5 seconds. A pending order must not leave
+    // the UI in an indefinite confirmation state when an upstream indexer is
+    // delayed or unavailable.
     const interval = setInterval(async () => {
+      pollCount += 1;
       try {
         const statusResponse = await fetch(`/api/order/${orderId}`);
         const statusResult = await statusResponse.json();
@@ -634,12 +641,26 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           clearInterval(interval);
           if (pollIntervalRef.current === interval) pollIntervalRef.current = null;
           setExecutionPhase("idle");
+        } else if (pollCount >= MAX_ORDER_POLLS) {
+          clearInterval(interval);
+          if (pollIntervalRef.current === interval) pollIntervalRef.current = null;
+          setTransactionStatus((current) => current?.orderId === orderId
+            ? { ...current, status: "unverified" }
+            : current);
+          setExecutionPhase("idle");
         }
       } catch (err) {
         console.error("Error polling transaction status:", err);
-        // Continue polling despite errors
+        if (pollCount >= MAX_ORDER_POLLS) {
+          clearInterval(interval);
+          if (pollIntervalRef.current === interval) pollIntervalRef.current = null;
+          setTransactionStatus((current) => current?.orderId === orderId
+            ? { ...current, status: "unverified" }
+            : current);
+          setExecutionPhase("idle");
+        }
       }
-    }, 5000);
+    }, ORDER_POLL_INTERVAL_MS);
 
     pollIntervalRef.current = interval;
   };
