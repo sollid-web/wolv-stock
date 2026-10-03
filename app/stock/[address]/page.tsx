@@ -1,6 +1,7 @@
 import { getRWATokenList, getRWAMarketData, getRWAProfile } from "@/lib/binance";
 import { quoteUsd } from "@/lib/quotes";
 import Link from "next/link";
+import Image from "next/image";
 import { buildProtectionRows } from "@/lib/rwaData";
 import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
@@ -9,10 +10,13 @@ import GlobalNav from "@/components/GlobalNav";
 export const dynamic = "force-dynamic";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
-const money = (v: unknown) => { const n = num(v); return n == null ? "—" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-const big = (v: unknown) => {
-  const n = num(v);
+const num = (value: unknown) => {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number.parseFloat(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const money = (value: unknown) => { const n = num(value); return n == null ? "—" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+const big = (value: unknown) => {
+  const n = num(value);
   if (n == null) return "—";
   if (n >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
   if (n >= 1e6) return "$" + (n / 1e6).toFixed(2) + "M";
@@ -21,6 +25,10 @@ const big = (v: unknown) => {
 const label = (k: string) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 const tone = (g: number | null) =>
   g == null ? "text-[#64748b]" : Math.abs(g) < 0.25 ? "text-green-400" : Math.abs(g) < 1 ? "text-yellow-400" : "text-red-400";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
@@ -42,16 +50,19 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
   const errs: string[] = [];
   await sleep(300);
-  const market = await getRWAMarketData(address).catch((error: unknown) => { errs.push("market data: " + (error instanceof Error ? error.message : String(error))); return null; });
+  const market: unknown = await getRWAMarketData(address).catch((error: unknown) => { errs.push("market data: " + (error instanceof Error ? error.message : String(error))); return null; });
   await sleep(300);
-  const profile = await getRWAProfile(address).catch((error: unknown) => { errs.push("company profile: " + (error instanceof Error ? error.message : String(error))); return null; });
+  const profile: unknown = await getRWAProfile(address).catch((error: unknown) => { errs.push("company profile: " + (error instanceof Error ? error.message : String(error))); return null; });
   await sleep(300);
   const q = await quoteUsd(address);
 
   console.log("[profile-dump]", token.underlyingTicker, JSON.stringify(profile)?.slice(0, 1500));
 
-  const md = market?.data?.marketData ?? {};
-  const prof = profile?.data ?? null;
+  const marketData = isRecord(market) && isRecord(market.data) && isRecord(market.data.marketData)
+    ? market.data.marketData
+    : {};
+  const md = marketData;
+  const prof = isRecord(profile) && isRecord(profile.data) ? profile.data : null;
   const protectionRows = buildProtectionRows(prof);
   const mult = num(token.tokenToShareRatio) || 1;
   const listed = num(token.tokenPrice) ?? 0;
@@ -62,11 +73,11 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const isOpen = token.statusInfo?.openState;
   const status = token.statusInfo?.marketStatus ?? (isOpen ? "trading" : "closed");
 
-  const profRows: [string, string | number][] = prof && typeof prof === "object"
-    ? Object.entries(prof).filter((entry): entry is [string, string | number] => {
-        const [k, v] = entry;
-        return (typeof v === "string" || typeof v === "number") && String(v).trim() !== "" && !/logo|chain|address|url|id$|^assetType$|^underlyingTicker$|ratio/i.test(k);
-      })
+  const profRows: [string, string | number][] = prof
+    ? Object.entries(prof).flatMap(([key, value]) =>
+        (typeof value === "string" || typeof value === "number") && String(value).trim() !== "" && !/logo|chain|address|url|id$|^assetType$|^underlyingTicker$|ratio/i.test(key)
+          ? [[key, value]]
+          : [])
     : [];
   const shortRows = profRows.filter(([, v]) => String(v).length <= 120);
   const longRows = profRows.filter(([, v]) => String(v).length > 120);
@@ -85,7 +96,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     <main className="min-h-screen bg-[#07070f] text-white pb-10">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
-        {token.tokenLogoUrl && <img src={token.tokenLogoUrl} className="w-8 h-8 rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
+  {token.tokenLogoUrl && <Image src={token.tokenLogoUrl} width={32} height={32} className="rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
         <div className="min-w-0">
           <div className="font-black text-lg">{token.underlyingTicker}</div>
           <div className="text-xs text-[#64748b] truncate">{token.underlyingName || token.tokenName?.replace(/\s*\(.*?\)\s*/g, "")}</div>

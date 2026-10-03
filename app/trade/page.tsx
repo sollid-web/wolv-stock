@@ -1,11 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getRWATokenList, getRWAPlatforms } from "@/lib/binance";
 import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
 import GlobalNav from "@/components/GlobalNav";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
-import { isRwaToken, type RwaPlatform, type RwaToken } from "@/lib/rwaTypes";
+import { parseRwaAssetRecords, parseRwaPlatformRecords, type RwaAssetRecord } from "@/lib/spotAssets";
 
 export const dynamic = "force-dynamic";
 
@@ -13,17 +14,17 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   const { tab } = await searchParams;
   const tabId = parseTabId(tab); // null = All (no tabId sent to Binance)
   const tabLabel = RWA_TABS.find((t) => t.id === tabId)?.label;
-  const [platforms, list] = await Promise.all([
+  const [platformResponse, list] = await Promise.all([
     getRWAPlatforms(),
     getRWATokenList(undefined, tabId ?? undefined)
-      .then((data) => ({ data, err: null as string | null }))
-      .catch((error: unknown) => ({ data: null, err: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) })),
+      .then((data: unknown) => ({ data: parseRwaAssetRecords(data), err: null as string | null }))
+      .catch((error: unknown) => ({
+        data: [] as RwaAssetRecord[],
+        err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+      })),
   ]);
-  const tokens = list.data;
-  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
-  const allTokens: RwaToken[] = filterSpotEligibleAssets(
-    rawTokens.filter(isRwaToken)
-  );
+  const platforms = parseRwaPlatformRecords(platformResponse);
+  const allTokens = filterSpotEligibleAssets(list.data);
   const slim = allTokens.map((t) => ({
     tokenContractAddress: t.tokenContractAddress,
     tokenLogoUrl: t.tokenLogoUrl ?? undefined,
@@ -53,10 +54,10 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
       </nav>
 
       <div className="px-4 sm:px-6 py-4 flex gap-3 overflow-x-auto">
-        {(Array.isArray(platforms?.data) ? platforms.data as RwaPlatform[] : []).map((p) => (
+        {platforms.map((p) => (
           <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              {p.logoUrl && <img src={p.logoUrl} className="w-5 h-5 rounded-full" alt={p.platformId} />}
+              {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
             <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>

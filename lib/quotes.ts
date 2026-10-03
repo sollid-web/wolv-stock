@@ -25,11 +25,6 @@ type QuoteRoute = {
   priceImpactPercent?: string | number;
 };
 
-type QuoteResponse = {
-  data?: unknown;
-  msg?: string;
-};
-
 const cache = new Map<string, Q>();
 export const QUOTE_TTL_MS = 30_000;
 let last = 0;
@@ -52,6 +47,10 @@ export function isQuoteFresh(quote: Q, now = Date.now()): boolean {
   return now - quote.ts < QUOTE_TTL_MS;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // USD price of ONE TOKEN, from what `usdt` USDT actually buys (best route).
 export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
   const hit = cache.get(addr);
@@ -63,15 +62,16 @@ export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
     last = Date.now();
 
     try {
-      const response = await getRWAQuote(addr, `${usdt}000000000000000000`) as QuoteResponse;
-      const routes = Array.isArray(response.data)
+      const response: unknown = await getRWAQuote(addr, String(usdt) + "0".repeat(18));
+      const routes = isRecord(response) && Array.isArray(response.data)
         ? response.data.filter(isQuoteRoute)
         : [];
       routes.sort((a, b) => Number(b.toTokenAmount ?? 0) - Number(a.toTokenAmount ?? 0));
       const best = routes[0];
       const output = asFiniteNumber(best?.toTokenAmount);
       if (!best || output == null || output <= 0) {
-        throw new Error(response.msg || "no route");
+        const message = isRecord(response) && typeof response.msg === "string" ? response.msg : "no route";
+        throw new Error(message);
       }
 
       const unitPrice = asFiniteNumber(best.fromToken?.tokenUnitPrice) ?? 1;
@@ -87,14 +87,11 @@ export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
       cache.set(addr, quote);
       return quote;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (attempt === 0 && message.includes("42900")) {
-        await sleep(1200);
-        continue;
-      }
-      const quote: QuoteFailure = { ok: false, err: message.slice(0, 140), ts: Date.now() };
-      cache.set(addr, quote);
-      return quote;
+      const msg = error instanceof Error ? error.message : String(error);
+      if (attempt === 0 && msg.includes("42900")) { await sleep(1200); continue; }
+      const q: Q = { ok: false, err: msg.slice(0, 140), ts: Date.now() };
+      cache.set(addr, q);
+      return q;
     }
   }
 

@@ -1,19 +1,14 @@
 import { getRWATokenList } from "@/lib/binance";
 import { isAssetCompliant } from "@/lib/compliance";
 import { quoteUsd } from "@/lib/quotes";
+import { parseRwaAssetRecords } from "@/lib/spotAssets";
 
-type RwaToken = {
-  underlyingTicker?: string | null;
-  platformId?: string | null;
-  tokenContractAddress: string;
-};
-
-type RouterRow = {
+type RouterQuote = {
   platform: string;
   tokenContractAddress: string;
   effectiveUsd: number | null;
   feeEstimate: number | null;
-  quoteStatus: string;
+  quoteStatus: "Live" | "Delayed";
   quoteError: string | null;
 };
 
@@ -33,12 +28,12 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
 
   const compliant = isAssetCompliant(symbol);
 
-  let rows: RouterRow[] = [];
+  let rows: RouterQuote[] = [];
 
   try {
-    const list = await getRWATokenList();
-    const matches = ((Array.isArray(list?.data) ? list.data : []) as unknown as RwaToken[])
-      .filter((token) => (token?.underlyingTicker ?? "").trim().toUpperCase() === symbol)
+    const list: unknown = await getRWATokenList();
+    const matches = parseRwaAssetRecords(list)
+      .filter((token) => token.underlyingTicker.trim().toUpperCase() === symbol)
       .filter((token) => {
         const platform = (token?.platformId ?? "").trim().toLowerCase();
         return platform.includes("ondo") || platform.includes("stock") || platform.includes("bstock");

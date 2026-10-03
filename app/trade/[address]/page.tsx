@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getRWATokenList } from "@/lib/binance";
 import TradeButton from "@/components/TradeButton";
 import GlobalNav from "@/components/GlobalNav";
@@ -40,8 +41,10 @@ export default async function TradePage({ params }: { params: Promise<{ address:
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <BackButton fallbackHref="/trade" className="text-[#64748b] text-xl" />
         {token.tokenLogoUrl && (
-          <img
+          <Image
             src={token.tokenLogoUrl}
+            width={32}
+            height={32}
             className="w-8 h-8 rounded-full"
             alt={token.underlyingTicker ?? "Asset"}
           />

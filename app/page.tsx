@@ -1,5 +1,6 @@
 import { getRWATokenList, getRWAPlatforms } from "@/lib/binance";
 import Link from "next/link";
+import Image from "next/image";
 import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
@@ -77,7 +78,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
         {platforms?.data?.map((p) => (
           <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <img src={p.logoUrl} className="w-5 h-5 rounded-full" alt={p.platformId} />
+              {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
             <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>

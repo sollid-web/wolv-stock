@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { isValidUsdtAmount, usdtAmountToWei } from "@/lib/apiValidation";
-import { useWallet } from "@/hooks/useWallet";
+import { useWallet, type WalletHookValue } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
 import { useIsHydrated } from "@/hooks/useIsHydrated";
@@ -127,6 +127,11 @@ function SimulationSummary({ title, result }: { title: string; result: Simulatio
 }
 
 export default function TradeButton({ token }: { token: TokenInfo }) {
+  const wallet = useWallet();
+  return <TradeSession key={`${token.address}:${wallet.address ?? ""}`} token={token} wallet={wallet} />;
+}
+
+function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookValue }) {
   const isHydrated = useIsHydrated();
   const {
     provider,
@@ -144,7 +149,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     signTransaction,
     broadcastTransaction,
     waitForTransaction,
-  } = useWallet();
+  } = wallet;
 
   // State variables
   const [usdtAmount, setUsdtAmount] = useState("10"); // Default 10 USDT
@@ -187,6 +192,7 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     setIsLoading(true);
     setQuoteError(null);
     setQuoteData(null);
+    setQuoteNow(0);
     setSwapData(null);
     setSwapSimulation(null);
     setApprovalSimulation(null);
@@ -280,9 +286,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         setTypedDataToSign(null);
       }
-    } catch (err: unknown) {
-      setQuoteError(errorMessage(err, "Failed to fetch quote"));
-      console.error("Trade error:", err);
+    } catch (error: unknown) {
+      setQuoteError(errorMessage(error, "Failed to fetch quote"));
+      console.error("Trade error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -322,8 +328,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         setSubmitError("Failed to sign typed data");
       }
-    } catch (err: unknown) {
-      setSubmitError(errorMessage(err, "Failed to sign typed data"));
+    } catch (error: unknown) {
+      setSubmitError(errorMessage(error, "Failed to sign typed data"));
     }
   };
 
@@ -405,9 +411,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         throw new Error("Binance did not return a valid USDT approval transaction");
       }
-    } catch (err: unknown) {
-      setApprovalError(errorMessage(err, "Failed to get approval transaction"));
-      console.error("Approval error:", err);
+    } catch (error: unknown) {
+      setApprovalError(errorMessage(error, "Failed to get approval transaction"));
+      console.error("Approval error:", error);
       return true;
     } finally {
       setIsApproving(false);
@@ -453,8 +459,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
       } else {
         setApprovalError("Binance has not indexed the approval yet. Verify its status with Binance before continuing.");
       }
-    } catch (err: unknown) {
-      setApprovalError(errorMessage(err, "Failed to submit approval transaction"));
+    } catch (error: unknown) {
+      setApprovalError(errorMessage(error, "Failed to submit approval transaction"));
     } finally {
       setIsApproving(false);
     }
@@ -523,8 +529,8 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
           );
           setExecutionPhase("idle");
         });
-      } catch (err: unknown) {
-        setSubmitError(errorMessage(err, "Failed to submit swap transaction"));
+      } catch (error: unknown) {
+        setSubmitError(errorMessage(error, "Failed to submit swap transaction"));
       } finally {
         setIsSubmitting(false);
       }
@@ -588,9 +594,9 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
 
       startPollingTransactionStatus(order.orderId);
 
-    } catch (err: unknown) {
-      setSubmitError(errorMessage(err, "Failed to submit order"));
-      console.error("Order submission error:", err);
+    } catch (error: unknown) {
+      setSubmitError(errorMessage(error, "Failed to submit order"));
+      console.error("Order submission error:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -648,33 +654,19 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
     };
   }, []);
 
-  // Reset state when token or address changes
   useEffect(() => {
-    if (!quoteData?.quoteFetchedAt) return;
-    const interval = setInterval(() => setQuoteNow((current) => current + 1000), 1000);
-    return () => clearInterval(interval);
-  }, [quoteData?.quoteFetchedAt]);
+    const quoteFetchedAt = quoteData?.quoteFetchedAt;
+    if (!quoteFetchedAt) return;
 
-  useEffect(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-    // Asset and account changes must clear the prior quote before a new trade can begin.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQuoteData(null);
-    setQuoteNow(0);
-    setSwapData(null);
-    setTypedDataToSign(null);
-    setUserSignature(null);
-    setApprovalData(null);
-    setTransactionStatus(null);
-    setSubmitError(null);
-    setApprovalError(null);
-    setQuoteError(null);
-    setExecutionPhase("idle");
-    rfqRequestIdRef.current = null;
-  }, [token.address, address]);
+    const startedAt = Date.now();
+    const updateQuoteClock = () => setQuoteNow(quoteFetchedAt + Date.now() - startedAt);
+    const interval = setInterval(updateQuoteClock, 1000);
+    document.addEventListener("visibilitychange", updateQuoteClock);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", updateQuoteClock);
+    };
+  }, [quoteData?.quoteFetchedAt]);
 
   // Whether THIS quote's execution mode requires an EIP-712 signature at
   // all. RFQ quotes do (typedDataToSign comes back from /api/swap); a

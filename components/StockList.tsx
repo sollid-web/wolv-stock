@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { TAG_LABELS, knownTags } from "@/lib/rwaData";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 
@@ -29,7 +30,7 @@ function Logo({ url, tk }: { url?: string; tk: string }) {
         {tk.slice(0, 4)}
       </div>
     );
-  return <img src={url} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
+  return <Image src={url} width={36} height={36} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
 }
 
 export default function StockList({ tokens, category }: { tokens: T[]; category?: string }) {

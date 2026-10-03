@@ -25,7 +25,7 @@ type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-interface WalletHookValue {
+export interface WalletHookValue {
   /** Kept as `provider` for source-compat with existing call sites, which
    *  only ever used it as a truthy "do we have a signer ready" gate. Its
    *  real type is now a viem WalletClient (from wagmi), not an
@@ -48,6 +48,10 @@ interface WalletHookValue {
   signTransaction: (transaction: TxRequest) => Promise<string | null>;
   broadcastTransaction: (signedTransaction: string) => Promise<string | null>;
   waitForTransaction: (hash: string) => Promise<"confirmed" | "failed" | "unverified">;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readConnectionError(error: unknown): string {
@@ -200,8 +204,7 @@ export function useWallet(): WalletHookValue {
         });
         return;
       } catch (error: unknown) {
-        const code = error && typeof error === "object" ? (error as Record<string, unknown>).code : undefined;
-        if (code !== 4902) {
+        if (!isRecord(error) || error.code !== 4902) {
           throw error;
         }
 
@@ -227,16 +230,17 @@ export function useWallet(): WalletHookValue {
     async (typedData: TypedData): Promise<string | null> => {
       if (!address) return null;
       try {
+        if (!isRecord(typedData.domain) || !isRecord(typedData.types) || !isRecord(typedData.message)) {
+          throw new Error("Binance returned invalid EIP-712 typed data");
+        }
         // EIP-712 typed data needs an explicit primaryType for viem/wagmi's
         // signTypedData, whereas ethers' signer.signTypedData() inferred it.
         // Use it if the API already included one, else derive it as the
         // single non-EIP712Domain key of `types`.
-        const primaryType =
-          (typeof typedData.primaryType === "string" ? typedData.primaryType : undefined) ??
-          Object.keys(typeof typedData.types === "object" && typedData.types !== null ? typedData.types : {}).find(
-            (key) => key !== "EIP712Domain"
-          );
-        if (!primaryType) throw new Error("Typed data is missing its primary type");
+        const primaryType = typeof typedData.primaryType === "string"
+          ? typedData.primaryType
+          : Object.keys(typedData.types).find((key) => key !== "EIP712Domain");
+        if (!primaryType) throw new Error("Binance typed data is missing its primary type");
 
         return await signTypedDataAsync({
           domain: typedData.domain,

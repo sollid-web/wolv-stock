@@ -1,27 +1,17 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getRWATokenList } from "@/lib/binance";
 import { isQuoteFresh, quoteAgeSeconds, quoteUsd, type Q } from "@/lib/quotes";
 import GlobalNav from "@/components/GlobalNav";
-import { filterSpotEligibleAssets, type SpotAssetIdentity } from "@/lib/compliance";
+import { filterSpotEligibleAssets } from "@/lib/compliance";
+import { parseRwaAssetRecords, type RwaAssetRecord } from "@/lib/spotAssets";
 
 export const dynamic = "force-dynamic";
 
 const QUOTE_AMOUNT_USDT = 100;
 const MAX_CONCURRENT_QUOTES = 4;
 
-type RwaToken = SpotAssetIdentity & {
-  underlyingTicker?: string | null;
-  platformId?: string | null;
-  tokenContractAddress: string;
-  tokenToShareRatio?: string | number | null;
-  referencePrice?: string | number | null;
-  tokenLogoUrl?: string | null;
-  volume24H?: string | number | null;
-  statusInfo?: {
-    marketStatus?: string | null;
-    openState?: boolean | null;
-  } | null;
-};
+type RwaToken = RwaAssetRecord;
 
 type VenueResult = {
   token: RwaToken;
@@ -104,23 +94,27 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
   const { n } = await searchParams;
   const limit = Math.min(40, Math.max(1, Number.parseInt(n ?? "8", 10) || 8));
   const tokensResponse = await getRWATokenList();
-  const rawTokens = Array.isArray(tokensResponse?.data) ? tokensResponse.data : [];
-  const all = filterSpotEligibleAssets(rawTokens as RwaToken[]);
-  const grouped: Record<string, Record<string, RwaToken>> = {};
+  const all = filterSpotEligibleAssets(parseRwaAssetRecords(tokensResponse));
+  const grouped = new Map<string, Map<string, RwaToken>>();
 
   for (const token of all) {
     if (!token.underlyingTicker || !token.platformId) continue;
-    (grouped[token.underlyingTicker] ||= {})[token.platformId] ||= token;
+    const venues = grouped.get(token.underlyingTicker) ?? new Map<string, RwaToken>();
+    if (!venues.has(token.platformId)) venues.set(token.platformId, token);
+    grouped.set(token.underlyingTicker, venues);
   }
 
-  const pairs = Object.entries(grouped)
-    .filter(([, venues]) => Object.keys(venues).length >= 2)
-    .map(([ticker, venues]) => ({ ticker, venues: Object.values(venues) }))
+  const pairs = Array.from(grouped.entries())
+    .filter(([, venues]) => venues.size >= 2)
+    .map(([ticker, venues]) => ({ ticker, venues: Array.from(venues.values()) }))
     .sort((a, b) => Math.max(...b.venues.map((token) => numberValue(token.volume24H))) - Math.max(...a.venues.map((token) => numberValue(token.volume24H))));
   const shown = pairs.slice(0, limit);
   const rows = await mapWithConcurrency(shown, MAX_CONCURRENT_QUOTES, async (pair): Promise<OpportunityRow> => {
     const venues = await mapWithConcurrency(pair.venues, MAX_CONCURRENT_QUOTES, buildVenueResult);
-    const prices = venues.map((venue) => venue.executablePerShare).filter((value): value is number => value != null && value > 0);
+    const prices = venues
+      .filter((venue) => !venue.stale)
+      .map((venue) => venue.executablePerShare)
+      .filter((value): value is number => value != null && value > 0);
     const crossVenueSpread = prices.length >= 2 ? (Math.max(...prices) / Math.min(...prices) - 1) * 100 : null;
     return { ticker: pair.ticker, venues, crossVenueSpread };
   });
@@ -162,7 +156,7 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
                   return (
                     <Link key={venue.token.tokenContractAddress} href={`/stock/${venue.token.tokenContractAddress}`} className={`block rounded-lg border p-3 ${venue.stale ? "border-yellow-900/60" : "border-[#1b1b35]"}`}>
                       <div className="mb-2 flex items-center gap-2">
-                        {venue.token.tokenLogoUrl && <img src={venue.token.tokenLogoUrl} className="h-5 w-5 rounded-full" alt={row.ticker} />}
+                        {venue.token.tokenLogoUrl && <Image src={venue.token.tokenLogoUrl} width={20} height={20} className="rounded-full" alt={row.ticker} />}
                         <span className="text-xs capitalize text-[#64748b]">{venue.token.platformId}</span>
                         <span className="ml-auto text-[10px] text-[#64748b]">{marketLabel(venue.token)}</span>
                       </div>
