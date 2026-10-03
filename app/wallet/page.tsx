@@ -98,8 +98,8 @@ export default function WalletPage() {
             <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">
               <div className="text-xs text-[#64748b] font-medium mb-2">Network Status</div>
               <div className="flex items-center space-x-3">
-                <div className={`w-3 h-3 rounded-full ${isCorrectNetwork ? "bg-[#10b981]" : "bg-[#ef4444]"}`}></div>
-                <span className={isCorrectNetwork ? "text-xs text-[#10b981]" : "text-xs text-[#ef4444]"}>
+                <div className={`w-3 h-3 rounded-full ${isCorrectNetwork ? "bg-[#f0b90b]" : "bg-[#ef4444]"}`}></div>
+                <span className={isCorrectNetwork ? "text-xs text-[#f0b90b]" : "text-xs text-[#ef4444]"}>
                   {isCorrectNetwork ? `BSC Mainnet (Chain ID: 56)` : `Unsupported network detected (Chain ID: ${chainId ?? "unknown"})`}
                 </span>
               </div>

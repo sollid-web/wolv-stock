@@ -40,8 +40,8 @@ export default function WalletSelector({
       ) : (
         <>
           <header className="mb-7 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1.5 text-xs font-semibold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#f0b90b]/30 bg-[#f0b90b]/[0.08] px-3 py-1.5 text-xs font-semibold text-[#f0b90b]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#f0b90b]" />
               BSC MAINNET · CHAIN 56
             </div>
             <h1 className="mt-5 text-2xl font-bold">Connect your wallet</h1>
