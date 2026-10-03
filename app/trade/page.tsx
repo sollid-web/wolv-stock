@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { getRWATokenList, getRWAPlatforms } from "@/lib/binance";
-import { useMemo, useState } from "react";
 import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
 import GlobalNav from "@/components/GlobalNav";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
+import { isRwaToken, type RwaPlatform, type RwaToken } from "@/lib/rwaTypes";
 
 export const dynamic = "force-dynamic";
 
@@ -16,19 +16,22 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   const [platforms, list] = await Promise.all([
     getRWAPlatforms(),
     getRWATokenList(undefined, tabId ?? undefined)
-      .then((data: any) => ({ data, err: null as string | null }))
-      .catch((e: any) => ({ data: null as any, err: String(e?.message ?? e).slice(0, 160) })),
+      .then((data) => ({ data, err: null as string | null }))
+      .catch((error: unknown) => ({ data: null, err: error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160) })),
   ]);
   const tokens = list.data;
-  const allTokens: any[] = filterSpotEligibleAssets(tokens?.data ?? []);
+  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
+  const allTokens: RwaToken[] = filterSpotEligibleAssets(
+    rawTokens.filter(isRwaToken)
+  );
   const slim = allTokens.map((t) => ({
     tokenContractAddress: t.tokenContractAddress,
-    tokenLogoUrl: t.tokenLogoUrl,
-    underlyingTicker: t.underlyingTicker,
-    underlyingName: t.underlyingName,
-    tokenName: t.tokenName,
-    platformId: t.platformId,
-    tags: Array.isArray(t.tags) ? t.tags : [],
+    tokenLogoUrl: t.tokenLogoUrl ?? undefined,
+    underlyingTicker: t.underlyingTicker ?? "UNKNOWN",
+    underlyingName: t.underlyingName ?? undefined,
+    tokenName: t.tokenName ?? undefined,
+    platformId: t.platformId ?? "unknown",
+    tags: t.tags ?? [],
   }));
 
   return (
@@ -50,10 +53,10 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
       </nav>
 
       <div className="px-4 sm:px-6 py-4 flex gap-3 overflow-x-auto">
-        {platforms?.data?.map((p: any) => (
+        {(Array.isArray(platforms?.data) ? platforms.data as RwaPlatform[] : []).map((p) => (
           <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
-              <img src={p.logoUrl} className="w-5 h-5 rounded-full" alt={p.platformId} />
+              {p.logoUrl && <img src={p.logoUrl} className="w-5 h-5 rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
             <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>

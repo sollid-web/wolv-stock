@@ -69,12 +69,20 @@ export function safeReportUrl(u: unknown): string | null {
 export type ProtectionRow = { key: string; label: string; url: string | null };
 
 // Only entries the API returns with supported === true. url is null when missing/invalid.
-export function buildProtectionRows(profile: any): ProtectionRow[] {
-  const raw = profile?.protections;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+export function buildProtectionRows(profile: unknown): ProtectionRow[] {
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) return [];
+  const protections = (profile as Record<string, unknown>).protections;
+  if (!protections || typeof protections !== "object" || Array.isArray(protections)) return [];
+  const raw = protections as Record<string, unknown>;
   const known = new Map(KNOWN_PROTECTIONS);
   const keys = [...KNOWN_PROTECTIONS.map(([k]) => k), ...Object.keys(raw).filter((k) => !known.has(k))];
   return keys
-    .filter((k) => raw[k] && typeof raw[k] === "object" && raw[k].supported === true)
-    .map((k) => ({ key: k, label: known.get(k) ?? prettyKey(k), url: safeReportUrl(raw[k].url) }));
+    .filter((k) => {
+      const row = raw[k];
+      return !!row && typeof row === "object" && !Array.isArray(row) && (row as Record<string, unknown>).supported === true;
+    })
+    .map((k) => {
+      const row = raw[k] as Record<string, unknown>;
+      return { key: k, label: known.get(k) ?? prettyKey(k), url: safeReportUrl(row.url) };
+    });
 }

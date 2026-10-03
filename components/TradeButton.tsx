@@ -690,7 +690,6 @@ export default function TradeButton({ token }: { token: TokenInfo }) {
   if (process.env.NODE_ENV !== "production") {
     // Dev-only visibility into the gating logic. No signatures or other
     // sensitive wallet data are logged - only booleans/flags.
-    // eslint-disable-next-line no-console
     console.debug("[TradeButton] canExecute inputs", {
       hasAddress: !!address,
       hasProvider: !!provider,

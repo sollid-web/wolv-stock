@@ -19,6 +19,12 @@ interface TxRequest {
   maxPriorityFeePerGas?: bigint | string;
 }
 
+type TypedData = Record<string, unknown>;
+
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
 interface WalletHookValue {
   /** Kept as `provider` for source-compat with existing call sites, which
    *  only ever used it as a truthy "do we have a signer ready" gate. Its
@@ -38,7 +44,7 @@ interface WalletHookValue {
   connect: (wallet?: "injected" | "walletConnect") => Promise<void>;
   disconnect: () => void;
   switchToBscMainnet: () => Promise<void>;
-  signTypedData: (typedData: Record<string, any>) => Promise<string | null>;
+  signTypedData: (typedData: TypedData) => Promise<string | null>;
   signTransaction: (transaction: TxRequest) => Promise<string | null>;
   broadcastTransaction: (signedTransaction: string) => Promise<string | null>;
   waitForTransaction: (hash: string) => Promise<"confirmed" | "failed" | "unverified">;
@@ -185,7 +191,7 @@ export function useWallet(): WalletHookValue {
       // Fall through to direct wallet provider fallback below.
     }
 
-    const ethereum = (window as any)?.ethereum;
+    const ethereum = (window as unknown as { ethereum?: EthereumProvider }).ethereum;
     if (ethereum?.request) {
       try {
         await ethereum.request({
@@ -193,8 +199,9 @@ export function useWallet(): WalletHookValue {
           params: [{ chainId: "0x38" }],
         });
         return;
-      } catch (error: any) {
-        if (error?.code !== 4902) {
+      } catch (error: unknown) {
+        const code = error && typeof error === "object" ? (error as Record<string, unknown>).code : undefined;
+        if (code !== 4902) {
           throw error;
         }
 
@@ -217,25 +224,26 @@ export function useWallet(): WalletHookValue {
   }, [switchChainAsync]);
 
   const signTypedData = useCallback(
-    async (typedData: Record<string, any>): Promise<string | null> => {
+    async (typedData: TypedData): Promise<string | null> => {
       if (!address) return null;
       try {
         // EIP-712 typed data needs an explicit primaryType for viem/wagmi's
         // signTypedData, whereas ethers' signer.signTypedData() inferred it.
         // Use it if the API already included one, else derive it as the
         // single non-EIP712Domain key of `types`.
-        const primaryType: string =
-          typedData.primaryType ??
-          Object.keys(typedData.types ?? {}).find(
+        const primaryType =
+          (typeof typedData.primaryType === "string" ? typedData.primaryType : undefined) ??
+          Object.keys(typeof typedData.types === "object" && typedData.types !== null ? typedData.types : {}).find(
             (key) => key !== "EIP712Domain"
           );
+        if (!primaryType) throw new Error("Typed data is missing its primary type");
 
         return await signTypedDataAsync({
           domain: typedData.domain,
           types: typedData.types,
-          primaryType: primaryType as any,
+          primaryType,
           message: typedData.message,
-        });
+        } as Parameters<typeof signTypedDataAsync>[0]);
       } catch (err) {
         console.error("Failed to sign typed data:", err);
         return null;

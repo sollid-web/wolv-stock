@@ -1,18 +1,19 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { getRWATokenList } from "@/lib/binance";
 import TradeButton from "@/components/TradeButton";
 import GlobalNav from "@/components/GlobalNav";
 import BackButton from "@/components/BackButton";
 import SmartRouterStatus from "@/components/SmartRouterStatus";
 import { isSpotEligibleAsset } from "@/lib/compliance";
+import { isRwaToken } from "@/lib/rwaTypes";
 
 export const dynamic = "force-dynamic";
 
 export default async function TradePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
-  const token = tokens?.data?.find((t: any) =>
+  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
+  const token = rawTokens.filter(isRwaToken).find((t) =>
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
   );
 
@@ -42,7 +43,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
           <img
             src={token.tokenLogoUrl}
             className="w-8 h-8 rounded-full"
-            alt={token.underlyingTicker}
+            alt={token.underlyingTicker ?? "Asset"}
           />
         )}
         <div className="min-w-0">
