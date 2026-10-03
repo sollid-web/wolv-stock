@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { isValidUsdtAmount, usdtAmountToWei } from "@/lib/apiValidation";
+import { isValidUsdtAmount, meetsMinimumOrderAmount, MINIMUM_ORDER_USDT, usdtAmountToWei } from "@/lib/apiValidation";
 import { useWallet, type WalletHookValue } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
@@ -229,6 +229,11 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       return;
     }
 
+    if (!meetsMinimumOrderAmount(usdtAmount)) {
+      setQuoteError(`The minimum order is ${MINIMUM_ORDER_USDT} USDT (approximately $${MINIMUM_ORDER_USDT}).`);
+      return;
+    }
+
     setIsLoading(true);
     setQuoteError(null);
     setQuoteData(null);
@@ -274,19 +279,20 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       }
 
       const quoteFetchedAt = typeof quoteResult?.quoteFetchedAt === "number" ? quoteResult.quoteFetchedAt : 0;
-      setQuoteData({ ...quoteResult, quoteId: rawQuoteId, quoteFetchedAt } as QuoteData);
+      const nextQuoteData = { ...quoteResult, quoteId: rawQuoteId, quoteFetchedAt } as QuoteData;
+      setQuoteData(nextQuoteData);
       setQuoteNow(quoteFetchedAt);
       quoteIdRef.current = rawQuoteId;
 
       const executionMode = quoteResult?.executionMode ?? quoteResult?.data?.executionMode;
       if (executionMode === "SWAP") {
-        if (await checkApproval(amountInWei)) return;
+        if (await checkApproval(amountInWei, undefined, nextQuoteData)) return;
       } else if (executionMode === "RFQ") {
         const vendorName = quoteResult?.vendorName ?? quoteResult?.data?.vendorName;
         if (typeof vendorName !== "string" || !vendorName) {
           throw new Error("RFQ quote is missing the vendor name required for approval");
         }
-        if (await checkApproval(amountInWei, vendorName)) return;
+        if (await checkApproval(amountInWei, vendorName, nextQuoteData)) return;
       } else {
         throw new Error("Quote returned an unsupported execution mode");
       }
@@ -380,7 +386,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   };
 
   // Check if approval is needed and get approval transaction data
-  const checkApproval = async (amount?: string, vendor?: string): Promise<boolean> => {
+  const checkApproval = async (amount?: string, vendor?: string, quote?: QuoteData): Promise<boolean> => {
     if (!isConnected || !provider || !token.address || !usdtAmount) {
       setApprovalError("Connect a wallet and enter a USDT amount before checking approval");
       return true;
@@ -391,6 +397,10 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     setApprovalData(null);
 
     try {
+      const activeQuote = quote ?? quoteData;
+      if (!activeQuote?.quoteId || !activeQuote.quoteBinding) {
+        throw new Error("Get a fresh quote before checking approval");
+      }
       // Convert USDT amount to wei (18 decimals)
       const amountInWei = amount ?? usdtAmountToWei(usdtAmount);
       const params = new URLSearchParams({
@@ -398,8 +408,8 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         toToken: token.address,
         approveAmount: amountInWei,
         userWalletAddress: address ?? "",
-        quoteId: quoteData?.quoteId ?? "",
-        quoteBinding: quoteData?.quoteBinding ?? "",
+        quoteId: activeQuote.quoteId,
+        quoteBinding: activeQuote.quoteBinding,
       });
       if (vendor) params.set("vendor", vendor);
 
@@ -957,20 +967,25 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           />
           <button
             onClick={fetchQuote}
-            disabled={isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || executionPending}
+            disabled={isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || !meetsMinimumOrderAmount(usdtAmount) || executionPending}
             style={{
-              backgroundColor: isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || executionPending ? "#374151" : "#3b82f6",
+              backgroundColor: isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || !meetsMinimumOrderAmount(usdtAmount) || executionPending ? "#374151" : "#3b82f6",
               color: "white",
               border: "none",
               borderRadius: "0.25rem",
               padding: "0.5rem 1rem",
               fontSize: "0.875rem",
-              cursor: (isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || executionPending) ? "not-allowed" : "pointer"
+              cursor: (isLoading || !isConnected || !isValidUsdtAmount(usdtAmount) || !meetsMinimumOrderAmount(usdtAmount) || executionPending) ? "not-allowed" : "pointer"
             }}
           >
             {isLoading ? "Fetching..." : "Get Quote"}
           </button>
         </div>
+        {isValidUsdtAmount(usdtAmount) && !meetsMinimumOrderAmount(usdtAmount) && (
+          <div role="status" style={{ color: "#fbbf24", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+            Minimum order: {MINIMUM_ORDER_USDT} USDT (approximately ${MINIMUM_ORDER_USDT}).
+          </div>
+        )}
         {quoteError && (
           <div style={{
             backgroundColor: "#7f1d1d",

@@ -4,6 +4,8 @@ const UINT256_MAX = BigInt(2) ** BigInt(256) - BigInt(1);
 
 export const BSC_USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
 export const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+export const MINIMUM_ORDER_USDT = "5";
+export const MINIMUM_ORDER_WEI = parseUnits(MINIMUM_ORDER_USDT, 18);
 
 export function isPositiveUint256(value: string): boolean {
   const normalized = normalizeUint256(value);
@@ -31,6 +33,14 @@ export function isValidUsdtAmount(value: string): boolean {
   try {
     usdtAmountToWei(value);
     return true;
+  } catch {
+    return false;
+  }
+}
+
+export function meetsMinimumOrderAmount(value: string): boolean {
+  try {
+    return BigInt(usdtAmountToWei(value)) >= MINIMUM_ORDER_WEI;
   } catch {
     return false;
   }

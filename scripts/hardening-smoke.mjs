@@ -24,6 +24,8 @@ assert.match(home.text, /WOLV Spot Lens/);
 assert.doesNotMatch(home.text, /WOLV Stock Terminal/);
 
 await expectStatus("quote missing parameters", "/api/quote", 400);
+const minimumQuoteError = await expectStatus("quote below minimum", "/api/quote?toToken=0x0000000000000000000000000000000000000001&amount=2000000000000000000&userWalletAddress=0x1111111111111111111111111111111111111111", 400);
+assert.match(minimumQuoteError, /minimum order amount is 5 USDT/i);
 await expectStatus("swap missing quote binding", "/api/swap?toToken=0x0000000000000000000000000000000000000001&amount=1&userWalletAddress=0x1111111111111111111111111111111111111111&quoteId=test", 400);
 await expectStatus("approval missing quote binding", "/api/approve-transaction?tokenContractAddress=0x55d398326f99059ff775485246999027B3197955&toToken=0x0000000000000000000000000000000000000001&approveAmount=1&userWalletAddress=0x1111111111111111111111111111111111111111", 400);
 await expectStatus("portfolio invalid address", "/api/wallet/portfolio?address=invalid", 400);
