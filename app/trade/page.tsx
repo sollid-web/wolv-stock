@@ -36,18 +36,18 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-0">
+      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
-          <span className="font-bold text-lg tracking-wide">WOLV Stock Terminal</span>
+          <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Stock Terminal</span>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/" className="text-[#64748b] hover:text-white">
-            ← Home
+            <Link href="/" className="text-xs text-[#64748b] hover:text-white sm:text-sm">
+            ← <span className="hidden sm:inline">Home</span>
           </Link>
           <span className="text-xs text-[#64748b]">/</span>
-          <Link href="/trade" className="font-bold text-[#f0b90b]">
+            <Link href="/trade" className="text-xs font-bold text-[#f0b90b] sm:text-sm">
             Trade
           </Link>
         </div>

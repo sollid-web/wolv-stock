@@ -124,7 +124,7 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
     .sort((a, b) => Math.abs(numberValue(b.tokenToShareRatio) - 1) - Math.abs(numberValue(a.tokenToShareRatio) - 1));
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-10 text-white">
+    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-10">
       <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6">
         <Link href="/" className="text-xl text-[#64748b]">←</Link>
         <div>

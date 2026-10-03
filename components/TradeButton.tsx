@@ -86,12 +86,42 @@ function displayOrderStatus(status: string): string {
   }
 }
 
+function humanTransactionStatus(status: string): string {
+  switch (status.toLowerCase()) {
+    case "pending": return "Waiting for confirmation";
+    case "confirmed": return "Confirmed";
+    case "failed": return "Failed";
+    case "unverified": return "Needs verification";
+    default: return status;
+  }
+}
+
 function isFreshQuote(quote: QuoteData | null, now: number): boolean {
   return !!quote?.quoteFetchedAt && now - quote.quoteFetchedAt < QUOTE_TTL_MS;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  const message = error instanceof Error && error.message ? error.message : fallback;
+  if (/unknown rpc|failed to publish payload|user rejected|user denied/i.test(message)) {
+    return "Your wallet could not approve this request. Check that it is connected to BSC Mainnet, then try again.";
+  }
+  if (/timeout|temporarily unavailable|network request failed|fetch failed/i.test(message)) {
+    return "The service is taking too long to respond. No transaction was sent; please try again.";
+  }
+  return message;
+}
+
+function displayTokenAmount(value: string | undefined): string {
+  if (!value) return "—";
+  try {
+    const raw = BigInt(value);
+    const scale = BigInt("1000000000000000000");
+    const whole = raw / scale;
+    const fraction = (raw % scale).toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
+    return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
+  } catch {
+    return value;
+  }
 }
 
 async function simulateTransaction(from: string, to: string, data: string, value = "0"): Promise<SimulationResult> {
@@ -113,17 +143,23 @@ async function simulateTransaction(from: string, to: string, data: string, value
 function SimulationSummary({ title, result }: { title: string; result: SimulationResult }) {
   return (
     <div role="status" style={{ backgroundColor: "#064e3b", color: "#dcfce7", borderRadius: "0.25rem", padding: "0.5rem", margin: "0.5rem 0", fontSize: "0.75rem" }}>
-      <div>{title}: {result.status}</div>
-      {result.balanceChanges.map((change, index) => (
-        <div key={`${change.owner ?? "owner"}-${change.contractAddress ?? "native"}-${index}`} style={{ wordBreak: "break-all" }}>
-          Balance change: {change.change ?? "unknown"} raw units · {change.contractAddress || "native asset"}
+      <div className="font-medium">{title}: {result.status}</div>
+      <div style={{ marginTop: "0.25rem" }}>Preflight passed. No transaction has been sent yet.</div>
+      <details style={{ marginTop: "0.35rem", color: "#a7f3d0" }}>
+        <summary style={{ cursor: "pointer" }}>Technical details</summary>
+        <div style={{ marginTop: "0.35rem" }}>
+          {result.balanceChanges.map((change, index) => (
+            <div key={`${change.owner ?? "owner"}-${change.contractAddress ?? "native"}-${index}`} style={{ wordBreak: "break-all" }}>
+              Balance change: {change.change ?? "unknown"} raw units · {change.contractAddress || "native asset"}
+            </div>
+          ))}
+          {result.allowanceChanges.map((change, index) => (
+            <div key={`${change.owner ?? "owner"}-${change.spender ?? "spender"}-${index}`} style={{ wordBreak: "break-all" }}>
+              Allowance: {change.preAmount ?? "?"} → {change.postAmount ?? "?"} raw units · {change.tokenAddress || "token"} · spender {change.spender || "unknown"}
+            </div>
+          ))}
         </div>
-      ))}
-      {result.allowanceChanges.map((change, index) => (
-        <div key={`${change.owner ?? "owner"}-${change.spender ?? "spender"}-${index}`} style={{ wordBreak: "break-all" }}>
-          Allowance: {change.preAmount ?? "?"} → {change.postAmount ?? "?"} raw units · {change.tokenAddress || "token"} · spender {change.spender || "unknown"}
-        </div>
-      ))}
+      </details>
     </div>
   );
 }
@@ -146,6 +182,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     error,
     walletConnectAvailable,
     connect,
+    disconnect,
     switchToBscMainnet,
     signTypedData,
     signTransaction,
@@ -167,6 +204,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -317,6 +355,12 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   const handleSign = async () => {
     if (!typedDataToSign || !provider) return;
 
+    if (!quoteData || !isFreshQuote(quoteData, quoteNow)) {
+      setRequiresFreshQuote(true);
+      setSubmitError("This price has expired. Get a fresh quote before signing.");
+      return;
+    }
+
     if (chainId !== 56) {
       setSubmitError("Switch to BNB Smart Chain before signing");
       return;
@@ -425,6 +469,12 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   // Sign and submit approval transaction
   const handleApprove = async () => {
     if (!approvalData || !provider) return;
+
+    if (!quoteData || !isFreshQuote(quoteData, quoteNow)) {
+      setRequiresFreshQuote(true);
+      setApprovalError("This quote has expired. Get a fresh quote before approving anything.");
+      return;
+    }
 
     if (!address || chainId !== 56) {
       setApprovalError("Reconnect on BNB Smart Chain before approving");
@@ -665,6 +715,45 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     pollIntervalRef.current = interval;
   };
 
+  // A manual recovery check is read-only: it never signs, broadcasts, or
+  // resubmits an order. This gives the user a safe path after a timeout.
+  const handleRefreshStatus = async () => {
+    if (!transactionStatus?.transactionHash && !transactionStatus?.orderId) return;
+
+    setIsRefreshingStatus(true);
+    setSubmitError(null);
+    try {
+      if (transactionStatus.orderId) {
+        const response = await fetch(`/api/order/${encodeURIComponent(transactionStatus.orderId)}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || result.error) throw new Error(result.error || "Order status lookup failed");
+        const order = result?.data;
+        if (!order || typeof order.status !== "string") throw new Error("Order status response is missing its status");
+        const status = order.status.toUpperCase();
+        setTransactionStatus((current) => {
+          if (!current || current.orderId !== transactionStatus.orderId) return current;
+          return {
+            ...current,
+            status: ["FILLED", "FAILED"].includes(status) ? displayOrderStatus(status) : "unverified",
+            transactionHash: order.txHash ?? current.transactionHash,
+          };
+        });
+      } else if (transactionStatus.transactionHash) {
+        const response = await fetch(`/api/transaction-status?txHash=${encodeURIComponent(transactionStatus.transactionHash)}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || result.error) throw new Error(result.error || "Transaction status lookup failed");
+        const status = result.status === "success" ? "confirmed" : result.status === "reverted" ? "failed" : "unverified";
+        setTransactionStatus((current) => current?.transactionHash === transactionStatus.transactionHash
+          ? { ...current, status }
+          : current);
+      }
+    } catch (error: unknown) {
+      setSubmitError(errorMessage(error, "Status lookup is temporarily unavailable"));
+    } finally {
+      setIsRefreshingStatus(false);
+    }
+  };
+
   // Clean up poll interval on unmount
   useEffect(() => {
     return () => {
@@ -807,11 +896,29 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         onSwitch={handleNetworkSwitch}
         onClose={() => undefined}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <h3 style={{ margin: 0, fontSize: "1.125rem" }}>Trade {token.symbol}</h3>
-        <span style={{ fontSize: "0.875rem", color: isConnected ? "#10b981" : "#ef4444" }}>
-          {isConnected ? "Connected" : "Disconnected"}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.875rem", color: isConnected ? "#10b981" : "#ef4444" }}>
+            {isConnected ? "Connected" : "Disconnected"}
+          </span>
+          <button
+            type="button"
+            onClick={disconnect}
+            aria-label="Disconnect wallet"
+            style={{
+              background: "transparent",
+              border: "1px solid #4b5563",
+              borderRadius: "0.35rem",
+              color: "#cbd5e1",
+              padding: "0.35rem 0.5rem",
+              fontSize: "0.7rem",
+              cursor: "pointer",
+            }}
+          >
+            Disconnect
+          </button>
+        </div>
       </div>
 
       <div style={{ fontSize: "0.875rem", color: "#9ca3af", marginBottom: "0.5rem" }}>
@@ -879,12 +986,9 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       {/* Quote Details */}
       {quoteData && (
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginBottom: "0.5rem" }}>
-          <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Quote Details</div>
-          <div style={{ fontSize: "0.875rem", fontFamily: "monospace", marginBottom: "0.25rem" }}>
-            Quote ID: {quoteData.quoteId}
-          </div>
+          <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Your trade quote</div>
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-            {quoteData.fromTokenAmount} USDT → {quoteData.toTokenAmount} {token.symbol}
+            {displayTokenAmount(quoteData.fromTokenAmount)} USDT → approximately {displayTokenAmount(quoteData.toTokenAmount)} {token.symbol}
           </div>
           {quoteData.priceImpactPercent !== undefined && (
             <div style={{ fontSize: "0.75rem", color: "#fbbf24", marginTop: "0.25rem" }}>
@@ -892,38 +996,36 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
             </div>
           )}
           {quoteAgeSeconds !== null && (
-            <div style={{ fontSize: "0.75rem", color: quoteIsFresh ? "#9ca3af" : "#fbbf24", marginTop: "0.25rem" }}>
-              Quote age: {quoteAgeSeconds}s {quoteIsFresh ? "· fresh" : "· stale — refresh before signing"}
+            <div role="status" style={{ fontSize: "0.75rem", color: quoteIsFresh ? "#9ca3af" : "#fbbf24", marginTop: "0.25rem" }}>
+              {quoteIsFresh ? `Price locked for about ${Math.max(0, Math.ceil((QUOTE_TTL_MS - quoteAgeSeconds * 1000) / 1000))} more seconds.` : "This price has expired. Get a fresh quote before continuing."}
+              {!quoteIsFresh && (
+                <button type="button" onClick={fetchQuote} disabled={isLoading} style={{ display: "block", marginTop: "0.5rem", backgroundColor: "#f0b90b", color: "#111827", border: "none", borderRadius: "0.25rem", padding: "0.5rem 0.75rem", fontWeight: 700, cursor: isLoading ? "not-allowed" : "pointer" }}>
+                  {isLoading ? "Getting fresh price…" : "Get fresh quote"}
+                </button>
+              )}
             </div>
           )}
-          {swapData && swapData.executionMode && (
-            <div style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>
-              Execution Mode: {swapData.executionMode}
-            </div>
-          )}
-          {swapData?.executionMode === "SWAP" && swapData.tx?.to && (
-            <div style={{ fontSize: "0.75rem", marginTop: "0.25rem", wordBreak: "break-all" }}>
-              Transaction destination: {swapData.tx.to}
-            </div>
+          {swapData?.executionMode && (
+            <details style={{ fontSize: "0.7rem", marginTop: "0.35rem", color: "#94a3b8" }}>
+              <summary style={{ cursor: "pointer" }}>Show route details</summary>
+              <div style={{ marginTop: "0.25rem" }}>Execution route: {swapData.executionMode}</div>
+              {swapData.executionMode === "SWAP" && swapData.tx?.to && <div style={{ wordBreak: "break-all" }}>Transaction destination: {swapData.tx.to}</div>}
+              {swapData.rfq?.vendor && <div>Liquidity provider: {swapData.rfq.vendor}</div>}
+            </details>
           )}
           {swapSimulation && <SimulationSummary title="Binance transaction preflight" result={swapSimulation} />}
-          {swapData && swapData.rfq && swapData.rfq.vendor && (
-            <div style={{ fontSize: "0.75rem", marginTop: "0.125rem" }}>
-              Vendor: {swapData.rfq.vendor}
-            </div>
-          )}
         </div>
       )}
 
       {/* Approval Section (if needed) */}
-      {approvalData && !isApproving && (
+      {approvalData && quoteIsFresh && !isApproving && (
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginBottom: "0.5rem" }}>
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Approval Required</div>
           <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginBottom: "0.5rem" }}>
-            To trade {token.symbol}, you need to approve the USDT token for spending by the trading contract.
+            To buy {token.symbol}, your wallet needs permission to use up to {usdtAmount} USDT. You stay in control and must approve this in your wallet.
           </p>
-          <p style={{ fontSize: "0.75rem", color: "#fbbf24", marginBottom: "0.5rem", wordBreak: "break-all" }}>
-            Spender: {approvalData.spender} · Allowance: {usdtAmount} USDT
+          <p style={{ fontSize: "0.75rem", color: "#fbbf24", marginBottom: "0.5rem" }}>
+            Approval limit: {usdtAmount} USDT
           </p>
           {approvalSimulation && <SimulationSummary title="Approval preflight" result={approvalSimulation} />}
           <button
@@ -979,22 +1081,26 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       {typedDataToSign && !approvalData && (
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginBottom: "0.5rem" }}>
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>EIP-712 Typed Data to Sign</div>
-          <div style={{ fontSize: "0.75rem", color: "#d1d5db", fontFamily: "monospace", overflowX: "auto", maxHeight: "150px" }}>
-            <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+          <p style={{ fontSize: "0.75rem", color: "#9ca3af", margin: "0.35rem 0 0.5rem" }}>
+            Your wallet will show the exact order details before you approve the signature. This does not send funds by itself.
+          </p>
+          <details style={{ fontSize: "0.7rem", color: "#94a3b8", marginBottom: "0.5rem" }}>
+            <summary style={{ cursor: "pointer" }}>Show technical signing data</summary>
+            <pre style={{ margin: "0.35rem 0 0", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "150px", overflowY: "auto" }}>
               {JSON.stringify(typedDataToSign, null, 2)}
             </pre>
-          </div>
+          </details>
           <button
             onClick={handleSign}
-            disabled={isLoading || !!userSignature}
+            disabled={isLoading || !!userSignature || !quoteIsFresh}
             style={{
-              backgroundColor: !userSignature ? "#3b82f6" : "#374151",
+              backgroundColor: !userSignature && quoteIsFresh ? "#3b82f6" : "#374151",
               color: "white",
               border: "none",
               borderRadius: "0.25rem",
               padding: "0.5rem 1rem",
               fontSize: "0.875rem",
-              cursor: !userSignature ? "pointer" : "not-allowed"
+              cursor: !userSignature && quoteIsFresh ? "pointer" : "not-allowed"
             }}
           >
             {!userSignature ? "Sign Typed Data" : "Signature Obtained"}
@@ -1087,12 +1193,13 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
             </div>
           )}
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-              Status: {transactionStatus?.status ?? executionPhase}
+              Status: {humanTransactionStatus(transactionStatus?.status ?? executionPhase)}
           </div>
           {transactionStatus?.orderId && (
-            <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-              Order ID: {transactionStatus.orderId}
-            </div>
+            <details style={{ fontSize: "0.7rem", color: "#94a3b8", marginBottom: "0.25rem" }}>
+              <summary style={{ cursor: "pointer" }}>Show order reference</summary>
+              <div style={{ marginTop: "0.25rem", wordBreak: "break-all" }}>{transactionStatus.orderId}</div>
+            </details>
           )}
           {transactionStatus?.transactionHash && (
             <div style={{
@@ -1150,7 +1257,26 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
               fontSize: "0.75rem",
               marginTop: "0.5rem"
             }}>
-              Confirmation could not be verified yet. Check BscScan before retrying.
+              Confirmation could not be verified yet. Check BscScan before retrying. You can safely refresh status below; this will not sign or rebroadcast the trade.
+              <button
+                type="button"
+                onClick={handleRefreshStatus}
+                disabled={isRefreshingStatus}
+                style={{
+                  display: "block",
+                  marginTop: "0.5rem",
+                  backgroundColor: isRefreshingStatus ? "#92400e" : "#f59e0b",
+                  color: "#1c1917",
+                  border: "none",
+                  borderRadius: "0.25rem",
+                  padding: "0.4rem 0.65rem",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  cursor: isRefreshingStatus ? "not-allowed" : "pointer"
+                }}
+              >
+                {isRefreshingStatus ? "Refreshing status…" : "Refresh status"}
+              </button>
             </div>
           )}
         </div>

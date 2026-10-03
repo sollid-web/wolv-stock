@@ -93,15 +93,15 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   ];
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white pb-10">
+    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-10">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
   {token.tokenLogoUrl && <Image src={token.tokenLogoUrl} width={32} height={32} className="rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
         <div className="min-w-0">
-          <div className="font-black text-lg">{token.underlyingTicker}</div>
+          <div className="font-black text-base sm:text-lg">{token.underlyingTicker}</div>
           <div className="text-xs text-[#64748b] truncate">{token.underlyingName || token.tokenName?.replace(/\s*\(.*?\)\s*/g, "")}</div>
         </div>
-        <span className={`ml-auto text-xs font-bold px-2 py-1 rounded-full border ${
+        <span className={`ml-auto shrink-0 text-[10px] font-bold px-2 py-1 rounded-full border sm:text-xs ${
           isOpen ? "bg-green-900/30 text-green-400 border-green-800" : "bg-yellow-900/20 text-yellow-400 border-yellow-800"
         }`}>
           {String(status).toUpperCase()}
