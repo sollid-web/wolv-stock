@@ -73,7 +73,7 @@ const QUOTE_TTL_MS = 30_000;
 const ORDER_POLL_INTERVAL_MS = 5_000;
 const MAX_ORDER_POLLS = 12;
 
-type ExecutionPhase = "idle" | "signing" | "broadcasting" | "confirming" | "submitting";
+type ExecutionPhase = "idle" | "signing" | "confirming" | "submitting";
 
 function displayOrderStatus(status: string): string {
   switch (status.toUpperCase()) {
@@ -185,8 +185,8 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     disconnect,
     switchToBscMainnet,
     signTypedData,
-    signTransaction,
-    broadcastTransaction,
+    sendTransaction,
+    getTransactionStatus,
     waitForTransaction,
   } = wallet;
 
@@ -507,10 +507,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
 
       setApprovalSimulation(await simulateTransaction(address, transactionRequest.to, transactionRequest.data));
 
-      const signedTransaction = await signTransaction(transactionRequest);
-      if (!signedTransaction) throw new Error("Wallet did not sign the approval transaction");
-      const transactionHash = await broadcastTransaction(signedTransaction);
-      if (!transactionHash) throw new Error("Binance did not return a transaction hash for the approval");
+      const transactionHash = await sendTransaction(transactionRequest);
       const approvalStatus = await waitForTransaction(transactionHash);
 
       if (approvalStatus === "confirmed") {
@@ -567,7 +564,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       try {
         setSwapSimulation(await simulateTransaction(address, tx.to, tx.data, tx.value ?? "0"));
         setExecutionPhase("signing");
-        const signedTransaction = await signTransaction({
+        const transactionHash = await sendTransaction({
           to: tx.to,
           data: tx.data,
           value: tx.value,
@@ -575,10 +572,6 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           gasPrice: tx.gasPrice,
           maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
         });
-        if (!signedTransaction) throw new Error("Wallet did not sign the swap transaction");
-        setExecutionPhase("broadcasting");
-        const transactionHash = await broadcastTransaction(signedTransaction);
-        if (!transactionHash) throw new Error("Binance did not return a transaction hash for the swap");
 
         setTransactionStatus({
           status: "pending",
@@ -751,10 +744,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           };
         });
       } else if (transactionStatus.transactionHash) {
-        const response = await fetch(`/api/transaction-status?txHash=${encodeURIComponent(transactionStatus.transactionHash)}`, { cache: "no-store" });
-        const result = await response.json();
-        if (!response.ok || result.error) throw new Error(result.error || "Transaction status lookup failed");
-        const status = result.status === "success" ? "confirmed" : result.status === "reverted" ? "failed" : "unverified";
+        const status = await getTransactionStatus(transactionStatus.transactionHash);
         setTransactionStatus((current) => current?.transactionHash === transactionStatus.transactionHash
           ? { ...current, status }
           : current);
@@ -1203,10 +1193,9 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Transaction Status</div>
           {executionPhase !== "idle" && (
             <div role="status" style={{ fontSize: "0.875rem", color: "#f0b90b", marginBottom: "0.25rem" }}>
-              {executionPhase === "signing" && "Waiting for wallet signature..."}
-              {executionPhase === "broadcasting" && "Broadcasting signed transaction through Binance..."}
+              {executionPhase === "signing" && "Waiting for wallet confirmation..."}
               {executionPhase === "submitting" && "Submitting signed RFQ order..."}
-              {executionPhase === "confirming" && "Waiting for Binance/on-chain confirmation..."}
+              {executionPhase === "confirming" && "Waiting for transaction/order confirmation..."}
             </div>
           )}
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>

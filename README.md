@@ -9,8 +9,9 @@ The project currently lists Ondo and bStocks assets. It does not execute perps, 
 
 - **RWA Data API:** token/platform lists, sector filtering, token metadata, issuer profile, and reference-price fields.
 - **Trading API:** aggregator quotes, transaction details, approval transaction data, and order submission/status where returned by the API.
-- **Transaction API:** Binance-signed BSC transaction simulation before wallet approval/swap prompts; the UI uses simulation allowance changes to check USDT authorization and shows predicted balance changes. The connected wallet signs transactions locally, then Binance broadcasts them.
-- **Wallet API:** Binance transaction-detail queries for BSC approval and swap status.
+- **Transaction API:** Binance-signed BSC transaction simulation before wallet approval/swap prompts; the UI uses simulation allowance changes to check USDT authorization and shows predicted balance changes.
+- **Wallet execution:** Approval and SWAP transactions are submitted through the connected wallet's standard transaction-confirmation flow. The wallet signs and broadcasts them to BSC; WOLV checks receipts through its BSC RPC client.
+- **Wallet API:** Binance transaction-detail queries remain available for Binance-backed transaction and RFQ order status.
 - **Not yet integrated:** portfolio API, Agentic Wallet/Wallet Skills, and BNB Agent Studio.
 
 Trade-related API requests use uncached fetches. Binance credentials are read only by server-side code. Never put `BINANCE_API_KEY` or `BINANCE_SECRET_KEY` in a `NEXT_PUBLIC_` variable or commit them.

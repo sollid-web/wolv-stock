@@ -1,6 +1,7 @@
 "use client";
 
-import { useAppKit } from "@reown/appkit/react";
+import { useRef, useState } from "react";
+import { useAppKit, useAppKitState } from "@reown/appkit/react";
 
 interface WalletSelectorProps {
   isConnecting: boolean;
@@ -11,16 +12,37 @@ interface WalletSelectorProps {
 
 function AppKitConnectButton() {
   const { open } = useAppKit();
+  const { open: modalOpen, connectingWallet } = useAppKitState();
+  const [isOpening, setIsOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const openInFlight = useRef(false);
+
+  const handleOpen = async () => {
+    if (openInFlight.current || modalOpen || connectingWallet) return;
+    openInFlight.current = true;
+    setIsOpening(true);
+    setOpenError(null);
+    try {
+      await open({ view: "Connect", namespace: "eip155" });
+    } catch {
+      setOpenError("Could not open the wallet selector. Close any pending wallet prompt and retry.");
+    } finally {
+      openInFlight.current = false;
+      setIsOpening(false);
+    }
+  };
 
   return (
     <button
       type="button"
-      onClick={() => void open({ view: "Connect", namespace: "eip155" })}
-      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#f0b90b] px-5 text-sm font-bold text-black transition-colors hover:bg-[#ffd44d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+      onClick={() => void handleOpen()}
+      disabled={isOpening || modalOpen || Boolean(connectingWallet)}
+      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#f0b90b] px-5 text-sm font-bold text-black transition-colors hover:bg-[#ffd44d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
     >
-      Connect wallet
+      {isOpening || modalOpen || connectingWallet ? "Wallet connection pending..." : "Connect wallet"}
       <span aria-hidden="true">→</span>
     </button>
+    {openError && <p role="alert" className="mt-3 text-sm text-rose-400">{openError}</p>}
   );
 }
 

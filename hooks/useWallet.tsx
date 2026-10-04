@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   useAccount,
   useConnect,
   useDisconnect,
+  usePublicClient,
   useSignTypedData,
   useSwitchChain,
   useWalletClient,
 } from "wagmi";
+import { TransactionReceiptNotFoundError, type Hash } from "viem";
 
 interface TxRequest {
   to: string;
@@ -45,8 +47,8 @@ export interface WalletHookValue {
   disconnect: () => void;
   switchToBscMainnet: () => Promise<void>;
   signTypedData: (typedData: TypedData) => Promise<string | null>;
-  signTransaction: (transaction: TxRequest) => Promise<string | null>;
-  broadcastTransaction: (signedTransaction: string) => Promise<string | null>;
+  sendTransaction: (transaction: TxRequest) => Promise<Hash>;
+  getTransactionStatus: (hash: string) => Promise<"confirmed" | "failed" | "pending" | "unverified">;
   waitForTransaction: (hash: string) => Promise<"confirmed" | "failed" | "unverified">;
 }
 
@@ -83,6 +85,9 @@ function getConnectionErrorMessage(error: unknown): string | null {
   if (!error) return null;
 
   const message = readConnectionError(error);
+  if (/previous request is still active|request (?:is )?already pending|connection request.*pending|already processing a request/.test(message)) {
+    return "Your wallet already has a connection request open. Finish or dismiss that request in the wallet, then retry once.";
+  }
   if (/user rejected|user denied|request rejected|user cancelled|user canceled|code.?4001/.test(message)) {
     return "Connection request was declined. Reopen your wallet and approve the connection.";
   }
@@ -116,7 +121,7 @@ function getWalletTransactionError(error: unknown): string {
   }
 
   const distinctMessages = Array.from(new Set(messages));
-  return (distinctMessages.join("; ") || "Wallet could not broadcast the transaction").slice(0, 500);
+  return (distinctMessages.join("; ") || "Wallet transaction request failed").slice(0, 500);
 }
 
 /**
@@ -147,8 +152,10 @@ export function useWallet(): WalletHookValue {
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient({ chainId: 56 });
   const { signTypedDataAsync } = useSignTypedData();
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const connectInFlight = useRef(false);
 
   // Prefer an already-injected wallet (MetaMask, Trust Wallet, etc.);
   // otherwise fall back to WalletConnect. Mirrors the old lib/wallet.ts
@@ -156,27 +163,31 @@ export function useWallet(): WalletHookValue {
   // enforcement (chainId: 56 below), and QR-modal flow are all handled by
   // wagmi's connectors, not by hand-rolled window.ethereum calls.
   const connect = useCallback(async (wallet?: "injected" | "walletConnect") => {
+    if (connectInFlight.current) return;
+    connectInFlight.current = true;
     setConnectionError(null);
-    const injectedConnector = connectors.find((c) => c.type === "injected");
-    const walletConnectConnector = connectors.find(
-      (c) => c.type === "walletConnect"
-    );
-    const target = wallet === "walletConnect"
-      ? walletConnectConnector
-      : wallet === "injected"
-        ? injectedConnector
-        : injectedConnector ?? walletConnectConnector ?? connectors[0];
-    if (!target) {
-      setConnectionError(wallet === "walletConnect"
-        ? "WalletConnect is not configured for this deployment. Use the Browser wallet option inside your wallet app."
-        : "No browser-wallet provider was found. Open this page in your wallet app's built-in browser, or choose WalletConnect.");
-      return;
-    }
     try {
+      const injectedConnector = connectors.find((c) => c.type === "injected");
+      const walletConnectConnector = connectors.find(
+        (c) => c.type === "walletConnect"
+      );
+      const target = wallet === "walletConnect"
+        ? walletConnectConnector
+        : wallet === "injected"
+          ? injectedConnector
+          : injectedConnector ?? walletConnectConnector ?? connectors[0];
+      if (!target) {
+        setConnectionError(wallet === "walletConnect"
+          ? "WalletConnect is not configured for this deployment. Use the Browser wallet option inside your wallet app."
+          : "No browser-wallet provider was found. Open this page in your wallet app's built-in browser, or choose WalletConnect.");
+        return;
+      }
       await connectAsync({ connector: target, chainId: 56 });
       setConnectionError(null);
     } catch (err) {
       setConnectionError(getConnectionErrorMessage(err));
+    } finally {
+      connectInFlight.current = false;
     }
   }, [connectors, connectAsync]);
 
@@ -256,10 +267,10 @@ export function useWallet(): WalletHookValue {
     [address, signTypedDataAsync]
   );
 
-  const signTransaction = useCallback(
-    async (transaction: TxRequest): Promise<string | null> => {
+  const sendTransaction = useCallback(
+    async (transaction: TxRequest): Promise<Hash> => {
       if (!address || !walletClient) throw new Error("Wallet account is unavailable; reconnect and retry");
-      if (chainId !== 56) throw new Error("Switch to BNB Smart Chain before signing the transaction");
+      if (chainId !== 56) throw new Error("Switch to BNB Smart Chain before sending the transaction");
 
       const hasEip1559Fees = transaction.maxPriorityFeePerGas !== undefined;
       if (hasEip1559Fees && transaction.gasPrice === undefined) {
@@ -267,7 +278,7 @@ export function useWallet(): WalletHookValue {
       }
 
       try {
-        return await walletClient.signTransaction({
+        return await walletClient.sendTransaction({
           account: address as `0x${string}`,
           chain: walletClient.chain,
           to: transaction.to as `0x${string}`,
@@ -284,61 +295,40 @@ export function useWallet(): WalletHookValue {
               : {}),
         });
       } catch (err) {
-        console.error("Failed to sign transaction:", err);
+        console.error("Wallet transaction request failed:", err);
         const message = getWalletTransactionError(err);
-        if (/eth_signtransaction|method not supported/i.test(message)) {
-          throw new Error("This wallet cannot sign raw transactions required for Binance broadcast. Connect a wallet that supports eth_signTransaction; wallet-side broadcasting is disabled.");
-        }
         throw new Error(message);
       }
     },
     [address, chainId, walletClient]
   );
 
-  const broadcastTransaction = useCallback(
-    async (signedTransaction: string): Promise<string | null> => {
-      if (!address) return null;
+  const getTransactionStatus = useCallback(
+    async (hash: string): Promise<"confirmed" | "failed" | "pending" | "unverified"> => {
+      if (!publicClient || !/^0x[a-fA-F0-9]{64}$/.test(hash)) return "unverified";
       try {
-        const response = await fetch("/api/transaction/broadcast", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address, signedTransaction }),
-        });
-        const result = await response.json();
-        if (!response.ok || result?.code !== 0) {
-          throw new Error(result?.error || result?.msg || "Binance broadcast failed");
-        }
-        return typeof result?.data?.txHash === "string" ? result.data.txHash : null;
-      } catch (err) {
-        console.error("Failed to broadcast transaction through Binance:", err);
-        throw new Error(getWalletTransactionError(err));
+        const receipt = await publicClient.getTransactionReceipt({ hash: hash as Hash });
+        return receipt.status === "success" ? "confirmed" : "failed";
+      } catch (error: unknown) {
+        if (error instanceof TransactionReceiptNotFoundError) return "pending";
+        console.error("Failed to read transaction receipt from BSC:", error);
+        return "unverified";
       }
     },
-    [address]
+    [publicClient]
   );
 
   const waitForTransaction = useCallback(
     async (hash: string): Promise<"confirmed" | "failed" | "unverified"> => {
       const deadline = Date.now() + 120_000;
-      let lastError: unknown;
       while (Date.now() < deadline) {
-        try {
-          const response = await fetch(`/api/transaction-status?txHash=${encodeURIComponent(hash)}`, {
-            cache: "no-store",
-          });
-          const result = await response.json();
-          if (!response.ok) throw new Error(result.error || "Receipt lookup failed");
-          if (result.status === "success") return "confirmed";
-          if (result.status === "reverted") return "failed";
-        } catch (err) {
-          lastError = err;
-        }
+        const status = await getTransactionStatus(hash);
+        if (status !== "pending") return status;
         await new Promise((resolve) => setTimeout(resolve, 2_000));
       }
-      if (lastError) console.error("Failed waiting for transaction receipt:", lastError);
       return "unverified";
     },
-    []
+    [getTransactionStatus]
   );
 
   return {
@@ -355,8 +345,8 @@ export function useWallet(): WalletHookValue {
     disconnect,
     switchToBscMainnet,
     signTypedData,
-    signTransaction,
-    broadcastTransaction,
+    sendTransaction,
+    getTransactionStatus,
     waitForTransaction,
   };
 }
