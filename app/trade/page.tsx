@@ -15,7 +15,12 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   const tabId = parseTabId(tab); // null = All (no tabId sent to Binance)
   const tabLabel = RWA_TABS.find((t) => t.id === tabId)?.label;
   const [platformResponse, list] = await Promise.all([
-    getRWAPlatforms(),
+    getRWAPlatforms()
+      .then((data: unknown) => ({ data: parseRwaPlatformRecords(data), err: null as string | null }))
+      .catch((error: unknown) => ({
+        data: [] as ReturnType<typeof parseRwaPlatformRecords>,
+        err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+      })),
     getRWATokenList(undefined, tabId ?? undefined)
       .then((data: unknown) => ({ data: parseRwaAssetRecords(data), err: null as string | null }))
       .catch((error: unknown) => ({
@@ -23,7 +28,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
         err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
       })),
   ]);
-  const platforms = parseRwaPlatformRecords(platformResponse);
+  const platforms = platformResponse.data;
   const allTokens = filterSpotEligibleAssets(list.data);
   const slim = allTokens.map((t) => ({
     tokenContractAddress: t.tokenContractAddress,
@@ -72,6 +77,12 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
       </div>
 
       <CategoryTabs active={tabId} />
+
+      {platformResponse.err && (
+        <div role="status" className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
+          Platform metadata is temporarily unavailable: {platformResponse.err}
+        </div>
+      )}
 
       {list.err && (
         <div className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { unstable_cache } from "next/cache";
 
 let lastCall = 0;
 let rateLimitQueue: Promise<void> = Promise.resolve();
@@ -124,11 +125,19 @@ export async function getPortfolioOverview(address: string, timeFrame = "2") {
 // RWA — list all tokenized stocks
 // Optional filters per Binance RWA Data docs: platformId (ondo | bstock) and tabId (sector tab, integer).
 // With no arguments the request is unchanged (complete list).
-export async function getRWATokenList(platform?: string, tabId?: number) {
-  const params: Record<string, string> = {};
-  if (platform) params.platformId = platform;
-  if (tabId != null) params.tabId = String(tabId);
-  return get("/api/v1/dex/market/rwa/tokens", params);
+const getCachedRWATokenList = unstable_cache(
+  async (platform: string | null, tabId: number | null) => {
+    const params: Record<string, string> = {};
+    if (platform) params.platformId = platform;
+    if (tabId != null) params.tabId = String(tabId);
+    return get("/api/v1/dex/market/rwa/tokens", params, true);
+  },
+  ["binance-rwa-token-list"],
+  { revalidate: 60 }
+);
+
+export function getRWATokenList(platform?: string, tabId?: number) {
+  return getCachedRWATokenList(platform ?? null, tabId ?? null);
 }
 
 // RWA — price for specific tokens
@@ -161,8 +170,14 @@ export async function getRWAMarketData(contractAddress: string, chainId = "56") 
 }
 
 // RWA — issuance platforms (Ondo etc.)
-export async function getRWAPlatforms() {
-  return get("/api/v1/dex/market/rwa/platforms");
+const getCachedRWAPlatforms = unstable_cache(
+  () => get("/api/v1/dex/market/rwa/platforms", {}, true),
+  ["binance-rwa-platforms"],
+  { revalidate: 3600 }
+);
+
+export function getRWAPlatforms() {
+  return getCachedRWAPlatforms();
 }
 
 // Candlestick chart data

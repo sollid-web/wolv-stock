@@ -28,8 +28,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const { tab } = await searchParams;
   const tabId = parseTabId(tab); // null = All (no tabId sent to Binance)
   const tabLabel = RWA_TABS.find((t) => t.id === tabId)?.label;
-  const [platforms, list] = await Promise.all([
-    getRWAPlatforms().then((data: unknown) => data as PlatformListResponse),
+  const [platformResult, list] = await Promise.all([
+    getRWAPlatforms()
+      .then((data: unknown) => ({ data: data as PlatformListResponse, err: null as string | null }))
+      .catch((error: unknown) => ({
+        data: null,
+        err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+      })),
     getRWATokenList(undefined, tabId ?? undefined)
       .then((data: unknown) => ({ data: data as TokenListResponse, err: null as string | null }))
       .catch((error: unknown) => ({
@@ -75,7 +80,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
       </section>
 
       <div className="mx-auto flex max-w-7xl gap-3 overflow-x-auto px-4 pb-6 sm:px-8">
-        {platforms?.data?.map((p) => (
+        {platformResult.data?.data?.map((p) => (
           <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5 flex-shrink-0">
             <div className="flex items-center gap-2 mb-1">
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
@@ -100,6 +105,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
           {tabId != null && (
             <> · <Link href="/" className="underline">show all</Link></>
           )}
+        </div>
+      )}
+      {platformResult.err && (
+        <div role="status" className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
+          Platform metadata is temporarily unavailable: {platformResult.err}
         </div>
       )}
 
