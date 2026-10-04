@@ -891,7 +891,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   };
 
   return (
-    <div style={{ border: "1px solid #374151", borderRadius: "0.5rem", padding: "1rem", margin: "0.5rem 0" }}>
+    <div className="wolv-sheen" style={{ border: "1px solid rgba(255,255,255,.1)", borderRadius: "1rem", padding: "1rem", margin: "0.5rem 0", boxShadow: "0 20px 60px rgba(0,0,0,.2)" }}>
       <NetworkSwitchModal
         open={isConnected && !isCorrectNetwork}
         isSwitching={isSwitchingNetwork}
@@ -925,6 +925,19 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
 
       <div style={{ fontSize: "0.875rem", color: "#9ca3af", marginBottom: "0.5rem" }}>
         Wallet: {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Not connected"}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.4rem", margin: "1rem 0 1.25rem" }} aria-label="Safe trade steps">
+        {([
+          ["01", "Quote", Boolean(quoteData)],
+          ["02", "Simulate", Boolean(swapSimulation || approvalSimulation)],
+          ["03", "Confirm", Boolean(transactionStatus?.status === "confirmed")],
+        ] as const).map(([number, label, complete]) => (
+          <div key={label as string} style={{ position: "relative", overflow: "hidden", borderRadius: "0.7rem", border: `1px solid ${complete ? "rgba(52,211,153,.4)" : "rgba(255,255,255,.08)"}`, background: complete ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.035)", padding: "0.6rem" }}>
+            <div className={complete ? "wolv-pulse" : ""} style={{ display: "inline-grid", placeItems: "center", width: "1.35rem", height: "1.35rem", borderRadius: "999px", background: complete ? "#34d399" : "rgba(240,185,11,.16)", color: complete ? "#06130e" : "#f0b90b", fontSize: "0.6rem", fontWeight: 900 }}>{complete ? "✓" : number}</div>
+            <div style={{ marginTop: "0.4rem", fontSize: "0.7rem", fontWeight: 800, color: complete ? "#a7f3d0" : "#cbd5e1" }}>{label}</div>
+            <div style={{ marginTop: "0.15rem", fontSize: "0.6rem", color: "#64748b" }}>{label === "Quote" ? "Fresh price" : label === "Simulate" ? "No funds sent" : "Your approval"}</div>
+          </div>
+        ))}
       </div>
       {!isCorrectNetwork && (
         <div style={{ marginBottom: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "0.5rem", backgroundColor: "#7f1d1d", color: "#fecaca", fontSize: "0.75rem", fontWeight: 700 }}>

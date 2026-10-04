@@ -1,4 +1,4 @@
-import { getRWATokenList, getRWAMarketData, getRWAProfile } from "@/lib/binance";
+import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
 import { quoteUsd } from "@/lib/quotes";
 import Link from "next/link";
 import Image from "next/image";
@@ -6,6 +6,7 @@ import { buildProtectionRows } from "@/lib/rwaData";
 import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
 import GlobalNav from "@/components/GlobalNav";
+import MarketChart from "@/components/MarketChart";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,26 @@ const tone = (g: number | null) =>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseCandlePoints(value: unknown): { time: string; value: number }[] {
+  const root = isRecord(value) && Array.isArray(value.data) ? value.data : value;
+  const records = Array.isArray(root) ? root : isRecord(root) && Array.isArray(root.data) ? root.data : [];
+  return records.flatMap((record): { time: string; value: number }[] => {
+    let timestamp: unknown;
+    let close: unknown;
+    if (Array.isArray(record)) {
+      timestamp = record[0];
+      close = record[4] ?? record[1];
+    } else if (isRecord(record)) {
+      timestamp = record.timestamp ?? record.time ?? record.openTime ?? record[0];
+      close = record.close ?? record.closePrice ?? record.c ?? record.price;
+    }
+    const numericClose = num(close);
+    if (numericClose == null || numericClose <= 0) return [];
+    const date = typeof timestamp === "number" || typeof timestamp === "string" ? new Date(Number(timestamp)) : null;
+    return [{ time: date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—", value: numericClose }];
+  });
 }
 
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
@@ -54,6 +75,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   await sleep(300);
   const profile: unknown = await getRWAProfile(address).catch((error: unknown) => { errs.push("company profile: " + (error instanceof Error ? error.message : String(error))); return null; });
   await sleep(300);
+  const candles: unknown = await getCandles(address, "56", "1h", "48").catch((error: unknown) => { errs.push("chart data: " + (error instanceof Error ? error.message : String(error))); return null; });
   const q = await quoteUsd(address);
 
   console.log("[profile-dump]", token.underlyingTicker, JSON.stringify(profile)?.slice(0, 1500));
@@ -72,6 +94,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const gap = perShare != null && refShare > 0 ? (perShare / refShare - 1) * 100 : null;
   const isOpen = token.statusInfo?.openState;
   const status = token.statusInfo?.marketStatus ?? (isOpen ? "trading" : "closed");
+  const chartPoints = parseCandlePoints(candles);
 
   const profRows: [string, string | number][] = prof
     ? Object.entries(prof).flatMap(([key, value]) =>
@@ -108,18 +131,32 @@ export default async function StockPage({ params }: { params: Promise<{ address:
         </span>
       </nav>
 
-      <div className="mb-6">
+      <div className="mb-6 bg-gradient-to-b from-[#0e0e1c] to-transparent px-4 pb-1 pt-5 sm:px-6">
         <Link
           href={`/trade/${address}`}
-          className="w-full bg-[#f0b90b] hover:bg-[#f0b90b]/90 text-black font-bold py-3 px-6 rounded-xl text-lg flex items-center justify-center gap-2 transition-colors"
+          className="w-full rounded-xl bg-[#f0b90b] px-6 py-3 text-lg font-bold text-black shadow-[0_12px_40px_rgba(240,185,11,.18)] transition hover:-translate-y-0.5 hover:bg-[#ffd44d]"
         >
-          Trade This Asset
+          Trade {token.underlyingTicker}
           <span className="text-xs">→</span>
         </Link>
       </div>
 
-      <div className="px-4 sm:px-6 pt-6 space-y-4">
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+      <div className="space-y-4 px-4 pt-2 sm:px-6">
+        <div className="wolv-sheen relative overflow-hidden rounded-2xl border border-white/[0.09] p-5 sm:p-7">
+          <div className="wolv-grid pointer-events-none absolute inset-0 opacity-70" />
+          <div className="relative flex items-end justify-between gap-4">
+            <div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f0b90b]">Live asset signal</div>
+              <div className="text-4xl font-black tracking-tight sm:text-6xl">{token.underlyingTicker}</div>
+              <div className="mt-2 max-w-md text-sm leading-6 text-slate-400">Reference data, executable pricing, and market state in one clear view.</div>
+            </div>
+            <div className="hidden text-right sm:block"><div className="text-2xl font-black text-emerald-400">24/7</div><div className="text-[10px] uppercase tracking-wider text-slate-500">on-chain venue</div></div>
+          </div>
+        </div>
+
+        <MarketChart points={chartPoints} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
+
+        <div className="wolv-float bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>
           <div className="text-4xl font-black text-white mb-1">
             ${listed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
