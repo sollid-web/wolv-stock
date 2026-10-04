@@ -33,16 +33,18 @@ function AppKitConnectButton() {
   };
 
   return (
-    <button
-      type="button"
-      onClick={() => void handleOpen()}
-      disabled={isOpening || modalOpen || Boolean(connectingWallet)}
-      className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#f0b90b] px-5 text-sm font-bold text-black transition-colors hover:bg-[#ffd44d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
-    >
-      {isOpening || modalOpen || connectingWallet ? "Wallet connection pending..." : "Connect wallet"}
-      <span aria-hidden="true">→</span>
-    </button>
-    {openError && <p role="alert" className="mt-3 text-sm text-rose-400">{openError}</p>}
+    <div>
+      <button
+        type="button"
+        onClick={() => void handleOpen()}
+        disabled={isOpening || modalOpen || Boolean(connectingWallet)}
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#f0b90b] px-5 text-sm font-bold text-black transition-colors hover:bg-[#ffd44d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
+      >
+        {isOpening || modalOpen || connectingWallet ? "Wallet connection pending..." : "Connect wallet"}
+        <span aria-hidden="true">→</span>
+      </button>
+      {openError && <p role="alert" className="mt-3 text-sm text-rose-400">{openError}</p>}
+    </div>
   );
 }
 
