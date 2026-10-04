@@ -6,6 +6,7 @@ import {
   useConnect,
   useDisconnect,
   usePublicClient,
+  useSendTransaction,
   useSignTypedData,
   useSwitchChain,
   useWalletClient,
@@ -152,6 +153,7 @@ export function useWallet(): WalletHookValue {
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
+  const { sendTransactionAsync } = useSendTransaction();
   const publicClient = usePublicClient({ chainId: 56 });
   const { signTypedDataAsync } = useSignTypedData();
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -269,30 +271,18 @@ export function useWallet(): WalletHookValue {
 
   const sendTransaction = useCallback(
     async (transaction: TxRequest): Promise<Hash> => {
-      if (!address || !walletClient) throw new Error("Wallet account is unavailable; reconnect and retry");
+      if (!address) throw new Error("Wallet account is unavailable; reconnect and retry");
       if (chainId !== 56) throw new Error("Switch to BNB Smart Chain before sending the transaction");
 
-      const hasEip1559Fees = transaction.maxPriorityFeePerGas !== undefined;
-      if (hasEip1559Fees && transaction.gasPrice === undefined) {
-        throw new Error("Binance swap response is missing the EIP-1559 max fee");
-      }
-
       try {
-        return await walletClient.sendTransaction({
-          account: address as `0x${string}`,
-          chain: walletClient.chain,
+        // Binance fee fields can be incomplete or stale for the connected
+        // wallet. Keep its gas limit, but let Wagmi/MetaMask estimate the
+        // current BSC fee tuple before opening the confirmation prompt.
+        return await sendTransactionAsync({
           to: transaction.to as `0x${string}`,
           data: transaction.data as `0x${string}`,
           value: transaction.value !== undefined ? BigInt(transaction.value) : undefined,
           gas: transaction.gas !== undefined ? BigInt(transaction.gas) : undefined,
-          ...(hasEip1559Fees
-            ? {
-                maxFeePerGas: BigInt(transaction.gasPrice!),
-                maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas!),
-              }
-            : transaction.gasPrice !== undefined
-              ? { gasPrice: BigInt(transaction.gasPrice) }
-              : {}),
         });
       } catch (err) {
         console.error("Wallet transaction request failed:", err);
@@ -300,7 +290,7 @@ export function useWallet(): WalletHookValue {
         throw new Error(message);
       }
     },
-    [address, chainId, walletClient]
+    [address, chainId, sendTransactionAsync]
   );
 
   const getTransactionStatus = useCallback(
