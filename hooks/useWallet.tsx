@@ -12,6 +12,7 @@ import {
   useWalletClient,
 } from "wagmi";
 import { TransactionReceiptNotFoundError, type Hash } from "viem";
+import { createSingleFlightGate } from "@/lib/singleFlightGate";
 
 interface TxRequest {
   to: string;
@@ -23,6 +24,8 @@ interface TxRequest {
 }
 
 type TypedData = Record<string, unknown>;
+
+const sendWalletTransactionOnce = createSingleFlightGate();
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -278,12 +281,12 @@ export function useWallet(): WalletHookValue {
         // Binance fee fields can be incomplete or stale for the connected
         // wallet. Keep its gas limit, but let Wagmi/MetaMask estimate the
         // current BSC fee tuple before opening the confirmation prompt.
-        return await sendTransactionAsync({
+        return await sendWalletTransactionOnce(() => sendTransactionAsync({
           to: transaction.to as `0x${string}`,
           data: transaction.data as `0x${string}`,
           value: transaction.value !== undefined ? BigInt(transaction.value) : undefined,
           gas: transaction.gas !== undefined ? BigInt(transaction.gas) : undefined,
-        });
+        }));
       } catch (err) {
         console.error("Wallet transaction request failed:", err);
         const message = getWalletTransactionError(err);

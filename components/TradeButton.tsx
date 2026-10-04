@@ -204,6 +204,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [approvalPhase, setApprovalPhase] = useState<"idle" | "preparing" | "wallet" | "confirming">("idle");
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -212,6 +213,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   const [requiresFreshQuote, setRequiresFreshQuote] = useState(false);
   const [quoteNow, setQuoteNow] = useState(0);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const approvalInFlightRef = useRef(false);
   const rfqRequestIdRef = useRef<string | null>(null);
 
   // Ref to store the latest quote ID for polling
@@ -480,6 +482,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
 
   // Sign and submit approval transaction
   const handleApprove = async () => {
+    if (approvalInFlightRef.current) return;
     if (!approvalData || !provider) return;
 
     if (!quoteData || !isFreshQuote(quoteData, quoteNow)) {
@@ -493,7 +496,11 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       return;
     }
 
+    // Set this before the first await; React state alone does not stop two
+    // rapid click events from entering the slow preflight path together.
+    approvalInFlightRef.current = true;
     setIsApproving(true);
+    setApprovalPhase("preparing");
     setApprovalError(null);
     try {
       // Create a transaction request for the approval
@@ -507,7 +514,9 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
 
       setApprovalSimulation(await simulateTransaction(address, transactionRequest.to, transactionRequest.data));
 
+      setApprovalPhase("wallet");
       const transactionHash = await sendTransaction(transactionRequest);
+      setApprovalPhase("confirming");
       const approvalStatus = await waitForTransaction(transactionHash);
 
       if (approvalStatus === "confirmed") {
@@ -523,6 +532,8 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     } catch (error: unknown) {
       setApprovalError(errorMessage(error, "Failed to submit approval transaction"));
     } finally {
+      approvalInFlightRef.current = false;
+      setApprovalPhase("idle");
       setIsApproving(false);
     }
   };
@@ -1049,6 +1060,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           </p>
           {approvalSimulation && <SimulationSummary title="Approval preflight" result={approvalSimulation} />}
           <button
+            type="button"
             onClick={handleApprove}
             disabled={isApproving}
             style={{
@@ -1093,7 +1105,12 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           marginBottom: "0.5rem",
           textAlign: "center"
         }}>
-          <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>Approving...</div>
+          <div role="status" aria-live="polite" style={{ fontSize: "0.875rem", color: "#f0b90b" }}>
+            {approvalPhase === "preparing" && "Running approval preflight once…"}
+            {approvalPhase === "wallet" && "Waiting for one wallet prompt. Review it there; do not click again."}
+            {approvalPhase === "confirming" && "Approval submitted. Waiting for BNB Smart Chain confirmation…"}
+            {approvalPhase === "idle" && "Approval in progress…"}
+          </div>
         </div>
       )}
 
