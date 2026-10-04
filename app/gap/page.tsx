@@ -130,16 +130,16 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
     .sort((a, b) => Math.abs(numberValue(b.tokenToShareRatio) - 1) - Math.abs(numberValue(a.tokenToShareRatio) - 1));
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-10">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6">
         <Link href="/" className="text-xl text-[#64748b]">←</Link>
-        <div>
-          <div className="text-lg font-black">Listed vs Executable Price</div>
-          <div className="text-xs text-[#64748b]">Updated {new Date().toISOString().slice(11, 19)} UTC · quote size {QUOTE_AMOUNT_USDT} USDT</div>
+        <div className="min-w-0 flex-1">
+          <div className="break-words text-base font-black sm:text-lg">Listed vs Executable Price</div>
+          <div className="break-words text-xs text-[#64748b]">Updated {new Date().toISOString().slice(11, 19)} UTC · quote size {QUOTE_AMOUNT_USDT} USDT</div>
         </div>
       </nav>
 
-      <div className="px-4 pt-6 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
         <div className="mb-5 max-w-4xl text-xs leading-relaxed text-[#94a3b8]">
           WOLV compares two different signals: Binance RWA reference data and what the aggregator currently quotes for a spot buy. Prices are normalized by each token&apos;s shares-per-token multiplier. A raw difference is not guaranteed profit; fees, gas, liquidity, slippage, quote age, and market status still matter.
         </div>
@@ -150,9 +150,9 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
         <div className="mb-8 space-y-3">
           {rows.map((row) => (
             <div key={row.ticker} className="rounded-xl border border-[#1b1b35] bg-[#0e0e1c] p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="font-bold">{row.ticker}</div>
-                <div className={`text-right text-xs font-bold ${tone(row.crossVenueSpread)}`}>
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div className="shrink-0 font-bold">{row.ticker}</div>
+                <div className={`min-w-0 flex-1 break-words text-left text-xs font-bold sm:text-right ${tone(row.crossVenueSpread)}`}>
                   {row.crossVenueSpread == null ? "reliable spread unavailable" : `${signedPercent(row.crossVenueSpread)} executable spread per share`}
                 </div>
               </div>
@@ -169,7 +169,7 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
                       <div className="mb-2 flex items-center gap-2">
                         {venue.token.tokenLogoUrl && <Image src={venue.token.tokenLogoUrl} width={20} height={20} className="rounded-full" alt={row.ticker} />}
                         <span className="text-xs capitalize text-[#64748b]">{venue.token.platformId}</span>
-                        <span className="ml-auto text-[10px] text-[#64748b]">{marketLabel(venue.token)}</span>
+                        <span className="ml-auto min-w-0 break-words text-right text-[10px] text-[#64748b]">{marketLabel(venue.token)}</span>
                       </div>
                       {venue.quote.ok ? (
                         <>
@@ -182,13 +182,13 @@ export default async function GapPage({ searchParams }: { searchParams: Promise<
                           <div className={`text-xs font-bold ${tone(venue.referenceGap)}`}>
                             {venue.unreliable ? "Unreliable quote — excluded from spread ranking" : venue.referenceGap == null ? "reference comparison unavailable" : `reference difference ${signedPercent(venue.referenceGap)}`}
                           </div>
-                          <div className="mt-1 text-[10px] text-[#64748b]">
+                          <div className="mt-1 break-words text-[10px] text-[#64748b]">
                             {venue.quote.vendor} · {venue.quote.mode} · impact {venue.quote.impact == null ? "n/a" : `${venue.quote.impact}%`} · {quoteAgeSeconds(venue.quote)}s old
                           </div>
                           {!quoteIsUsable && <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-yellow-500">{venue.unreliable ? `Unreliable quote: gap exceeds ${MAX_RELIABLE_GAP_PERCENT}%` : "Refresh before trading: quote is stale"}</div>}
                         </>
                       ) : (
-                        <div className="text-xs text-yellow-500">Quote unavailable: {venue.quote.err}</div>
+                        <div className="break-words text-xs text-yellow-500">Quote unavailable: {venue.quote.err}</div>
                       )}
                     </Link>
                   );

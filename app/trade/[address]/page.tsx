@@ -37,7 +37,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
   };
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-0">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <BackButton fallbackHref="/trade" className="text-[#64748b] text-xl" />
         {token.tokenLogoUrl && (
@@ -57,7 +57,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 pt-6">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6">
         <SmartRouterStatus ticker={tokenInfo.symbol} />
         <TradeButton token={tokenInfo} />
       </div>

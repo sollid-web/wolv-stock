@@ -55,7 +55,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white pb-20">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white">
       <nav className="sticky top-0 z-10 border-b border-white/[0.08] bg-[#0a0a14]/90 px-4 py-4 backdrop-blur-xl sm:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3" aria-label="WOLV Spot Lens home">
@@ -80,7 +80,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
             <p className="mt-5 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">WOLV makes tokenized-stock trading understandable: compare venues, spot unreliable quotes, preview the transaction, then trade on BSC.</p>
             <div className="mt-6 flex flex-wrap gap-2 text-xs font-bold text-slate-300"><span className="rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-2">Spot only</span><span className="rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-2">BSC Mainnet</span><span className="rounded-full border border-white/[0.1] bg-white/[0.04] px-3 py-2">Preflight before signing</span></div>
           </div>
-          <div className="wolv-float relative overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0e0e1c]/90 p-5 shadow-[0_20px_80px_rgba(0,0,0,.32)]">
+          <div className="wolv-float relative min-w-0 overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0e0e1c]/90 p-5 shadow-[0_20px_80px_rgba(0,0,0,.32)]">
             <div className="wolv-scan absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-[#f0b90b]/10 to-transparent" />
             <div className="relative flex items-center justify-between"><div><div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Market pulse</div><div className="mt-1 text-lg font-black">Live BSC coverage</div></div><span className="wolv-pulse rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">online</span></div>
             <div className="relative mt-6 flex h-24 items-end gap-1.5 border-b border-white/[0.08] pb-2">{Array.from({ length: 18 }, (_, i) => { const height = 24 + ((i * 17 + allTokens.length) % 58); return <span key={i} className="wolv-chart-area flex-1 rounded-t-sm bg-gradient-to-t from-[#f0b90b]/20 to-[#f0b90b]" style={{ height: `${height}%`, opacity: 0.35 + (i % 4) * 0.12 }} />; })}</div>
@@ -89,9 +89,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
         </div>
       </section>
 
-      <div className="mx-auto flex max-w-7xl gap-3 overflow-x-auto px-4 pb-6 sm:px-8">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 pb-6 sm:flex sm:flex-wrap sm:px-8">
         {platformResult.data?.data?.map((p) => (
-          <div key={p.platformId} className="wolv-sheen flex-shrink-0 rounded-xl border border-white/[0.08] p-5 transition hover:-translate-y-1 hover:border-[#f0b90b]/40">
+          <div key={p.platformId} className="wolv-sheen min-w-0 rounded-xl border border-white/[0.08] p-4 transition hover:-translate-y-1 hover:border-[#f0b90b]/40 sm:p-5">
             <div className="flex items-center gap-2 mb-1">
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
@@ -100,7 +100,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
             <div className="text-slate-300 text-xs">on BSC</div>
           </div>
         ))}
-        <div className="wolv-sheen flex-shrink-0 rounded-xl border border-white/[0.08] p-5 transition hover:-translate-y-1 hover:border-[#f0b90b]/40">
+        <div className="wolv-sheen min-w-0 rounded-xl border border-white/[0.08] p-4 transition hover:-translate-y-1 hover:border-[#f0b90b]/40 sm:p-5">
           <div className="text-slate-300 text-xs mb-1">Total Available</div>
           <div className="text-[#f0b90b] font-black text-xl">{allTokens.length}</div>
           <div className="text-slate-300 text-xs">on BSC chain</div>
@@ -110,7 +110,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
       <CategoryTabs active={tabId} />
 
       {list.err && (
-        <div className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
+        <div className="mx-4 mb-3 break-words rounded-xl border border-yellow-800/40 bg-yellow-900/10 p-3 text-xs text-yellow-500 sm:mx-6">
           Couldn&apos;t load {tabLabel ?? "the token list"}: {list.err}
           {tabId != null && (
             <> · <Link href="/" className="underline">show all</Link></>
@@ -118,7 +118,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
         </div>
       )}
       {platformResult.err && (
-        <div role="status" className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
+        <div role="status" className="mx-4 mb-3 break-words rounded-xl border border-yellow-800/40 bg-yellow-900/10 p-3 text-xs text-yellow-500 sm:mx-6">
           Platform metadata is temporarily unavailable: {platformResult.err}
         </div>
       )}

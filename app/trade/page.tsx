@@ -41,7 +41,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-0">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
@@ -58,9 +58,9 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 py-4 flex gap-3 overflow-x-auto">
+      <div className="grid grid-cols-2 gap-3 px-4 py-4 sm:flex sm:flex-wrap sm:px-6">
         {platforms.map((p) => (
-          <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
+          <div key={p.platformId} className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
             <div className="flex items-center gap-2 mb-1">
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
@@ -69,7 +69,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
             <div className="text-[#64748b] text-xs">on BSC</div>
           </div>
         ))}
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
+        <div className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
           <div className="text-[#64748b] text-xs mb-1">Total Available</div>
           <div className="text-[#f0b90b] font-black text-xl">{allTokens.length}</div>
           <div className="text-[#64748b] text-xs">on BSC chain</div>

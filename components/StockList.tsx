@@ -99,8 +99,8 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-wider text-slate-300">
-        <span>{rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-emerald-400"><span className="wolv-pulse size-1.5 rounded-full bg-emerald-400" /> Live data</span>
+        <span className="min-w-0 flex-1 break-words">{rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}</span>
+        <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-emerald-400"><span className="wolv-pulse size-1.5 rounded-full bg-emerald-400" /> Live data</span>
       </div>
 
       {rows.length === 0 ? (

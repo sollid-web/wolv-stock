@@ -15,7 +15,7 @@ export default function NetworkSwitchModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#02060d]/80 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md rounded-2xl border border-[#f0b90b]/40 bg-[#0e0e1c] p-6 shadow-2xl shadow-[#f0b90b]/10">
+      <div className="my-4 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[#f0b90b]/40 bg-[#0e0e1c] p-5 shadow-2xl shadow-[#f0b90b]/10 sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f0b90b]/15 text-2xl">⚠️</div>
           {onClose && (

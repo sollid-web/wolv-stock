@@ -116,7 +116,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   ];
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-24 text-white md:pb-10">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
   {token.tokenLogoUrl && <Image src={token.tokenLogoUrl} width={32} height={32} className="rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
@@ -131,17 +131,17 @@ export default async function StockPage({ params }: { params: Promise<{ address:
         </span>
       </nav>
 
-      <div className="mb-6 bg-gradient-to-b from-[#0e0e1c] to-transparent px-4 pb-1 pt-5 sm:px-6">
+      <div className="mx-auto mb-6 w-full max-w-6xl bg-gradient-to-b from-[#0e0e1c] to-transparent px-4 pb-1 pt-5 sm:px-6">
         <Link
           href={`/trade/${address}`}
-          className="w-full rounded-xl bg-[#f0b90b] px-6 py-3 text-lg font-bold text-black shadow-[0_12px_40px_rgba(240,185,11,.18)] transition hover:-translate-y-0.5 hover:bg-[#ffd44d]"
+          className="block w-full rounded-xl bg-[#f0b90b] px-6 py-3 text-center text-lg font-bold text-black shadow-[0_12px_40px_rgba(240,185,11,.18)] transition hover:-translate-y-0.5 hover:bg-[#ffd44d]"
         >
           Trade {token.underlyingTicker}
           <span className="text-xs">→</span>
         </Link>
       </div>
 
-      <div className="space-y-4 px-4 pt-2 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl space-y-4 px-4 pt-2 sm:px-6">
         <div className="wolv-sheen relative overflow-hidden rounded-2xl border border-white/[0.09] p-5 sm:p-7">
           <div className="wolv-grid pointer-events-none absolute inset-0 opacity-70" />
           <div className="relative flex items-end justify-between gap-4">
@@ -158,7 +158,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
         <div className="wolv-float bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>
-          <div className="text-4xl font-black text-white mb-1">
+          <div className="mb-1 break-words text-3xl font-black text-white sm:text-4xl">
             ${listed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
           </div>
           <div className="text-xs text-[#64748b]">
@@ -170,7 +170,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Executable vs reference (per share)</div>
           {q.ok ? (
             <>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="mb-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Executable</div>
                   <div className="font-bold text-sm">${perShare!.toFixed(3)}</div>
@@ -217,8 +217,8 @@ export default async function StockPage({ params }: { params: Promise<{ address:
             <div className="space-y-2 text-sm">
               {shortRows.map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4 border-b border-[#1b1b35] pb-2 last:border-none">
-                  <span className="text-[#64748b]">{label(k)}</span>
-                  <span className="font-bold text-right max-w-[60%]">{String(v)}</span>
+                  <span className="min-w-0 break-words text-[#64748b]">{label(k)}</span>
+                  <span className="min-w-0 max-w-[60%] break-words text-right font-bold">{String(v)}</span>
                 </div>
               ))}
               {longRows.map(([k, v]) => (
@@ -240,13 +240,13 @@ export default async function StockPage({ params }: { params: Promise<{ address:
               <div className="space-y-2 text-sm">
                 {protectionRows.map((r) => (
                   <div key={r.key} className="flex items-center justify-between gap-4 border-b border-[#1b1b35] pb-2 last:border-none last:pb-0">
-                    <span className="text-[#64748b]">{r.label}</span>
+                    <span className="min-w-0 break-words text-[#64748b]">{r.label}</span>
                     {r.url ? (
                       <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-bold text-[#f0b90b] text-right">
                         View report ↗
                       </a>
                     ) : (
-                      <span className="text-xs text-[#64748b] text-right">Listed · no report link provided</span>
+                      <span className="min-w-0 break-words text-right text-xs text-[#64748b]">Listed · no report link provided</span>
                     )}
                   </div>
                 ))}
