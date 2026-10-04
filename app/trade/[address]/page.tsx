@@ -1,18 +1,20 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import Image from "next/image";
 import { getRWATokenList } from "@/lib/binance";
 import TradeButton from "@/components/TradeButton";
 import GlobalNav from "@/components/GlobalNav";
 import BackButton from "@/components/BackButton";
 import SmartRouterStatus from "@/components/SmartRouterStatus";
 import { isSpotEligibleAsset } from "@/lib/compliance";
+import { isRwaToken } from "@/lib/rwaTypes";
 
 export const dynamic = "force-dynamic";
 
 export default async function TradePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
-  const token = tokens?.data?.find((t: any) =>
+  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
+  const token = rawTokens.filter(isRwaToken).find((t) =>
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
   );
 
@@ -35,14 +37,16 @@ export default async function TradePage({ params }: { params: Promise<{ address:
   };
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <BackButton fallbackHref="/trade" className="text-[#64748b] text-xl" />
         {token.tokenLogoUrl && (
-          <img
+          <Image
             src={token.tokenLogoUrl}
+            width={32}
+            height={32}
             className="w-8 h-8 rounded-full"
-            alt={token.underlyingTicker}
+            alt={token.underlyingTicker ?? "Asset"}
           />
         )}
         <div className="min-w-0">
@@ -53,7 +57,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 pt-6">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6">
         <SmartRouterStatus ticker={tokenInfo.symbol} />
         <TradeButton token={tokenInfo} />
       </div>

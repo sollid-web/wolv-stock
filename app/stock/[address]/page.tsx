@@ -1,17 +1,23 @@
-import { getRWATokenList, getRWAMarketData, getRWAProfile } from "@/lib/binance";
+import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
 import { quoteUsd } from "@/lib/quotes";
 import Link from "next/link";
+import Image from "next/image";
 import { buildProtectionRows } from "@/lib/rwaData";
 import { isSpotEligibleAsset } from "@/lib/compliance";
+import { isRwaToken } from "@/lib/rwaTypes";
 import GlobalNav from "@/components/GlobalNav";
+import MarketChart from "@/components/MarketChart";
 
 export const dynamic = "force-dynamic";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const num = (v: any) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
-const money = (v: any) => { const n = num(v); return n == null ? "—" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-const big = (v: any) => {
-  const n = num(v);
+const num = (value: unknown) => {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number.parseFloat(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const money = (value: unknown) => { const n = num(value); return n == null ? "—" : "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+const big = (value: unknown) => {
+  const n = num(value);
   if (n == null) return "—";
   if (n >= 1e9) return "$" + (n / 1e9).toFixed(2) + "B";
   if (n >= 1e6) return "$" + (n / 1e6).toFixed(2) + "M";
@@ -21,10 +27,35 @@ const label = (k: string) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c
 const tone = (g: number | null) =>
   g == null ? "text-[#64748b]" : Math.abs(g) < 0.25 ? "text-green-400" : Math.abs(g) < 1 ? "text-yellow-400" : "text-red-400";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseCandlePoints(value: unknown): { time: string; value: number }[] {
+  const root = isRecord(value) && Array.isArray(value.data) ? value.data : value;
+  const records = Array.isArray(root) ? root : isRecord(root) && Array.isArray(root.data) ? root.data : [];
+  return records.flatMap((record): { time: string; value: number }[] => {
+    let timestamp: unknown;
+    let close: unknown;
+    if (Array.isArray(record)) {
+      timestamp = record[0];
+      close = record[4] ?? record[1];
+    } else if (isRecord(record)) {
+      timestamp = record.timestamp ?? record.time ?? record.openTime ?? record[0];
+      close = record.close ?? record.closePrice ?? record.c ?? record.price;
+    }
+    const numericClose = num(close);
+    if (numericClose == null || numericClose <= 0) return [];
+    const date = typeof timestamp === "number" || typeof timestamp === "string" ? new Date(Number(timestamp)) : null;
+    return [{ time: date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—", value: numericClose }];
+  });
+}
+
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList();
-  const token = tokens?.data?.find((t: any) =>
+  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
+  const token = rawTokens.filter(isRwaToken).find((t) =>
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
   );
 
@@ -40,16 +71,20 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
   const errs: string[] = [];
   await sleep(300);
-  const market = await getRWAMarketData(address).catch((e: any) => { errs.push("market data: " + String(e?.message ?? e)); return null; });
+  const market: unknown = await getRWAMarketData(address).catch((error: unknown) => { errs.push("market data: " + (error instanceof Error ? error.message : String(error))); return null; });
   await sleep(300);
-  const profile = await getRWAProfile(address).catch((e: any) => { errs.push("company profile: " + String(e?.message ?? e)); return null; });
+  const profile: unknown = await getRWAProfile(address).catch((error: unknown) => { errs.push("company profile: " + (error instanceof Error ? error.message : String(error))); return null; });
   await sleep(300);
+  const candles: unknown = await getCandles(address, "56", "1h", "48").catch((error: unknown) => { errs.push("chart data: " + (error instanceof Error ? error.message : String(error))); return null; });
   const q = await quoteUsd(address);
 
   console.log("[profile-dump]", token.underlyingTicker, JSON.stringify(profile)?.slice(0, 1500));
 
-  const md = market?.data?.marketData ?? {};
-  const prof = profile?.data ?? null;
+  const marketData = isRecord(market) && isRecord(market.data) && isRecord(market.data.marketData)
+    ? market.data.marketData
+    : {};
+  const md = marketData;
+  const prof = isRecord(profile) && isRecord(profile.data) ? profile.data : null;
   const protectionRows = buildProtectionRows(prof);
   const mult = num(token.tokenToShareRatio) || 1;
   const listed = num(token.tokenPrice) ?? 0;
@@ -59,10 +94,13 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const gap = perShare != null && refShare > 0 ? (perShare / refShare - 1) * 100 : null;
   const isOpen = token.statusInfo?.openState;
   const status = token.statusInfo?.marketStatus ?? (isOpen ? "trading" : "closed");
+  const chartPoints = parseCandlePoints(candles);
 
-  const profRows: [string, any][] = prof && typeof prof === "object"
-    ? Object.entries(prof).filter(([k, v]) =>
-        (typeof v === "string" || typeof v === "number") && String(v).trim() !== "" && !/logo|chain|address|url|id$|^assetType$|^underlyingTicker$|ratio/i.test(k))
+  const profRows: [string, string | number][] = prof
+    ? Object.entries(prof).flatMap(([key, value]) =>
+        (typeof value === "string" || typeof value === "number") && String(value).trim() !== "" && !/logo|chain|address|url|id$|^assetType$|^underlyingTicker$|ratio/i.test(key)
+          ? [[key, value]]
+          : [])
     : [];
   const shortRows = profRows.filter(([, v]) => String(v).length <= 120);
   const longRows = profRows.filter(([, v]) => String(v).length > 120);
@@ -78,35 +116,49 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   ];
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white pb-10">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
-        {token.tokenLogoUrl && <img src={token.tokenLogoUrl} className="w-8 h-8 rounded-full" alt={token.underlyingTicker} />}
+  {token.tokenLogoUrl && <Image src={token.tokenLogoUrl} width={32} height={32} className="rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
         <div className="min-w-0">
-          <div className="font-black text-lg">{token.underlyingTicker}</div>
+          <div className="font-black text-base sm:text-lg">{token.underlyingTicker}</div>
           <div className="text-xs text-[#64748b] truncate">{token.underlyingName || token.tokenName?.replace(/\s*\(.*?\)\s*/g, "")}</div>
         </div>
-        <span className={`ml-auto text-xs font-bold px-2 py-1 rounded-full border ${
+        <span className={`ml-auto shrink-0 text-[10px] font-bold px-2 py-1 rounded-full border sm:text-xs ${
           isOpen ? "bg-green-900/30 text-green-400 border-green-800" : "bg-yellow-900/20 text-yellow-400 border-yellow-800"
         }`}>
           {String(status).toUpperCase()}
         </span>
       </nav>
 
-      <div className="mb-6">
+      <div className="mx-auto mb-6 w-full max-w-6xl bg-gradient-to-b from-[#0e0e1c] to-transparent px-4 pb-1 pt-5 sm:px-6">
         <Link
           href={`/trade/${address}`}
-          className="w-full bg-[#f0b90b] hover:bg-[#f0b90b]/90 text-black font-bold py-3 px-6 rounded-xl text-lg flex items-center justify-center gap-2 transition-colors"
+          className="block w-full rounded-xl bg-[#f0b90b] px-6 py-3 text-center text-lg font-bold text-black shadow-[0_12px_40px_rgba(240,185,11,.18)] transition hover:-translate-y-0.5 hover:bg-[#ffd44d]"
         >
-          Trade This Asset
+          Trade {token.underlyingTicker}
           <span className="text-xs">→</span>
         </Link>
       </div>
 
-      <div className="px-4 sm:px-6 pt-6 space-y-4">
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+      <div className="mx-auto w-full max-w-6xl space-y-4 px-4 pt-2 sm:px-6">
+        <div className="wolv-sheen relative overflow-hidden rounded-2xl border border-white/[0.09] p-5 sm:p-7">
+          <div className="wolv-grid pointer-events-none absolute inset-0 opacity-70" />
+          <div className="relative flex items-end justify-between gap-4">
+            <div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#f0b90b]">Live asset signal</div>
+              <div className="text-4xl font-black tracking-tight sm:text-6xl">{token.underlyingTicker}</div>
+              <div className="mt-2 max-w-md text-sm leading-6 text-slate-400">Reference data, executable pricing, and market state in one clear view.</div>
+            </div>
+            <div className="hidden text-right sm:block"><div className="text-2xl font-black text-emerald-400">24/7</div><div className="text-[10px] uppercase tracking-wider text-slate-500">on-chain venue</div></div>
+          </div>
+        </div>
+
+        <MarketChart points={chartPoints} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
+
+        <div className="wolv-float bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>
-          <div className="text-4xl font-black text-white mb-1">
+          <div className="mb-1 break-words text-3xl font-black text-white sm:text-4xl">
             ${listed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
           </div>
           <div className="text-xs text-[#64748b]">
@@ -118,7 +170,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Executable vs reference (per share)</div>
           {q.ok ? (
             <>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="mb-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Executable</div>
                   <div className="font-bold text-sm">${perShare!.toFixed(3)}</div>
@@ -165,8 +217,8 @@ export default async function StockPage({ params }: { params: Promise<{ address:
             <div className="space-y-2 text-sm">
               {shortRows.map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4 border-b border-[#1b1b35] pb-2 last:border-none">
-                  <span className="text-[#64748b]">{label(k)}</span>
-                  <span className="font-bold text-right max-w-[60%]">{String(v)}</span>
+                  <span className="min-w-0 break-words text-[#64748b]">{label(k)}</span>
+                  <span className="min-w-0 max-w-[60%] break-words text-right font-bold">{String(v)}</span>
                 </div>
               ))}
               {longRows.map(([k, v]) => (
@@ -188,13 +240,13 @@ export default async function StockPage({ params }: { params: Promise<{ address:
               <div className="space-y-2 text-sm">
                 {protectionRows.map((r) => (
                   <div key={r.key} className="flex items-center justify-between gap-4 border-b border-[#1b1b35] pb-2 last:border-none last:pb-0">
-                    <span className="text-[#64748b]">{r.label}</span>
+                    <span className="min-w-0 break-words text-[#64748b]">{r.label}</span>
                     {r.url ? (
                       <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-bold text-[#f0b90b] text-right">
                         View report ↗
                       </a>
                     ) : (
-                      <span className="text-xs text-[#64748b] text-right">Listed · no report link provided</span>
+                      <span className="min-w-0 break-words text-right text-xs text-[#64748b]">Listed · no report link provided</span>
                     )}
                   </div>
                 ))}

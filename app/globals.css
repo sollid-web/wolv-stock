@@ -20,9 +20,12 @@
 }
 
 body {
-  background: #07070f;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(240, 185, 11, 0.12), transparent 28rem),
+    radial-gradient(circle at 92% 8%, rgba(51, 65, 120, 0.16), transparent 30rem),
+    #07070f;
   color: #f8fafc;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 ::selection {
@@ -32,4 +35,30 @@ body {
 
 * {
   scrollbar-color: #34344b #0a0a14;
+}
+
+.wolv-grid {
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(to bottom, black, transparent 82%);
+}
+
+.wolv-sheen {
+  background: linear-gradient(115deg, rgba(240,185,11,.14), rgba(240,185,11,.02) 36%, rgba(255,255,255,.04) 58%, rgba(34,211,238,.08));
+}
+
+.wolv-float { animation: wolv-float 6s ease-in-out infinite; }
+.wolv-pulse { animation: wolv-pulse 2.4s ease-in-out infinite; }
+.wolv-scan { animation: wolv-scan 3.2s ease-in-out infinite; }
+.wolv-chart-line { stroke-dasharray: 900; stroke-dashoffset: 900; animation: wolv-draw 1.7s ease-out forwards; }
+.wolv-chart-area { animation: wolv-fade-in 1.2s ease-out forwards; }
+
+@keyframes wolv-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes wolv-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(240,185,11,.28); } 50% { box-shadow: 0 0 0 7px rgba(240,185,11,0); } }
+@keyframes wolv-scan { 0% { transform: translateX(-110%); opacity: 0; } 25%, 75% { opacity: .8; } 100% { transform: translateX(260%); opacity: 0; } }
+@keyframes wolv-draw { to { stroke-dashoffset: 0; } }
+@keyframes wolv-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wolv-float, .wolv-pulse, .wolv-scan, .wolv-chart-line, .wolv-chart-area { animation: none; }
 }

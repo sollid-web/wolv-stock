@@ -85,7 +85,8 @@ async function cycle() {
         mkt: t.statusInfo?.marketStatus ?? null, open: t.statusInfo?.openState ?? null, reason: t.statusInfo?.reasonCode ?? null,
         ...q, execPerShare: q.execUsd ? q.execUsd / mult : null,
       }));
-      q.err ? bad++ : ok++;
+      if (q.err) bad++;
+      else ok++;
     }
   }
   fs.mkdirSync("data", { recursive: true });

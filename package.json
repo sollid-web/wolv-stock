@@ -6,10 +6,13 @@
     "dev": "next dev --webpack",
     "build": "next build  --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:hardening": "node scripts/hardening-smoke.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
+    "@reown/appkit": "^1.8.24",
+    "@reown/appkit-adapter-wagmi": "^1.8.24",
     "@tanstack/react-query": "^5.62.0",
     "@walletconnect/ethereum-provider": "^2.25.0",
     "@x402/core": "^2.27.0",

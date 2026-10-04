@@ -1,11 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getRWATokenList, getRWAPlatforms } from "@/lib/binance";
-import { useMemo, useState } from "react";
 import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
 import GlobalNav from "@/components/GlobalNav";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
+import { parseRwaAssetRecords, parseRwaPlatformRecords, type RwaAssetRecord } from "@/lib/spotAssets";
 
 export const dynamic = "force-dynamic";
 
@@ -13,54 +14,62 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   const { tab } = await searchParams;
   const tabId = parseTabId(tab); // null = All (no tabId sent to Binance)
   const tabLabel = RWA_TABS.find((t) => t.id === tabId)?.label;
-  const [platforms, list] = await Promise.all([
-    getRWAPlatforms(),
+  const [platformResponse, list] = await Promise.all([
+    getRWAPlatforms()
+      .then((data: unknown) => ({ data: parseRwaPlatformRecords(data), err: null as string | null }))
+      .catch((error: unknown) => ({
+        data: [] as ReturnType<typeof parseRwaPlatformRecords>,
+        err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+      })),
     getRWATokenList(undefined, tabId ?? undefined)
-      .then((data: any) => ({ data, err: null as string | null }))
-      .catch((e: any) => ({ data: null as any, err: String(e?.message ?? e).slice(0, 160) })),
+      .then((data: unknown) => ({ data: parseRwaAssetRecords(data), err: null as string | null }))
+      .catch((error: unknown) => ({
+        data: [] as RwaAssetRecord[],
+        err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+      })),
   ]);
-  const tokens = list.data;
-  const allTokens: any[] = filterSpotEligibleAssets(tokens?.data ?? []);
+  const platforms = platformResponse.data;
+  const allTokens = filterSpotEligibleAssets(list.data);
   const slim = allTokens.map((t) => ({
     tokenContractAddress: t.tokenContractAddress,
-    tokenLogoUrl: t.tokenLogoUrl,
-    underlyingTicker: t.underlyingTicker,
-    underlyingName: t.underlyingName,
-    tokenName: t.tokenName,
-    platformId: t.platformId,
-    tags: Array.isArray(t.tags) ? t.tags : [],
+    tokenLogoUrl: t.tokenLogoUrl ?? undefined,
+    underlyingTicker: t.underlyingTicker ?? "UNKNOWN",
+    underlyingName: t.underlyingName ?? undefined,
+    tokenName: t.tokenName ?? undefined,
+    platformId: t.platformId ?? "unknown",
+    tags: t.tags ?? [],
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
+      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
-          <span className="font-bold text-lg tracking-wide">WOLV Stock Terminal</span>
+          <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Spot Lens</span>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/" className="text-[#64748b] hover:text-white">
-            ← Home
+            <Link href="/" className="text-xs text-[#64748b] hover:text-white sm:text-sm">
+            ← <span className="hidden sm:inline">Home</span>
           </Link>
           <span className="text-xs text-[#64748b]">/</span>
-          <Link href="/trade" className="font-bold text-[#f0b90b]">
+            <Link href="/trade" className="text-xs font-bold text-[#f0b90b] sm:text-sm">
             Trade
           </Link>
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 py-4 flex gap-3 overflow-x-auto">
-        {platforms?.data?.map((p: any) => (
-          <div key={p.platformId} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
+      <div className="grid grid-cols-2 gap-3 px-4 py-4 sm:flex sm:flex-wrap sm:px-6">
+        {platforms.map((p) => (
+          <div key={p.platformId} className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
             <div className="flex items-center gap-2 mb-1">
-              <img src={p.logoUrl} className="w-5 h-5 rounded-full" alt={p.platformId} />
+              {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
             <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>
             <div className="text-[#64748b] text-xs">on BSC</div>
           </div>
         ))}
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl px-4 py-3 flex-shrink-0">
+        <div className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
           <div className="text-[#64748b] text-xs mb-1">Total Available</div>
           <div className="text-[#f0b90b] font-black text-xl">{allTokens.length}</div>
           <div className="text-[#64748b] text-xs">on BSC chain</div>
@@ -68,6 +77,12 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
       </div>
 
       <CategoryTabs active={tabId} />
+
+      {platformResponse.err && (
+        <div role="status" className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
+          Platform metadata is temporarily unavailable: {platformResponse.err}
+        </div>
+      )}
 
       {list.err && (
         <div className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">

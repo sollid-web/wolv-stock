@@ -7,6 +7,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { useIsHydrated } from "@/hooks/useIsHydrated";
 import { useState } from "react";
 import GlobalNav from "@/components/GlobalNav";
+import WalletPortfolio from "@/components/WalletPortfolio";
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +38,12 @@ export default function WalletPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white pb-10">
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
-          <span className="font-bold text-lg tracking-wide">WOLV Stock Terminal</span>
+          <span className="font-bold text-lg tracking-wide">WOLV Spot Lens</span>
         </div>
       </nav>
 
@@ -97,20 +98,14 @@ export default function WalletPage() {
             <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">
               <div className="text-xs text-[#64748b] font-medium mb-2">Network Status</div>
               <div className="flex items-center space-x-3">
-                <div className={`w-3 h-3 rounded-full ${isCorrectNetwork ? "bg-[#10b981]" : "bg-[#ef4444]"}`}></div>
-                <span className={isCorrectNetwork ? "text-xs text-[#10b981]" : "text-xs text-[#ef4444]"}>
+                <div className={`w-3 h-3 rounded-full ${isCorrectNetwork ? "bg-[#f0b90b]" : "bg-[#ef4444]"}`}></div>
+                <span className={isCorrectNetwork ? "text-xs text-[#f0b90b]" : "text-xs text-[#ef4444]"}>
                   {isCorrectNetwork ? `BSC Mainnet (Chain ID: 56)` : `Unsupported network detected (Chain ID: ${chainId ?? "unknown"})`}
                 </span>
               </div>
             </div>
 
-            <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">
-              <div className="text-xs text-[#64748b] font-medium mb-2">Portfolio</div>
-              <div className="text-xs text-[#64748b]">
-                Wallet-connected portfolio tracking coming soon.
-                Use the Trade page to buy and sell tokenized assets.
-              </div>
-            </div>
+            {address && <WalletPortfolio address={address} enabled={isCorrectNetwork} />}
 
             <div className="mt-8">
               <button

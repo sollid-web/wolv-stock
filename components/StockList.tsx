@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { TAG_LABELS, knownTags } from "@/lib/rwaData";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 
@@ -29,7 +30,7 @@ function Logo({ url, tk }: { url?: string; tk: string }) {
         {tk.slice(0, 4)}
       </div>
     );
-  return <img src={url} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
+  return <Image src={url} width={36} height={36} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
 }
 
 export default function StockList({ tokens, category }: { tokens: T[]; category?: string }) {
@@ -97,8 +98,9 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
         ))}
       </div>
 
-      <div className="text-xs text-slate-300 mb-3 uppercase tracking-wider font-bold">
-        {rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}
+      <div className="mb-3 flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-wider text-slate-300">
+        <span className="min-w-0 flex-1 break-words">{rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}</span>
+        <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-emerald-400"><span className="wolv-pulse size-1.5 rounded-full bg-emerald-400" /> Live data</span>
       </div>
 
       {rows.length === 0 ? (
@@ -109,8 +111,9 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
             <Link
               key={t.tokenContractAddress}
               href={`/stock/${t.tokenContractAddress}`}
-              className="group flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-4 transition hover:-translate-y-0.5 hover:border-[#f0b90b]/50 hover:bg-white/[0.06] sm:px-5"
+              className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-4 transition duration-300 hover:-translate-y-1 hover:border-[#f0b90b]/50 hover:bg-white/[0.06] hover:shadow-[0_12px_36px_rgba(240,185,11,.08)] sm:px-5"
             >
+              <span className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/4 -skew-x-12 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent opacity-0 transition duration-700 group-hover:left-[120%] group-hover:opacity-100" />
               <div className="flex items-center gap-3 min-w-0">
                 <Logo url={t.tokenLogoUrl} tk={t.underlyingTicker} />
                 <div className="min-w-0">

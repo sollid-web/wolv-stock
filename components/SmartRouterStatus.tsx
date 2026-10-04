@@ -1,6 +1,16 @@
 import { getRWATokenList } from "@/lib/binance";
 import { isAssetCompliant } from "@/lib/compliance";
 import { quoteUsd } from "@/lib/quotes";
+import { parseRwaAssetRecords } from "@/lib/spotAssets";
+
+type RouterQuote = {
+  platform: string;
+  tokenContractAddress: string;
+  effectiveUsd: number | null;
+  feeEstimate: number | null;
+  quoteStatus: "Live" | "Delayed";
+  quoteError: string | null;
+};
 
 function normalizePlatform(platformId?: string | null) {
   const value = (platformId ?? "").trim().toLowerCase();
@@ -18,12 +28,12 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
 
   const compliant = isAssetCompliant(symbol);
 
-  let rows: any[] = [];
+  let rows: RouterQuote[] = [];
 
   try {
-    const list = await getRWATokenList();
-    const matches = ((list?.data ?? []) as any[])
-      .filter((token) => (token?.underlyingTicker ?? "").trim().toUpperCase() === symbol)
+    const list: unknown = await getRWATokenList();
+    const matches = parseRwaAssetRecords(list)
+      .filter((token) => token.underlyingTicker.trim().toUpperCase() === symbol)
       .filter((token) => {
         const platform = (token?.platformId ?? "").trim().toLowerCase();
         return platform.includes("ondo") || platform.includes("stock") || platform.includes("bstock");
@@ -80,8 +90,8 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
         </div>
         <div className="mt-1 text-xs text-[#94a3b8]">
           {best && best.feeEstimate != null
-            ? `${best.feeEstimate.toFixed(3)}% estimated route fee / spread`
-            : best?.quoteError ?? "Comparing live routes from bStocks and Ondo"}
+            ? `${best.feeEstimate.toFixed(3)}% estimated price impact`
+            : best?.quoteError ?? "Comparing live executable routes from bStocks and Ondo"}
         </div>
       </div>
 

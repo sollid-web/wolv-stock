@@ -1,128 +1,209 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getRWATokenList } from "@/lib/binance";
-import { quoteUsd } from "@/lib/quotes";
+import { isQuoteFresh, quoteAgeSeconds, quoteUsd, type Q } from "@/lib/quotes";
 import GlobalNav from "@/components/GlobalNav";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
+import { parseRwaAssetRecords, type RwaAssetRecord } from "@/lib/spotAssets";
 
 export const dynamic = "force-dynamic";
 
-const num = (v: any) => parseFloat(v ?? "0") || 0;
-const tone = (x: number | null) =>
-  x == null ? "text-[#64748b]" : Math.abs(x) < 0.25 ? "text-green-400" : Math.abs(x) < 1 ? "text-yellow-400" : "text-red-400";
-const sgn = (x: number) => (x > 0 ? "+" : "") + x.toFixed(3) + "%";
+const QUOTE_AMOUNT_USDT = 100;
+const MAX_CONCURRENT_QUOTES = 4;
+const MAX_RELIABLE_GAP_PERCENT = 20;
+
+type RwaToken = RwaAssetRecord;
+
+type VenueResult = {
+  token: RwaToken;
+  quote: Q;
+  multiplier: number;
+  referencePrice: number;
+  referencePerShare: number | null;
+  executablePerShare: number | null;
+  referenceGap: number | null;
+  stale: boolean;
+  unreliable: boolean;
+};
+
+type OpportunityRow = {
+  ticker: string;
+  venues: VenueResult[];
+  crossVenueSpread: number | null;
+  statusMismatch: boolean;
+  statuses: string[];
+};
+
+function numberValue(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function signedPercent(value: number): string {
+  return `${value > 0 ? "+" : ""}${value.toFixed(3)}%`;
+}
+
+function tone(value: number | null): string {
+  if (value == null) return "text-[#64748b]";
+  return Math.abs(value) < 0.25 ? "text-green-400" : Math.abs(value) < 1 ? "text-yellow-400" : "text-red-400";
+}
+
+function marketLabel(token: RwaToken): string {
+  const status = token.statusInfo?.marketStatus;
+  if (typeof status === "string" && status.trim()) return status.trim().toLowerCase();
+  if (token.statusInfo?.openState === true) return "open";
+  if (token.statusInfo?.openState === false) return "closed";
+  return "status unavailable";
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  let nextIndex = 0;
+
+  async function run(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+  return results;
+}
+
+async function buildVenueResult(token: RwaToken): Promise<VenueResult> {
+  const quote = await quoteUsd(token.tokenContractAddress, QUOTE_AMOUNT_USDT);
+  const multiplier = numberValue(token.tokenToShareRatio) || 1;
+  const referencePrice = numberValue(token.referencePrice);
+  const referencePerShare = referencePrice > 0 ? referencePrice / multiplier : null;
+  const executablePerShare = quote.ok ? quote.usd / multiplier : null;
+  const referenceGap = executablePerShare != null && referencePerShare != null && referencePerShare > 0
+    ? (executablePerShare / referencePerShare - 1) * 100
+    : null;
+
+  return {
+    token,
+    quote,
+    multiplier,
+    referencePrice,
+    referencePerShare,
+    executablePerShare,
+    referenceGap,
+    stale: !isQuoteFresh(quote),
+    unreliable: referenceGap != null && Math.abs(referenceGap) > MAX_RELIABLE_GAP_PERCENT,
+  };
+}
 
 export default async function GapPage({ searchParams }: { searchParams: Promise<{ n?: string }> }) {
   const { n } = await searchParams;
-  const limit = Math.min(40, Math.max(1, parseInt(n ?? "8") || 8));
-  const tokens = await getRWATokenList();
-  const all: any[] = filterSpotEligibleAssets(tokens?.data ?? []);
+  const limit = Math.min(40, Math.max(1, Number.parseInt(n ?? "8", 10) || 8));
+  const tokensResponse = await getRWATokenList();
+  const all = filterSpotEligibleAssets(parseRwaAssetRecords(tokensResponse));
+  const grouped = new Map<string, Map<string, RwaToken>>();
 
-  const by: Record<string, Record<string, any>> = {};
-  for (const t of all) {
-    if (!t.underlyingTicker) continue;
-    (by[t.underlyingTicker] ||= {})[t.platformId] ||= t;
+  for (const token of all) {
+    if (!token.underlyingTicker || !token.platformId) continue;
+    const venues = grouped.get(token.underlyingTicker) ?? new Map<string, RwaToken>();
+    if (!venues.has(token.platformId)) venues.set(token.platformId, token);
+    grouped.set(token.underlyingTicker, venues);
   }
-  const pairs = Object.entries(by)
-    .filter(([, v]) => Object.keys(v).length >= 2)
-    .map(([ticker, v]) => ({ ticker, venues: Object.values(v) as any[] }))
-    .sort((a, b) => Math.max(...b.venues.map((x) => num(x.volume24H))) - Math.max(...a.venues.map((x) => num(x.volume24H))));
+
+  const pairs = Array.from(grouped.entries())
+    .filter(([, venues]) => venues.size >= 2)
+    .map(([ticker, venues]) => ({ ticker, venues: Array.from(venues.values()) }))
+    .sort((a, b) => Math.max(...b.venues.map((token) => numberValue(token.volume24H))) - Math.max(...a.venues.map((token) => numberValue(token.volume24H))));
   const shown = pairs.slice(0, limit);
+  const rows = await mapWithConcurrency(shown, MAX_CONCURRENT_QUOTES, async (pair): Promise<OpportunityRow> => {
+    const venues = await mapWithConcurrency(pair.venues, MAX_CONCURRENT_QUOTES, buildVenueResult);
+    const prices = venues
+      .filter((venue) => !venue.stale && !venue.unreliable)
+      .map((venue) => venue.executablePerShare)
+      .filter((value): value is number => value != null && value > 0);
+    const crossVenueSpread = prices.length >= 2 ? (Math.max(...prices) / Math.min(...prices) - 1) * 100 : null;
+    const statuses = Array.from(new Set(venues.map((venue) => marketLabel(venue.token)).filter((status) => status !== "status unavailable")));
+    return { ticker: pair.ticker, venues, crossVenueSpread, statusMismatch: statuses.length > 1, statuses };
+  });
 
-  const rows: any[] = [];
-  for (const p of shown) {
-    const vs: any[] = [];
-    for (const t of p.venues) {
-      const q = await quoteUsd(t.tokenContractAddress);
-      const mult = num(t.tokenToShareRatio) || 1;
-      const ref = num(t.referencePrice);
-      const refShare = ref / mult; // referencePrice is per TOKEN
-      const perShare = q.ok ? q.usd / mult : null;
-      const gap = perShare != null && refShare > 0 ? (perShare / refShare - 1) * 100 : null;
-      vs.push({ t, q, mult, ref, refShare, perShare, gap });
-    }
-    const ps = vs.map((v) => v.perShare).filter((x): x is number => x != null);
-    const spread = ps.length >= 2 ? (Math.max(...ps) / Math.min(...ps) - 1) * 100 : null;
-    rows.push({ ticker: p.ticker, vs, spread });
-  }
-
-  const odd = all
-    .filter((t) => Math.abs(num(t.tokenToShareRatio) - 1) > 0.5)
-    .sort((a, b) => Math.abs(num(b.tokenToShareRatio) - 1) - Math.abs(num(a.tokenToShareRatio) - 1));
+  const unusual = all
+    .filter((token) => token.underlyingTicker && numberValue(token.tokenToShareRatio) > 0 && Math.abs(numberValue(token.tokenToShareRatio) - 1) > 0.5)
+    .sort((a, b) => Math.abs(numberValue(b.tokenToShareRatio) - 1) - Math.abs(numberValue(a.tokenToShareRatio) - 1));
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white pb-10">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
-        <Link href="/" className="text-[#64748b] text-xl">←</Link>
-        <div>
-          <div className="font-black text-lg">📊 Listed vs Executable Price</div>
-          <div className="text-xs text-[#64748b]">What tokenized stocks really cost · updated {new Date().toISOString().slice(11, 19)} UTC</div>
+    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+      <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6">
+        <Link href="/" className="text-xl text-[#64748b]">←</Link>
+        <div className="min-w-0 flex-1">
+          <div className="break-words text-base font-black sm:text-lg">Listed vs Executable Price</div>
+          <div className="break-words text-xs text-[#64748b]">Updated {new Date().toISOString().slice(11, 19)} UTC · quote size {QUOTE_AMOUNT_USDT} USDT</div>
         </div>
       </nav>
 
-      <div className="px-4 sm:px-6 pt-6">
-        <p className="text-xs text-[#94a3b8] mb-4 leading-relaxed">
-          Listed prices are per token, and each token represents a multiplier of shares. This page asks the router what
-          100 USDT actually buys, converts that to a per-share price, and compares it with the reference price. Reference price is a
-          per-share value derived from the on-chain token price according to Binance&apos;s RWA data; it is not an independent
-          stock-market quote. Executable price reflects what the aggregator currently quotes for the token.
-        </p>
-        <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider font-bold">
-          Top {shown.length} of {pairs.length} cross-listed tickers by volume · add ?n=40 for all (slower)
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+        <div className="mb-5 max-w-4xl text-xs leading-relaxed text-[#94a3b8]">
+          WOLV compares two different signals: Binance RWA reference data and what the aggregator currently quotes for a spot buy. Prices are normalized by each token&apos;s shares-per-token multiplier. A raw difference is not guaranteed profit; fees, gas, liquidity, slippage, quote age, and market status still matter.
+        </div>
+        <div className="mb-3 text-xs font-bold uppercase tracking-wider text-[#64748b]">
+          Showing {shown.length} of {pairs.length} cross-listed tickers by volume · {all.length} eligible BSC asset records · add ?n=40 for all
         </div>
 
-        <div className="space-y-3 mb-8">
-          {rows.map((r) => (
-            <div key={r.ticker} className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3 gap-2">
-                <div className="font-bold text-sm">{r.ticker}</div>
-                <div className={`text-xs font-bold text-right ${tone(r.spread)}`}>
-                  {r.spread == null ? "spread n/a" : `${r.spread.toFixed(3)}% cross-venue spread (per share)`}
+        <div className="mb-8 space-y-3">
+          {rows.map((row) => (
+            <div key={row.ticker} className="rounded-xl border border-[#1b1b35] bg-[#0e0e1c] p-4">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div className="shrink-0 font-bold">{row.ticker}</div>
+                <div className={`min-w-0 flex-1 break-words text-left text-xs font-bold sm:text-right ${tone(row.crossVenueSpread)}`}>
+                  {row.crossVenueSpread == null ? "reliable spread unavailable" : `${signedPercent(row.crossVenueSpread)} executable spread per share`}
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {r.vs.map((v: any) => (
-                  <Link
-                    key={v.t.tokenContractAddress}
-                    href={`/stock/${v.t.tokenContractAddress}`}
-                    className="block rounded-lg p-3 border border-[#1b1b35] hover:border-[#f0b90b]/30 transition-colors"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      {v.t.tokenLogoUrl && <img src={v.t.tokenLogoUrl} className="w-5 h-5 rounded-full" alt={r.ticker} />}
-                      <span className="text-xs text-[#64748b] capitalize">{v.t.platformId}</span>
-                      <span className="text-[10px] text-[#64748b] ml-auto">
-                        {v.t.statusInfo?.marketStatus ?? (v.t.statusInfo?.openState ? "open" : "closed")}
-                      </span>
-                    </div>
-                    {v.q.ok ? (
-                      <>
-                        <div className="font-black text-sm">
-                          ${v.perShare.toFixed(3)} <span className="text-xs text-[#64748b] font-normal">per share, executable</span>
-                        </div>
-                        <div className="text-xs text-[#64748b]">reference ${v.refShare.toFixed(3)}</div>
-                        {v.gap != null && <div className={`text-xs font-bold ${tone(v.gap)}`}>gap {sgn(v.gap)}</div>}
-                        <div className="text-[10px] text-[#64748b] mt-1">
-                          {v.mult.toFixed(4)}× shares/token · {v.q.vendor} {v.q.mode} · {Math.round((Date.now() - v.q.ts) / 1000)}s old
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-xs text-yellow-500">Quote unavailable: {v.q.err}</div>
-                    )}
-                  </Link>
-                ))}
+              {row.statusMismatch && (
+                <div role="status" className="mb-3 rounded-lg border border-yellow-900/60 bg-yellow-900/10 p-2 text-xs leading-relaxed text-yellow-400">
+                  Venue market statuses differ ({row.statuses.join(" vs ")}); this comparison may reflect different trading sessions rather than a real gap.
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {row.venues.map((venue) => {
+                  const quoteIsUsable = venue.quote.ok && !venue.stale && !venue.unreliable;
+                  return (
+                    <Link key={venue.token.tokenContractAddress} href={`/stock/${venue.token.tokenContractAddress}`} className={`block rounded-lg border p-3 ${venue.stale ? "border-yellow-900/60" : "border-[#1b1b35]"}`}>
+                      <div className="mb-2 flex items-center gap-2">
+                        {venue.token.tokenLogoUrl && <Image src={venue.token.tokenLogoUrl} width={20} height={20} className="rounded-full" alt={row.ticker} />}
+                        <span className="text-xs capitalize text-[#64748b]">{venue.token.platformId}</span>
+                        <span className="ml-auto min-w-0 break-words text-right text-[10px] text-[#64748b]">{marketLabel(venue.token)}</span>
+                      </div>
+                      {venue.quote.ok ? (
+                        <>
+                          <div className={`text-sm font-black ${venue.unreliable ? "text-yellow-400" : ""}`}>
+                            {venue.unreliable ? "Unreliable quote" : `$${venue.executablePerShare?.toFixed(3) ?? "n/a"} `}<span className="text-xs font-normal text-[#64748b]">{venue.unreliable ? "not used for ranking" : "per share, executable"}</span>
+                          </div>
+                          <div className="text-xs text-[#64748b]">
+                            reference {venue.referencePerShare == null ? "n/a" : `$${venue.referencePerShare.toFixed(3)}`} · {venue.multiplier.toFixed(4)}× shares/token
+                          </div>
+                          <div className={`text-xs font-bold ${tone(venue.referenceGap)}`}>
+                            {venue.unreliable ? "Unreliable quote — excluded from spread ranking" : venue.referenceGap == null ? "reference comparison unavailable" : `reference difference ${signedPercent(venue.referenceGap)}`}
+                          </div>
+                          <div className="mt-1 break-words text-[10px] text-[#64748b]">
+                            {venue.quote.vendor} · {venue.quote.mode} · impact {venue.quote.impact == null ? "n/a" : `${venue.quote.impact}%`} · {quoteAgeSeconds(venue.quote)}s old
+                          </div>
+                          {!quoteIsUsable && <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-yellow-500">{venue.unreliable ? `Unreliable quote: gap exceeds ${MAX_RELIABLE_GAP_PERCENT}%` : "Refresh before trading: quote is stale"}</div>}
+                        </>
+                      ) : (
+                        <div className="break-words text-xs text-yellow-500">Quote unavailable: {venue.quote.err}</div>
+                      )}
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
 
-        <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider font-bold">
-          Unusual share multipliers ({odd.length}) — likely splits or corporate actions
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {odd.map((t) => (
-            <Link key={t.tokenContractAddress} href={`/stock/${t.tokenContractAddress}`}
-              className="bg-[#0e0e1c] border border-[#1b1b35] rounded-lg p-3 text-xs hover:border-[#f0b90b]/30 transition-colors">
-              <div className="font-bold">{t.underlyingTicker} <span className="text-[#64748b] font-normal capitalize">{t.platformId}</span></div>
-              <div className="text-[#f0b90b] font-black">{num(t.tokenToShareRatio).toFixed(3)}× shares/token</div>
+        <div className="mb-3 text-xs font-bold uppercase tracking-wider text-[#64748b]">Unusual share multipliers ({unusual.length})</div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {unusual.map((token) => (
+            <Link key={token.tokenContractAddress} href={`/stock/${token.tokenContractAddress}`} className="rounded-lg border border-[#1b1b35] bg-[#0e0e1c] p-3 text-xs">
+              <div className="font-bold">{token.underlyingTicker} <span className="font-normal capitalize text-[#64748b]">{token.platformId}</span></div>
+              <div className="font-black text-[#f0b90b]">{numberValue(token.tokenToShareRatio).toFixed(3)}× shares/token</div>
             </Link>
           ))}
         </div>

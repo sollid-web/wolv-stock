@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { unstable_cache } from "next/cache";
 
 let lastCall = 0;
 let rateLimitQueue: Promise<void> = Promise.resolve();
@@ -80,14 +81,63 @@ export async function simulateBscTransaction(
   });
 }
 
+export async function broadcastBscTransaction(address: string, signedTransaction: string) {
+  return post("/api/v1/dex/pre-transaction/broadcast-transaction", {
+    binanceChainId: "56",
+    address,
+    signedTransaction,
+  });
+}
+
+export async function getTransactionDetailByTxHash(binanceChainId: string, txHash: string) {
+  return get("/api/v1/dex/post-transaction/transaction-detail-by-txhash", {
+    binanceChainId,
+    txHash,
+  }, true);
+}
+
+// Read-only wallet holdings, paginated by chain. The documented endpoint
+// returns one chain entry containing tokenAssets for each requested chain.
+export async function getAllTokenBalancesByAddress(
+  address: string,
+  chains = "56",
+  pageSize = "100"
+) {
+  return get("/api/v1/dex/balance/all-token-balances-by-address", {
+    address,
+    chains,
+    excludeRiskToken: "true",
+    page: "1",
+    pageSize,
+  }, true);
+}
+
+// Read-only address portfolio statistics. Per the Binance schema, timeFrame
+// 2 means 7D for this endpoint (it is not shared with leaderboard semantics).
+export async function getPortfolioOverview(address: string, timeFrame = "2") {
+  return get("/api/v1/dex/market/portfolio/overview", {
+    binanceChainId: "56",
+    walletAddress: address,
+    timeFrame,
+  }, true);
+}
+
 // RWA — list all tokenized stocks
 // Optional filters per Binance RWA Data docs: platformId (ondo | bstock) and tabId (sector tab, integer).
 // With no arguments the request is unchanged (complete list).
-export async function getRWATokenList(platform?: string, tabId?: number) {
-  const params: Record<string, string> = {};
-  if (platform) params.platformId = platform;
-  if (tabId != null) params.tabId = String(tabId);
-  return get("/api/v1/dex/market/rwa/tokens", params);
+const getCachedRWATokenList = unstable_cache(
+  async (platform: string | null, tabId: number | null) => {
+    const params: Record<string, string> = {};
+    if (platform) params.platformId = platform;
+    if (tabId != null) params.tabId = String(tabId);
+    return get("/api/v1/dex/market/rwa/tokens", params, true);
+  },
+  ["binance-rwa-token-list"],
+  { revalidate: 60 }
+);
+
+export function getRWATokenList(platform?: string, tabId?: number) {
+  return getCachedRWATokenList(platform ?? null, tabId ?? null);
 }
 
 // RWA — price for specific tokens
@@ -120,8 +170,14 @@ export async function getRWAMarketData(contractAddress: string, chainId = "56") 
 }
 
 // RWA — issuance platforms (Ondo etc.)
-export async function getRWAPlatforms() {
-  return get("/api/v1/dex/market/rwa/platforms");
+const getCachedRWAPlatforms = unstable_cache(
+  () => get("/api/v1/dex/market/rwa/platforms", {}, true),
+  ["binance-rwa-platforms"],
+  { revalidate: 3600 }
+);
+
+export function getRWAPlatforms() {
+  return getCachedRWAPlatforms();
 }
 
 // Candlestick chart data

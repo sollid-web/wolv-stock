@@ -15,7 +15,7 @@ export default function GlobalNav() {
   };
 
   return (
-    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-white/[0.1] bg-[#0a0a14]/95 px-2 backdrop-blur-xl md:hidden">
+    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(4rem+env(safe-area-inset-bottom))] items-center justify-around border-t border-white/[0.1] bg-[#0a0a14]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
       <Link href="/" className={`flex flex-col items-center text-sm font-medium ${isActive("/") ? "text-[#f0b90b]" : "text-[#64748b]"}`}>
         <span className="w-8 h-8 rounded-full bg-[#f0b90b]/20 flex items-center justify-center text-xs font-black">
           W
