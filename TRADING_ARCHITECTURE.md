@@ -12,6 +12,7 @@ The main-track product is a BSC spot cross-venue monitor for tokenized equities.
 4. For `SWAP` responses, the server validates the transaction payload and runs Binance Transaction API simulation through `/api/transaction-simulate`. The UI uses simulation allowance changes to decide whether USDT approval is needed and shows predicted balance changes. Immediately before each approval or swap, the browser simulates again, then asks the connected wallet to confirm and broadcast the transaction using its standard transaction-send flow. The app reads the resulting receipt from its BSC RPC client.
 5. For `RFQ` responses, the browser signs the returned EIP-712 data and posts the signature, vendor, quote ID, idempotency UUID, and selected target address to `/api/order/submit`. The server rechecks spot eligibility before Binance receives the order submission. Status is polled through `/api/order/[orderId]`.
 6. Approval and order-status requests use no-store fetches. BSC approval and swap status are polled through `/api/transaction-status`, backed by Binance Wallet API transaction details. Catalog requests use a 60-second cache. Outbound Binance requests are serialized at a 250 ms minimum interval per server process.
+7. `/api/wallet/portfolio` retrieves read-only BSC token balances and portfolio overview data for the connected address; `/wallet` renders loading, empty, error, holdings, and portfolio-statistic states. This path does not sign or execute transactions.
 
 ## Credential And Signing Boundaries
 
@@ -28,7 +29,7 @@ The hackathon and Binance Web3 developer product have restricted-region and sanc
 
 ## Explicitly Not Integrated
 
-- Binance Wallet/Address Portfolio API, Agentic Wallet/Wallet Skills, and BNB Agent Studio.
+- Agentic Wallet/Wallet Skills and BNB Agent Studio.
 - Distributed per-client API rate limiting. The current Binance request queue is process-local and is not sufficient by itself for a horizontally scaled public deployment.
 - Automated local EIP-712 signer recovery and persistent replay tracking. Binance remains the external order-submission boundary.
 

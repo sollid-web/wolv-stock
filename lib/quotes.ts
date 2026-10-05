@@ -1,4 +1,5 @@
 import { getRWAQuote } from "@/lib/binance";
+import { OPPORTUNITY_QUOTE_TTL_MS } from "@/lib/opportunityMath";
 
 export type QuoteSuccess = {
   ok: true;
@@ -26,7 +27,7 @@ type QuoteRoute = {
 };
 
 const cache = new Map<string, Q>();
-export const QUOTE_TTL_MS = 30_000;
+export const QUOTE_TTL_MS = OPPORTUNITY_QUOTE_TTL_MS;
 let last = 0;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
