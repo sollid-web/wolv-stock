@@ -2,7 +2,7 @@
 
 **Prepared:** 5 October 2026
 
-**Submission status:** Not final. GitHub `main` is at `1e104d1`, and Vercel reports that its production deployment succeeded. The live `/` is the product landing page with a compact featured comparison; `/gap` is the full monitor. The demo video and builder-firsthand Developer Experience Report remain outstanding.
+**Submission status:** Not final. Route-correction commit `1e104d1` is on GitHub `main`, and Vercel reports that its production deployment succeeded. A later documentation-only commit updates these submission notes without changing app behavior. The live `/` is the product landing page with a compact featured comparison; `/gap` is the full monitor. The demo video and builder-firsthand Developer Experience Report remain outstanding.
 
 ## Project summary
 
