@@ -1,8 +1,8 @@
 import fs from "fs";
 import crypto from "crypto";
 
-const env = {};
-for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
+const env = { ...process.env };
+for (const line of (fs.existsSync(".env.local") ? fs.readFileSync(".env.local", "utf8") : "").split("\n")) {
   const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
   if (m) env[m[1]] = m[2].replace(/^['"]|['"]$/g, "");
 }
@@ -55,7 +55,7 @@ async function quote(addr) {
   return { err: "rate limited" };
 }
 
-let picked = null;
+let picked = process.env.TICKERS ? process.env.TICKERS.split(",") : null;
 async function cycle() {
   const list = (await get("/api/v1/dex/market/rwa/tokens")).data ?? [];
   if (!picked) {
