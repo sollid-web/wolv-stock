@@ -6,6 +6,16 @@ import { useWallet, type WalletHookValue } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
 import { useIsHydrated } from "@/hooks/useIsHydrated";
+import {
+  canExecuteTrade,
+  displayOrderStatus,
+  humanTransactionStatus,
+  isFreshQuote,
+  tradeErrorMessage as errorMessage,
+  tradePhaseMessage,
+  TRADE_QUOTE_TTL_MS as QUOTE_TTL_MS,
+  walletConnectionView,
+} from "@/lib/tradeReadiness";
 
 type TokenInfo = {
   address: string;
@@ -69,47 +79,10 @@ type SimulationResult = {
   allowanceChanges: { tokenAddress?: string; owner?: string; spender?: string; preAmount?: string; postAmount?: string }[];
 };
 
-const QUOTE_TTL_MS = 30_000;
 const ORDER_POLL_INTERVAL_MS = 5_000;
 const MAX_ORDER_POLLS = 12;
 
 type ExecutionPhase = "idle" | "signing" | "confirming" | "submitting";
-
-function displayOrderStatus(status: string): string {
-  switch (status.toUpperCase()) {
-    case "FILLED":
-      return "confirmed";
-    case "FAILED":
-      return "failed";
-    default:
-      return status.toLowerCase();
-  }
-}
-
-function humanTransactionStatus(status: string): string {
-  switch (status.toLowerCase()) {
-    case "pending": return "Waiting for confirmation";
-    case "confirmed": return "Confirmed";
-    case "failed": return "Failed";
-    case "unverified": return "Needs verification";
-    default: return status;
-  }
-}
-
-function isFreshQuote(quote: QuoteData | null, now: number): boolean {
-  return !!quote?.quoteFetchedAt && now - quote.quoteFetchedAt < QUOTE_TTL_MS;
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  const message = error instanceof Error && error.message ? error.message : fallback;
-  if (/unknown rpc|failed to publish payload|user rejected|user denied/i.test(message)) {
-    return "Your wallet could not approve this request. Check that it is connected to BSC Mainnet, then try again.";
-  }
-  if (/timeout|temporarily unavailable|network request failed|fetch failed/i.test(message)) {
-    return "The service is taking too long to respond. No transaction was sent; please try again.";
-  }
-  return message;
-}
 
 function displayTokenAmount(value: string | undefined): string {
   if (!value) return "—";
@@ -496,8 +469,8 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       return;
     }
 
-    // Set this before the first await; React state alone does not stop two
-    // rapid click events from entering the slow preflight path together.
+    // Set the synchronous lock before the first await. React state alone does
+    // not prevent two rapid click events from entering this handler together.
     approvalInFlightRef.current = true;
     setIsApproving(true);
     setApprovalPhase("preparing");
@@ -805,22 +778,33 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     : null;
   const quoteIsFresh = isFreshQuote(quoteData, quoteNow);
 
-  const canExecute =
-    isConnected &&
-    isCorrectNetwork &&
-    !!address &&
-    !!provider &&
-    !!quoteData &&
-    !!swapData &&
-    quoteIsFresh &&
-    (swapData.executionMode !== "SWAP" || swapSimulation?.status.toUpperCase() === "SUCCESS") &&
-    !requiresFreshQuote &&
-    !isLoading &&
-    !isSubmitting &&
-    !isApproving &&
-    !transactionStatus &&
-    !approvalError &&
-    (!requiresTypedDataSignature || !!userSignature);
+  const canExecute = canExecuteTrade({
+    isConnected,
+    isCorrectNetwork,
+    hasAddress: !!address,
+    hasProvider: !!provider,
+    hasQuote: !!quoteData,
+    hasSwapData: !!swapData,
+    quoteIsFresh,
+    executionMode: swapData?.executionMode,
+    swapSimulationStatus: swapSimulation?.status,
+    requiresFreshQuote,
+    isLoading,
+    isSubmitting,
+    isApproving,
+    hasTransactionStatus: !!transactionStatus,
+    hasApprovalError: !!approvalError,
+    hasApprovalData: !!approvalData,
+    requiresTypedDataSignature,
+    hasUserSignature: !!userSignature,
+  });
+  const connectionView = walletConnectionView({
+    isHydrated,
+    isInitializing,
+    isConnecting,
+    isConnected,
+    hasError: !!error,
+  });
 
   if (process.env.NODE_ENV !== "production") {
     // Dev-only visibility into the gating logic. No signatures or other
@@ -846,7 +830,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   // with isConnecting (which only reflects an explicit user-clicked
   // Connect in progress), or refreshing the page would flash the
   // WalletSelector / "Connecting..." UI before settling.
-  if (!isHydrated || isInitializing) {
+  if (connectionView === "checking") {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
@@ -855,7 +839,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     );
   }
 
-  if (isConnecting) {
+  if (connectionView === "connecting") {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
@@ -865,7 +849,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   }
 
   // If there's an error and we're not connecting, show wallet selector instead of just error
-  if (error && !isConnecting) {
+  if (connectionView === "error") {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <WalletSelector
@@ -879,7 +863,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   }
 
   // If not connected and no error, show wallet selector to help user connect
-  if (!isConnected) {
+  if (connectionView === "disconnected") {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
         <WalletSelector
@@ -1223,9 +1207,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Transaction Status</div>
           {executionPhase !== "idle" && (
             <div role="status" style={{ fontSize: "0.875rem", color: "#f0b90b", marginBottom: "0.25rem" }}>
-              {executionPhase === "signing" && "Waiting for wallet confirmation..."}
-              {executionPhase === "submitting" && "Submitting signed RFQ order..."}
-              {executionPhase === "confirming" && "Waiting for transaction/order confirmation..."}
+              {tradePhaseMessage(executionPhase)}
             </div>
           )}
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>

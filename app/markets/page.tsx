@@ -6,21 +6,7 @@ import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
 import GlobalNav from "@/components/GlobalNav";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
-
-type RwaToken = {
-  tokenContractAddress: string;
-  tokenLogoUrl?: string;
-  underlyingTicker: string;
-  underlyingName?: string;
-  tokenName?: string;
-  platformId: string;
-  tags?: string[] | null;
-};
-
-type TokenListResponse = { data?: RwaToken[] | null };
-type PlatformListResponse = {
-  data?: { platformId: string; logoUrl?: string }[] | null;
-};
+import { parseRwaAssetRecords, parseRwaPlatformRecords } from "@/lib/spotAssets";
 
 export const dynamic = "force-dynamic";
 
@@ -30,20 +16,20 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
   const tabLabel = RWA_TABS.find((t) => t.id === tabId)?.label;
   const [platformResult, list] = await Promise.all([
     getRWAPlatforms()
-      .then((data: unknown) => ({ data: data as PlatformListResponse, err: null as string | null }))
+      .then((data: unknown) => ({ data: parseRwaPlatformRecords(data), err: null as string | null }))
       .catch((error: unknown) => ({
-        data: null,
+        data: [] as ReturnType<typeof parseRwaPlatformRecords>,
         err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
       })),
     getRWATokenList(undefined, tabId ?? undefined)
-      .then((data: unknown) => ({ data: data as TokenListResponse, err: null as string | null }))
+      .then((data: unknown) => ({ data: parseRwaAssetRecords(data), err: null as string | null }))
       .catch((error: unknown) => ({
-        data: null,
+        data: [] as ReturnType<typeof parseRwaAssetRecords>,
         err: (error instanceof Error ? error.message : String(error)).slice(0, 160),
       })),
   ]);
-  const tokens = list.data;
-  const allTokens = filterSpotEligibleAssets(tokens?.data ?? []);
+  const platforms = platformResult.data;
+  const allTokens = filterSpotEligibleAssets(list.data);
   const slim = allTokens.map((t) => ({
     tokenContractAddress: t.tokenContractAddress,
     tokenLogoUrl: t.tokenLogoUrl,
@@ -82,28 +68,28 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
           </div>
           <div className="wolv-float relative min-w-0 overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0e0e1c]/90 p-5 shadow-[0_20px_80px_rgba(0,0,0,.32)]">
             <div className="wolv-scan absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-[#f0b90b]/10 to-transparent" />
-            <div className="relative flex items-center justify-between"><div><div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Market pulse</div><div className="mt-1 text-lg font-black">Live BSC coverage</div></div><span className="wolv-pulse rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">online</span></div>
+            <div className="relative flex items-center justify-between"><div><div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Market pulse</div><div className="mt-1 text-lg font-black">Live BSC coverage</div></div><span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${list.err ? "border-yellow-800/50 bg-yellow-900/10 text-yellow-200" : "wolv-pulse border-emerald-400/30 bg-emerald-400/10 text-emerald-300"}`}>{list.err ? "feed unavailable" : "online"}</span></div>
             <div className="relative mt-6 flex h-24 items-end gap-1.5 border-b border-white/[0.08] pb-2">{Array.from({ length: 18 }, (_, i) => { const height = 24 + ((i * 17 + allTokens.length) % 58); return <span key={i} className="wolv-chart-area flex-1 rounded-t-sm bg-gradient-to-t from-[#f0b90b]/20 to-[#f0b90b]" style={{ height: `${height}%`, opacity: 0.35 + (i % 4) * 0.12 }} />; })}</div>
-            <div className="relative mt-4 grid grid-cols-3 gap-3 text-center"><div><div className="text-xl font-black text-white">{allTokens.length}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">assets</div></div><div><div className="text-xl font-black text-white">{platformResult.data?.data?.length ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">venues</div></div><div><div className="text-xl font-black text-[#f0b90b]">BSC</div><div className="text-[10px] uppercase tracking-wider text-slate-500">spot venue</div></div></div>
+            <div className="relative mt-4 grid grid-cols-3 gap-3 text-center"><div><div className="text-xl font-black text-white">{list.err ? "—" : allTokens.length}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">assets</div></div><div><div className="text-xl font-black text-white">{platformResult.err ? "—" : platforms.length}</div><div className="text-[10px] uppercase tracking-wider text-slate-500">venues</div></div><div><div className="text-xl font-black text-[#f0b90b]">BSC</div><div className="text-[10px] uppercase tracking-wider text-slate-500">spot venue</div></div></div>
           </div>
         </div>
       </section>
 
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 pb-6 sm:flex sm:flex-wrap sm:px-8">
-        {platformResult.data?.data?.map((p) => (
+        {platforms.map((p) => (
           <div key={p.platformId} className="wolv-sheen min-w-0 rounded-xl border border-white/[0.08] p-4 transition hover:-translate-y-1 hover:border-[#f0b90b]/40 sm:p-5">
             <div className="flex items-center gap-2 mb-1">
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
-            <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>
+            <div className="text-[#f0b90b] font-black text-xl">{list.err ? "—" : allTokens.filter((t) => t.platformId === p.platformId).length}</div>
             <div className="text-slate-300 text-xs">on BSC</div>
           </div>
         ))}
         <div className="wolv-sheen min-w-0 rounded-xl border border-white/[0.08] p-4 transition hover:-translate-y-1 hover:border-[#f0b90b]/40 sm:p-5">
           <div className="text-slate-300 text-xs mb-1">Total Available</div>
-          <div className="text-[#f0b90b] font-black text-xl">{allTokens.length}</div>
-          <div className="text-slate-300 text-xs">on BSC chain</div>
+          <div className="text-[#f0b90b] font-black text-xl">{list.err ? "—" : allTokens.length}</div>
+          <div className="text-slate-300 text-xs">{list.err ? "feed unavailable" : "on BSC chain"}</div>
         </div>
       </div>
 
@@ -123,7 +109,7 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
         </div>
       )}
 
-      <StockList key={tabId ?? "all"} tokens={slim} category={tabLabel} />
+      <StockList key={tabId ?? "all"} tokens={slim} category={tabLabel} feedUnavailable={list.err != null} />
 
       <GlobalNav />
     </main>

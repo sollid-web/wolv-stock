@@ -65,14 +65,14 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
-            <div className="text-[#f0b90b] font-black text-xl">{allTokens.filter((t) => t.platformId === p.platformId).length}</div>
-            <div className="text-[#64748b] text-xs">on BSC</div>
+            <div className="text-[#f0b90b] font-black text-xl">{list.err ? "—" : allTokens.filter((t) => t.platformId === p.platformId).length}</div>
+            <div className="text-[#64748b] text-xs">{list.err ? "feed unavailable" : "on BSC"}</div>
           </div>
         ))}
         <div className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
           <div className="text-[#64748b] text-xs mb-1">Total Available</div>
-          <div className="text-[#f0b90b] font-black text-xl">{allTokens.length}</div>
-          <div className="text-[#64748b] text-xs">on BSC chain</div>
+          <div className="text-[#f0b90b] font-black text-xl">{list.err ? "—" : allTokens.length}</div>
+          <div className="text-[#64748b] text-xs">{list.err ? "feed unavailable" : "on BSC chain"}</div>
         </div>
       </div>
 
@@ -95,7 +95,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
 
       <div className="px-4 sm:px-6 pb-10">
         <h2 className="mb-4 text-xl font-bold text-center">Select an Asset to Trade</h2>
-        <StockList key={tabId ?? "all"} tokens={slim} category={tabLabel} />
+        <StockList key={tabId ?? "all"} tokens={slim} category={tabLabel} feedUnavailable={list.err != null} />
       </div>
 
       <GlobalNav />

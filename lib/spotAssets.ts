@@ -1,5 +1,6 @@
 import { getRWATokenList } from "@/lib/binance";
 import { isSpotEligibleAsset, type SpotAssetIdentity } from "@/lib/compliance";
+import { isRwaAssetListResponse } from "./rwaAssetResponse";
 
 type RwaScalar = string | number | null;
 
@@ -39,7 +40,7 @@ function scalar(value: unknown): RwaScalar | undefined {
 }
 
 export function parseRwaAssetRecords(response: unknown): RwaAssetRecord[] {
-  if (!isRecord(response) || !Array.isArray(response.data)) return [];
+  if (!isRwaAssetListResponse(response)) return [];
 
   return response.data.flatMap((value) => {
     if (
@@ -123,7 +124,7 @@ export async function isSpotRwaTokenAddress(address: string): Promise<boolean> {
   if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return false;
 
   const response: unknown = await getRWATokenList();
-  if (!isRecord(response) || !Array.isArray(response.data)) return false;
+  if (!isRwaAssetListResponse(response)) return false;
 
   const token = response.data.find((value) => {
     if (!isRecord(value)) return false;

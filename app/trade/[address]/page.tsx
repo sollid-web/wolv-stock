@@ -7,12 +7,26 @@ import BackButton from "@/components/BackButton";
 import SmartRouterStatus from "@/components/SmartRouterStatus";
 import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
+import AssetFeedUnavailable from "@/components/AssetFeedUnavailable";
 
 export const dynamic = "force-dynamic";
 
 export default async function TradePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
-  const tokens = await getRWATokenList();
+  const tokens = await getRWATokenList().catch((error: unknown) => {
+    console.error("Trade detail RWA list unavailable:", error);
+    return null;
+  });
+  if (!tokens) {
+    return (
+      <AssetFeedUnavailable
+        title="Trading asset list unavailable"
+        description="WOLV could not verify this asset as a supported spot token. Trading stays unavailable until the live asset feed can be checked."
+        backHref="/trade"
+        backLabel="Back to trade markets"
+      />
+    );
+  }
   const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
   const token = rawTokens.filter(isRwaToken).find((t) =>
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)

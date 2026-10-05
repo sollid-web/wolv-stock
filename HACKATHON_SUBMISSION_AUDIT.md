@@ -1,187 +1,66 @@
 # WOLV — BNB Hack: Tokenized Stocks Edition
 
-## Audit draft and repo readiness review
+## Current readiness audit
 
-Prepared: 2026-10-04; updated: 2026-10-05
+**Reviewed:** 5 October 2026 (UTC+1)
 
-This document audits the current repository against the supplied Hackathon submission checklist and marks what is already implemented, what is partially satisfied, and what must be fixed before a judge-facing submission is considered ready.
+**Reconciliation branch:** `reconcile/wolv-monitor-safety-2026-10-05`, based on the fetched `origin/main` commit `6ca6b4b` (`feat: make executable price monitor the landing page`). The original dirty checkout was left in place; integration work was performed in a separate worktree.
+
+**Production URL:** <https://wolv-stock.vercel.app/>
+**Public repository:** <https://github.com/sollid-web/wolv-stock>
+
+> **Release distinction:** the changes described in this audit are local to the reconciliation branch and have not been pushed or deployed. The current public app and `origin/main` must not be described as containing this branch's additional validation, shared reliability helpers, or tests until that branch is released and the resulting production deployment is checked.
 
 ## Executive summary
 
-The project is materially aligned with the core product idea and technical scope for the BNB Hack: Tokenized Stocks Edition main track:
+WOLV Spot Lens is a BSC spot tokenized-equity monitor and user-approved trading interface. The latest public `main` already makes the executable-price monitor the landing page and retains `/markets` as the market directory. I reconciled the separate local safety and monitor changes on top of that newer structure rather than restoring the candidate's conflicting home-page rewrite.
 
-- It is built around BSC tokenized equities.
-- It centers on Ondo and bStocks assets.
-- It is spot-only and explicitly filters leveraged or inverse products.
-- It compares reference/listed data with executable quotes.
-- It includes live API integration, transaction simulation, and wallet approval flow.
+The reconciliation keeps `/`, `/gap`, and `/markets` available; moves comparison math and quote selection into shared, tested helpers; and makes missing or malformed feed data visibly unavailable instead of turning it into a zero price or an empty-looking success. Wallet execution remains user-initiated, guarded against duplicate prompts, simulated before wallet approval, and confirmed by the user's wallet. This audit does not claim that any automated check signed or broadcast a trade.
 
-However, the repository is not yet fully aligned with the submission checklist as written. The biggest gaps are not technical feasibility; they are product/production readiness and judge clarity:
+## Evidence verified in the reconciliation worktree
 
-1. The executable-price monitor is now the `/` landing page; the token catalog remains available at `/markets`, and `/gap` remains as a compatibility URL.
-2. Several submission requirements remain unverified in the repo itself (public repository visibility, latest deployment, demo video, and final judge journey under real conditions).
-3. Live wallet execution and official router/spender validation still require hands-on verification before a mainnet demo.
+- `origin/main` was fetched before the integration and the new worktree was based on `6ca6b4b`. The original checkout was not rebased, reset, or overwritten.
+- The existing `/` and `/gap` monitor wrappers and the remote `/markets` directory were preserved. `/markets` was added to the route manifest and responsive test matrix.
+- The route pages use shared RWA record parsing and an explicit unavailable state for feed failures. Per-share normalization, quote freshness, a 20% reliability cap, market-status sentinel handling, and quote selection are covered by pure helper tests.
+- The single-flight wallet request gate and trade-readiness blockers are covered by tests; no wallet was connected and no transaction was attempted during these checks.
+- `pnpm test:logic`: **35 tests passed**. `pnpm lint`: passed. `pnpm build`: passed, including Next.js TypeScript checking. The build emitted a dependency warning from `viem`/`ox` about a dynamic dependency expression and noted that `NEXT_PUBLIC_WALLET_PROJECT_ID` was not set; injected wallets remain available.
+- The production-build responsive smoke test passed **28 route/viewport cases**: `/`, `/gap`, `/markets`, `/trade`, `/wallet`, and sentinel `/stock/:address` plus `/trade/:address` at 320, 390, 768, and 1440px. Dynamic detail routes used an invalid sentinel address without local API credentials, so these results demonstrate the fallback layout—not live asset data or trade execution.
+- The hardening smoke script passed against the public URL. That is a narrow endpoint check; it does not prove which source commit is deployed, that current live quotes are valid, or that wallet execution works.
+- No screenshots from the reconciled build or final demo video are included. Earlier candidate screenshots were deliberately not carried forward because the home-page route structure changed during reconciliation.
 
-In other words: the repo is strong on technical capability and now has judge-first framing in the local build, but it still needs deployment verification and final submission proof points.
+## Status against submission needs
 
-## Evidence reviewed
+| Requirement | Status | Evidence / remaining action |
+|---|---|---|
+| Public repository | Verified previously | Repository is public; keep it accessible through judging. |
+| Production link | Reachable in the prior review; revision not verified here | After release, check the live routes and deployment commit. HTTP 200 alone does not establish the correct build or live data. |
+| BSC tokenized-stock use case; spot-only | Implemented | The app is scoped to spot-eligible tokenized assets on BSC. The builder should re-check the official supported-instrument and eligibility terms. |
+| Listed/reference versus executable monitor | Implemented on the reconciliation branch; not released | `/` and `/gap` use the shared comparison path in this branch. Do not attribute these additional changes to production until deployed. |
+| Market directory | Preserved and hardened on the reconciliation branch | `/markets` remains available with its existing category navigation and now forwards explicit feed-failure state. |
+| Fail-closed feed handling | Automated locally | Malformed/unavailable lists do not become zero prices or inferred opportunities. Live upstream behavior still depends on the current Binance feed. |
+| Portfolio view | Implemented, read-only | `/api/wallet/portfolio` and `/wallet`; a connected-wallet data review is still owner-controlled. |
+| Responsive layout | Automated fallback coverage passed | 28 route/viewport checks passed. Sentinel routes are not evidence of real asset data. |
+| Wallet/transaction logic | Guard and presentation tests passed | Readiness blockers, quote freshness, simulation gates, approval refresh, and prompt deduplication are unit-tested. This is not an end-to-end wallet-extension test. |
+| Live approval and direct-SWAP validation | Builder/owner-controlled | Do not broadcast solely for this audit. Record a hash/receipt only for a transaction the builder actually chooses to send. |
+| Demo video (≤4 minutes) | Not included | Prepare it from real app navigation plus genuine transaction evidence; no second trade is needed just to show an already-confirmed transaction. Confirm the active submission form's requirement. |
+| Developer Experience Report | Draft requires builder's firsthand completion | The builder must supply their own observations of API onboarding, docs/support, latency/assets, AI tools, and concrete recommendations. Do not submit an AI-written substitute. |
 
-- [README.md](./README.md)
-- [TRADING_ARCHITECTURE.md](./TRADING_ARCHITECTURE.md)
-- [app/page.tsx](./app/page.tsx)
-- [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx)
-- [lib/compliance.ts](./lib/compliance.ts)
-- [lib/spotAssets.ts](./lib/spotAssets.ts)
+## Product and safety boundaries
 
-## Status against the checklist
+- **Scope:** BSC mainnet and spot-only tokenized equities. No perpetuals, autonomous trading, Agentic Wallet, or BNB Agent Studio are claimed.
+- **Data integrity:** real API data only. A failed or malformed feed must not be converted to a zero-valued price, an empty-success state, or a fabricated opportunity.
+- **Comparison integrity:** per-share normalization uses the token/share ratio. Stale, incomplete, or over-cap reference gaps are not treated as reliable spread signals. Venue status mismatches remain visible.
+- **Execution:** a successful simulation is not approval, signature, broadcast, or a mined receipt. Quote freshness, order minimums, spot eligibility, router/spender checks, wallet approval, and transaction-status checks remain distinct steps.
+- **Known defense-in-depth items remain open:** outbound request throttling is process-local; a static official router/spender allowlist is not recorded; RFQ signer recovery/replay protection and refreshing swap calldata immediately before signing remain separate review topics. They are not described as proven exploits or as fixed by this reconciliation.
 
-### 1. Confirmed target and non-negotiable rules
+## Official event details
 
-- [x] The project is centered on tokenized stocks on BSC.
-  - Supported by [README.md](./README.md) and [TRADING_ARCHITECTURE.md](./TRADING_ARCHITECTURE.md).
+The [official event page](https://www.bnbchain.org/en/hackathons/tokenized-stocks) and [BNB Chain launch post](https://www.bnbchain.org/en/blog/bnb-hack-tokenized-stocks-edition-with-binance-web3-wallet) were checked during the prior review. Re-check the live rules, submission form, dates, and eligibility before submission; this application does not determine participant eligibility. The Developer Experience Report needs firsthand builder input. The official overview calls a demo video of four minutes or less strongly recommended but optional, while the launch post lists a video among submission materials, so the active form should decide.
 
-- [x] At least one of bStocks, Ondo, or xStocks is central to the product.
-  - The code and docs explicitly center on Ondo and bStocks in multiple locations.
+## Next steps
 
-- [x] The product is spot-only. No perpetuals or other derivatives.
-  - The compliance logic in [lib/compliance.ts](./lib/compliance.ts) explicitly rejects leveraged/inverse products and the architecture notes describe a spot-only product boundary.
-
-- [x] The product runs against BSC mainnet for the required live product path.
-  - This is described in the architecture and product docs, and the app is built for BSC wallet flows.
-
-- [x] The deliverable is a working project, not only a deck or concept.
-  - The repository contains working Next.js code and API routes, and the app builds successfully.
-
-- [x] The submission contains a public repository.
-  - Confirmed via GitHub: https://github.com/sollid-web/wolv-stock
-
-- [ ] The submission contains a working deployed link, or reproducible judge instructions.
-  - The existing deployment responds, but the local landing-page changes have not been deployed or verified there yet.
-
-- [ ] The demo video is no longer than four minutes.
-  - No project artifact shows a finalized judge-facing demo output.
-
-- [ ] The repository, demo, and deployed link remain accessible through judging.
-  - Not verifiable from repository state alone.
-
-- [x] The product does not claim guaranteed profit or guaranteed arbitrage.
-  - The gap page explicitly says the spread is not guaranteed profit.
-
-- [x] The product clearly distinguishes reference/listed data from executable quotes.
-  - This is a core concept in [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx) and the README.
-
-- [x] Eligibility and restricted-region terms are handled according to the official rules; the product does not make unsupported legal eligibility claims.
-  - The docs include official links and caution that eligibility is user responsibility.
-
-### 2. Product definition to freeze
-
-- [x] The product statement is largely aligned with the intended scope.
-  - The project description in [README.md](./README.md) and the gap page state the core idea clearly: compare reference data with executable quotes and allow a user-approved spot trade.
-
-- [x] The core promise is consistent with the architecture.
-  - The app offers price difference discovery, evidence explanation, execution-quality checks, and wallet-led spot trade flow.
-
-- [x] The product boundary is mostly respected.
-  - It does not add broad DeFi or perpetual features, and it enforces a spot-only filter.
-
-- [x] The home page now opens on the primary judge journey.
-  - `/` renders the listed-versus-executable monitor in [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx); the former catalog is available at `/markets`.
-
-### 3. Current implementation baseline to preserve
-
-- [x] RWA token/platform listing integration is present.
-- [x] Ondo and bStocks listing support is present.
-- [x] Spot-eligibility filtering is implemented.
-- [x] Aggregator quote integration is implemented.
-- [x] Swap-detail integration is implemented.
-- [x] Approval-transaction integration is implemented.
-- [x] Binance Transaction API simulation before wallet prompt is implemented.
-- [x] Browser-wallet signing/broadcast path for the SWAP flow is present.
-- [x] RFQ typed-data/order path is represented in the architecture and codebase.
-- [x] BSC mainnet enforcement is part of the product boundaries.
-- [x] Cross-venue gap page with token/share-ratio normalization is present.
-
-The following remain not yet fully confirmed from a repo-only audit:
-
-- [ ] Clean standalone TypeScript check.
-  - Confirmed in this local audit: `pnpm exec tsc --noEmit` passes.
-
-- [ ] Clean lint check.
-  - Confirmed in this local audit: `pnpm lint` passes.
-
-- [ ] Clean production deployment.
-  - Confirmed in this local audit: `pnpm build` succeeds.
-
-- [ ] Full browser test of the deployed trade path.
-  - Not verified from the repository alone.
-
-- [ ] Router/spender destination allowlist.
-  - Documented as still needing explicit validation before public mainnet use.
-
-- [ ] Portfolio API integration.
-  - Not implemented.
-
-- [ ] Binance Wallet Skills integration.
-  - Not implemented.
-
-- [ ] BNB Agent Studio integration.
-  - Not implemented.
-
-- [ ] Completed four-minute demo.
-  - Not created.
-
-## Workstream A: judge-readiness audit
-
-### A1. Make the executable-price monitor the product entry point
-
-Status: Implemented locally; deployment still needs updating and verification
-
-What changed on 2026-10-05:
-
-- The root route now renders the listed-versus-executable monitor from [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx).
-- The former token catalog is available at `/markets`, with sector filters scoped to that route.
-- `/gap` remains available for earlier links, and the bottom navigation distinguishes Home from Markets.
-- Market-data failures now appear as an explicit alert on the monitor rather than taking down the whole page.
-
-The monitor contains the comparison logic and price-normalization narrative, and labels the screen “Listed vs Executable Price”.
-
-### A2. Standardize the price definitions
-
-Status: Mostly satisfied on the gap page
-
-What is already present:
-
-- The page shows reference price, executable price, per-share normalized values, spread, and quote age.
-- It calculates `referencePerShare = referencePrice / multiplier` and compares it to executable per-share data.
-- It surfaces quote freshness, stale warnings, and market status.
-
-What remains to tighten up:
-
-- The app should make the contract address, platform identifier, multiplier, quote direction, input amount, and age more explicit within each opportunity card if the user is meant to make fully judge-ready on-the-spot judgments.
-
-## Product verdict
-
-This repo is technically credible and materially close to the requirement set. It is stronger than a concept deck and it is clearly built around the right problem statement. The main gap is not the core idea or the on-chain plumbing — it is the product framing and submission readiness.
-
-The app should be judged as:
-
-- Strong technical implementation: yes
-- Strong product story: improved; the monitor is now the intended first screen in the local build
-- Submission-ready as currently documented: not yet
-
-## Recommended submission action plan
-
-1. Deploy the landing-page and navigation changes, then confirm the public deployment shows the monitor at `/` and the token catalog at `/markets`.
-2. Confirm the public repository URL and deployed link in the final submission materials.
-3. Test the deployed wallet approval and spot-swap flow with the target wallet and a small, affordable amount.
-4. Validate current router/spender destinations against official contract data before a public mainnet demo.
-5. Produce a judge-facing demo of four minutes or less and rehearse the journey from the deployed URL.
-6. Complete the Developer Experience Report from the builder's own firsthand observations; do not submit this AI-assisted draft as a finished report.
-
-## Final repo verdict
-
-- Technical alignment: strong
-- Submission alignment: partial
-- Need for a revised “look-alike” document: no; maintain this audit as a readiness record, then complete the external submission materials
-
-This audit draft should be used as the basis for the final hackathon submission brief, with the current implementation treated as a strong beta-grade implementation rather than a final, fully judge-ready submission pack.
+1. Review the reconciliation branch diff and its test results; keep the original dirty checkout as the source of any work that was not included.
+2. If the builder wants this code released, publish the reconciliation branch or merge it into `main`, then verify the deployment commit and public `/`, `/gap`, and `/markets` routes. No push or deployment is implied by this audit.
+3. Use a real supported asset and the intended wallet for any owner-controlled live-feed or wallet verification. Never treat sentinel tests as live evidence.
+4. Capture current screenshots and a truthful walkthrough after the target deployment is confirmed. A previously confirmed real trade can be documented without submitting a second trade.
+5. Have the builder personally finish the Developer Experience Report and attach only evidence they have actually observed.

@@ -5,6 +5,8 @@ import Image from "next/image";
 import { buildProtectionRows } from "@/lib/rwaData";
 import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
+import AssetFeedUnavailable from "@/components/AssetFeedUnavailable";
+import { marketLabel, normalizePerSharePrice, positiveNumberValue } from "@/lib/opportunityMath";
 import GlobalNav from "@/components/GlobalNav";
 import MarketChart from "@/components/MarketChart";
 
@@ -53,7 +55,20 @@ function parseCandlePoints(value: unknown): { time: string; value: number }[] {
 
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
-  const tokens = await getRWATokenList();
+  const tokens = await getRWATokenList().catch((error: unknown) => {
+    console.error("Stock detail RWA list unavailable:", error);
+    return null;
+  });
+  if (!tokens) {
+    return (
+      <AssetFeedUnavailable
+        title="Live asset data unavailable"
+        description="The current tokenized-stock list could not be loaded. Try again when the upstream feed is available."
+        backHref="/"
+        backLabel="Back to markets"
+      />
+    );
+  }
   const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
   const token = rawTokens.filter(isRwaToken).find((t) =>
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
@@ -86,14 +101,19 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const md = marketData;
   const prof = isRecord(profile) && isRecord(profile.data) ? profile.data : null;
   const protectionRows = buildProtectionRows(prof);
-  const mult = num(token.tokenToShareRatio) || 1;
-  const listed = num(token.tokenPrice) ?? 0;
-  const ref = num(token.referencePrice) ?? 0;
-  const refShare = ref / mult; // referencePrice is per TOKEN
-  const perShare = q.ok ? q.usd / mult : null;
-  const gap = perShare != null && refShare > 0 ? (perShare / refShare - 1) * 100 : null;
-  const isOpen = token.statusInfo?.openState;
-  const status = token.statusInfo?.marketStatus ?? (isOpen ? "trading" : "closed");
+  const mult = positiveNumberValue(token.tokenToShareRatio);
+  const listed = positiveNumberValue(token.tokenPrice);
+  const refShare = normalizePerSharePrice(token.referencePrice, token.tokenToShareRatio);
+  const perShare = q.ok ? normalizePerSharePrice(q.usd, token.tokenToShareRatio) : null;
+  const gap = perShare != null && refShare != null
+    ? (perShare / refShare - 1) * 100
+    : null;
+  const status = marketLabel(token);
+  const statusTone = status === "open" || status === "trading"
+    ? "bg-green-900/30 text-green-400 border-green-800"
+    : status === "closed"
+      ? "bg-yellow-900/20 text-yellow-400 border-yellow-800"
+      : "bg-slate-900/30 text-slate-400 border-slate-700";
   const chartPoints = parseCandlePoints(candles);
 
   const profRows: [string, string | number][] = prof
@@ -124,9 +144,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           <div className="font-black text-base sm:text-lg">{token.underlyingTicker}</div>
           <div className="text-xs text-[#64748b] truncate">{token.underlyingName || token.tokenName?.replace(/\s*\(.*?\)\s*/g, "")}</div>
         </div>
-        <span className={`ml-auto shrink-0 text-[10px] font-bold px-2 py-1 rounded-full border sm:text-xs ${
-          isOpen ? "bg-green-900/30 text-green-400 border-green-800" : "bg-yellow-900/20 text-yellow-400 border-yellow-800"
-        }`}>
+        <span className={`ml-auto shrink-0 text-[10px] font-bold px-2 py-1 rounded-full border sm:text-xs ${statusTone}`}>
           {String(status).toUpperCase()}
         </span>
       </nav>
@@ -159,16 +177,16 @@ export default async function StockPage({ params }: { params: Promise<{ address:
         <div className="wolv-float bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>
           <div className="mb-1 break-words text-3xl font-black text-white sm:text-4xl">
-            ${listed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+            {money(listed)}
           </div>
           <div className="text-xs text-[#64748b]">
-            via {token.platformId} · BSC · 1 token = {mult.toFixed(4)} shares
+            via {token.platformId} · BSC · {mult == null ? "share ratio unavailable" : `1 token = ${mult.toFixed(4)} shares`}
           </div>
         </div>
 
         <div className="rounded-xl p-5 border border-[#1b1b35] bg-[#0e0e1c]">
           <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Executable vs reference (per share)</div>
-          {q.ok ? (
+          {q.ok && perShare != null ? (
             <>
               <div className="mb-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
                 <div>
@@ -177,7 +195,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Reference</div>
-                  <div className="font-bold text-sm">${refShare.toFixed(3)}</div>
+                  <div className="font-bold text-sm">{refShare == null ? "—" : `$${refShare.toFixed(3)}`}</div>
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Gap</div>
@@ -187,11 +205,15 @@ export default async function StockPage({ params }: { params: Promise<{ address:
                 </div>
               </div>
               <div className="text-xs text-[#64748b] leading-relaxed">
-                What 100 USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult.toFixed(4)} shares per token.
+                What 100 USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult!.toFixed(4)} shares per token.
                 Reference price is a per-share value derived from the on-chain token price according to Binance&apos;s RWA data;
                 it is not an independent stock-market quote. Executable price reflects what the aggregator currently quotes for the token.
               </div>
             </>
+          ) : q.ok ? (
+            <div role="status" className="text-xs leading-relaxed text-yellow-500">
+              Per-share comparison unavailable: the live response is missing a valid token-to-share ratio or executable/reference price. No normalized price or gap is inferred.
+            </div>
           ) : (
             <div className="text-xs text-yellow-500">Quote unavailable: {q.err}</div>
           )}

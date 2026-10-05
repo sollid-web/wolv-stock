@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { unstable_cache } from "next/cache";
+import { isRwaAssetListResponse } from "./rwaAssetResponse";
 
 let lastCall = 0;
 let rateLimitQueue: Promise<void> = Promise.resolve();
@@ -137,7 +138,13 @@ const getCachedRWATokenList = unstable_cache(
 );
 
 export function getRWATokenList(platform?: string, tabId?: number) {
-  return getCachedRWATokenList(platform ?? null, tabId ?? null);
+  return getCachedRWATokenList(platform ?? null, tabId ?? null).then((response: unknown) => {
+    const allowEmpty = platform != null || tabId != null;
+    if (!isRwaAssetListResponse(response, { allowEmpty })) {
+      throw new Error("RWA token-list response had an unexpected shape");
+    }
+    return response;
+  });
 }
 
 // RWA — price for specific tokens

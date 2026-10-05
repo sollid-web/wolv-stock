@@ -33,7 +33,7 @@ function Logo({ url, tk }: { url?: string; tk: string }) {
   return <Image src={url} width={36} height={36} loading="lazy" onError={() => setBad(true)} className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0" alt={tk} />;
 }
 
-export default function StockList({ tokens, category }: { tokens: T[]; category?: string }) {
+export default function StockList({ tokens, category, feedUnavailable = false }: { tokens: T[]; category?: string; feedUnavailable?: boolean }) {
   const [q, setQ] = useState("");
   const [plat, setPlat] = useState("all");
   const [limit, setLimit] = useState(50);
@@ -99,12 +99,19 @@ export default function StockList({ tokens, category }: { tokens: T[]; category?
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-wider text-slate-300">
-        <span className="min-w-0 flex-1 break-words">{rows.length} tokenized stock{rows.length === 1 ? "" : "s"}{category ? ` · ${category}` : ""}</span>
-        <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-emerald-400"><span className="wolv-pulse size-1.5 rounded-full bg-emerald-400" /> Live data</span>
+        <span className="min-w-0 flex-1 break-words">{feedUnavailable ? "Asset count unavailable" : `${rows.length} tokenized stock${rows.length === 1 ? "" : "s"}`}{category ? ` · ${category}` : ""}</span>
+        <span className={`flex shrink-0 items-center gap-1.5 text-[10px] ${feedUnavailable ? "text-yellow-300" : "text-emerald-400"}`}>
+          <span className={`size-1.5 rounded-full ${feedUnavailable ? "bg-yellow-300" : "wolv-pulse bg-emerald-400"}`} />
+          {feedUnavailable ? "Feed unavailable" : "Live data"}
+        </span>
       </div>
 
       {rows.length === 0 ? (
-        <div className="text-sm text-slate-300 py-8 text-center">No matches. Try a ticker like SPY, a company name, or another category.</div>
+        feedUnavailable ? (
+          <div role="status" className="py-8 text-center text-sm text-yellow-200">The live asset list is unavailable. No matching assets are inferred; retry when the upstream RWA feed is available.</div>
+        ) : (
+          <div className="text-sm text-slate-300 py-8 text-center">No matches. Try a ticker like SPY, a company name, or another category.</div>
+        )
       ) : (
         <div className="grid grid-cols-1 gap-2">
           {rows.slice(0, limit).map((t) => (
