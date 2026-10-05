@@ -2,7 +2,7 @@
 
 **Prepared:** 5 October 2026
 
-**Submission status:** Not final. The reconciliation branch is based on `origin/main` commit `6ca6b4b`, but it has not been pushed or deployed. Do not present its additional safety and monitor changes as production behavior until the builder releases it and verifies the live deployment.
+**Submission status:** Not final. GitHub `main` is at `f12b935`, and Vercel reports that production deployment succeeded. That deployed version still puts the full monitor on `/`. A local route-correction branch restores the product landing page at `/` and keeps the full monitor at `/gap`; that correction is not yet pushed or deployed.
 
 ## Project summary
 
@@ -14,28 +14,29 @@ WOLV Spot Lens is an execution-intelligence monitor for tokenized equities on BN
 
 - **Repository:** <https://github.com/sollid-web/wolv-stock> — public repository.
 - **Deployed app:** <https://wolv-stock.vercel.app/> — verify the actual deployment commit and routes before recording a demo. An HTTP 200 response alone does not establish correct assets, quotes, or wallet execution.
-- **Reconciliation source:** local branch `reconcile/wolv-monitor-safety-2026-10-05`, based on `6ca6b4b`; it has not been released.
+- **Route-correction source:** local branch `fix/restore-homepage-and-monitor-route`, based on deployed commit `f12b935`.
 - **Local setup:** follow the root [README](./README.md); use `pnpm install --frozen-lockfile`.
 
 ## Suggested judge journey
 
-1. **Start at `/`.** Compare the listed/reference context with executable spot-price information. Read quote freshness, market status, and reliability cautions; an observed difference is not guaranteed profit.
-2. **Open `/markets`.** Browse the BSC tokenized-stock directory and choose an asset. If the upstream list is unavailable or malformed, the interface should say so rather than invent an asset count or price.
-3. **Open `/stock/:address`.** Review reference information, issuer details, market status, chart data when actually returned, and the trade entry point. Missing upstream information should remain visibly unavailable.
-4. **Open `/trade/:address` only for a user-controlled demonstration.** Request a fresh quote, run the Transaction API simulation, review the exact USDT approval and destination, then decide whether to confirm in the connected wallet. Simulation is a dry run; it is not approval, broadcast, or receipt. No automated test in this repository sends a transaction.
-5. **Open `/wallet`.** The portfolio view is read-only; it displays Binance-sourced BSC balances and statistics and does not sign or execute.
+1. **Start at `/`.** See the original WOLV landing-page presentation, its featured comparison spotlight, and the spot-market coverage. The compact spotlight links to the detailed monitor; it is not the full monitor itself.
+2. **Open `/gap`.** Review the full cross-venue comparison, quote freshness, market status, per-share normalization, and reliability exclusions. A visible difference is not guaranteed profit.
+3. **Open `/markets`.** Browse the BSC tokenized-stock directory and choose an asset. If the upstream list is unavailable or malformed, the interface should say so rather than invent an asset count or price.
+4. **Open `/stock/:address`.** Review reference information, issuer details, market status, chart data when actually returned, and the trade entry point. Missing upstream information should remain visibly unavailable.
+5. **Open `/trade/:address` only for a user-controlled demonstration.** Request a fresh quote, run the Transaction API simulation, review the exact USDT approval and destination, then decide whether to confirm in the connected wallet. Simulation is a dry run; it is not approval, broadcast, or receipt. No automated test in this repository sends a transaction.
+6. **Open `/wallet`.** The portfolio view is read-only; it displays Binance-sourced BSC balances and statistics and does not sign or execute.
 
-`/gap` is an alternate route to the cross-venue monitor, useful when the judge wants to focus on venue comparisons and reliability filtering.
+The route correction is intentionally a local candidate pending release; until it is deployed, the current public `/` still shows the full monitor.
 
 ## Current evidence
 
-The reconciliation branch passed a production build, lint, 35 logic tests, hardening smoke checks, and 28 route/viewport checks at 320, 390, 768, and 1440px. The two detail routes used an invalid sentinel address with no local Binance credentials; those screenshots/layout checks would only demonstrate unavailable-state handling, not real data or execution.
+The current local route-correction branch passed a production build, lint, 35 logic tests, and 28 route/viewport checks at 320, 390, 768, and 1440px. The detail routes used an invalid sentinel address; those checks demonstrate fallback layout, not real data or execution. The deployed `f12b935` production status is successful, but it predates this route correction.
 
-No screenshots from this reconciled build or final demo video are included here. Older local-candidate screenshots were not carried forward because the page structure changed during reconciliation. Capture current screenshots only after reviewing this branch and, for production evidence, checking the actual deployed revision. Do not replace missing feed data with synthetic values.
+The builder supplied a mobile screenshot of the currently deployed monitor on `/`; it does not show the local route correction. No screenshots from the corrected local build or final demo video are included here. Capture production evidence only after the corrected revision is deployed. Do not replace missing feed data with synthetic values.
 
 ## Builder-controlled items before submission
 
-- [ ] Decide whether to release the reconciliation branch; verify the resulting production deployment commit and rehearse `/`, `/markets`, `/stock/:address`, `/trade/:address`, and `/wallet` from the public URL.
+- [ ] Review and release the route-correction branch; verify the resulting production deployment commit and rehearse `/`, `/gap`, `/markets`, `/stock/:address`, `/trade/:address`, and `/wallet` from the public URL.
 - [ ] Record any genuine feed delay/error without relabeling it as a price.
 - [ ] For a wallet demonstration, use a clean profile and one intended wallet extension. Record wallet/browser/connector versions and redact private information.
 - [ ] Treat approval and direct-SWAP wallet prompts as separate steps. The builder decides whether to broadcast any live transaction. Record a hash and receipt only if actually produced; a previously confirmed trade can be documented without making a second trade for the video.

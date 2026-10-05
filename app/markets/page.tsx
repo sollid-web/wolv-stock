@@ -99,7 +99,7 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
         <div className="mx-4 mb-3 break-words rounded-xl border border-yellow-800/40 bg-yellow-900/10 p-3 text-xs text-yellow-500 sm:mx-6">
           Couldn&apos;t load {tabLabel ?? "the token list"}: {list.err}
           {tabId != null && (
-            <> · <Link href="/" className="underline">show all</Link></>
+            <> · <Link href="/markets" className="underline">show all</Link></>
           )}
         </div>
       )}

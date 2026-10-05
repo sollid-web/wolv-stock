@@ -4,39 +4,41 @@
 
 **Reviewed:** 5 October 2026 (UTC+1)
 
-**Reconciliation branch:** `reconcile/wolv-monitor-safety-2026-10-05`, based on the fetched `origin/main` commit `6ca6b4b` (`feat: make executable price monitor the landing page`). The original dirty checkout was left in place; integration work was performed in a separate worktree.
+**Current route-correction branch:** `fix/restore-homepage-and-monitor-route`, based on `f12b935`. It restores the established landing page on `/` with a compact featured-price spotlight, while the full comparison monitor remains on `/gap`.
+
+**Released reconciliation:** commit `f12b935` is now on GitHub `main`; Vercel marked its production deployment successful at 08:30:30Z on 5 October 2026. That deployed version still puts the full monitor on `/`; the route correction described here is local and has not been released.
 
 **Production URL:** <https://wolv-stock.vercel.app/>
 **Public repository:** <https://github.com/sollid-web/wolv-stock>
 
-> **Release distinction:** the changes described in this audit are local to the reconciliation branch and have not been pushed or deployed. The current public app and `origin/main` must not be described as containing this branch's additional validation, shared reliability helpers, or tests until that branch is released and the resulting production deployment is checked.
+> **Release distinction:** the shared feed validation, comparison helpers, and wallet prompt guard in `f12b935` are released. The homepage/route adjustment on `fix/restore-homepage-and-monitor-route` has passed local checks but is not yet deployed.
 
 ## Executive summary
 
-WOLV Spot Lens is a BSC spot tokenized-equity monitor and user-approved trading interface. The latest public `main` already makes the executable-price monitor the landing page and retains `/markets` as the market directory. I reconciled the separate local safety and monitor changes on top of that newer structure rather than restoring the candidate's conflicting home-page rewrite.
+WOLV Spot Lens is a BSC spot tokenized-equity monitor and user-approved trading interface. The currently deployed `f12b935` made the comparison monitor the landing page. This follow-up restores the product landing page at `/` and keeps the detailed, polished monitor at `/gap`; `/markets` remains the dedicated market directory.
 
-The reconciliation keeps `/`, `/gap`, and `/markets` available; moves comparison math and quote selection into shared, tested helpers; and makes missing or malformed feed data visibly unavailable instead of turning it into a zero price or an empty-looking success. Wallet execution remains user-initiated, guarded against duplicate prompts, simulated before wallet approval, and confirmed by the user's wallet. This audit does not claim that any automated check signed or broadcast a trade.
+The homepage includes a compact featured comparison and links to the full `/gap` view; it does not replace the landing page with the full monitor. The shared logic continues to normalize per-share prices, filter unreliable quotes, and show unavailable feed states instead of false zeros. Wallet execution remains user-initiated, guarded against duplicate prompts, simulated before approval, and confirmed in the user's wallet. No automated check signed or broadcast a trade.
 
 ## Evidence verified in the reconciliation worktree
 
-- `origin/main` was fetched before the integration and the new worktree was based on `6ca6b4b`. The original checkout was not rebased, reset, or overwritten.
-- The existing `/` and `/gap` monitor wrappers and the remote `/markets` directory were preserved. `/markets` was added to the route manifest and responsive test matrix.
-- The route pages use shared RWA record parsing and an explicit unavailable state for feed failures. Per-share normalization, quote freshness, a 20% reliability cap, market-status sentinel handling, and quote selection are covered by pure helper tests.
-- The single-flight wallet request gate and trade-readiness blockers are covered by tests; no wallet was connected and no transaction was attempted during these checks.
-- `pnpm test:logic`: **35 tests passed**. `pnpm lint`: passed. `pnpm build`: passed, including Next.js TypeScript checking. The build emitted a dependency warning from `viem`/`ox` about a dynamic dependency expression and noted that `NEXT_PUBLIC_WALLET_PROJECT_ID` was not set; injected wallets remain available.
-- The production-build responsive smoke test passed **28 route/viewport cases**: `/`, `/gap`, `/markets`, `/trade`, `/wallet`, and sentinel `/stock/:address` plus `/trade/:address` at 320, 390, 768, and 1440px. Dynamic detail routes used an invalid sentinel address without local API credentials, so these results demonstrate the fallback layout—not live asset data or trade execution.
-- The hardening smoke script passed against the public URL. That is a narrow endpoint check; it does not prove which source commit is deployed, that current live quotes are valid, or that wallet execution works.
-- No screenshots from the reconciled build or final demo video are included. Earlier candidate screenshots were deliberately not carried forward because the home-page route structure changed during reconciliation.
+- The route correction is based on `f12b935`; the previously dirty checkout was not reset or overwritten.
+- `/` now has the established BSC tokenized-market landing layout with a compact featured comparison, while `/gap` continues to render the full cross-venue monitor. `/markets` remains the searchable directory. The static route manifest reflects those page roles.
+- Pages use shared RWA record parsing and explicit unavailable states. Per-share normalization, quote freshness, the 20% reliability cap, market-status sentinel handling, and quote selection are covered by pure helper tests.
+- The single-flight wallet request gate and trade-readiness blockers are covered by tests; no wallet was connected and no transaction was attempted.
+- On the route-correction branch: `pnpm test:logic` **35 passed**; lint passed; production build passed with Next.js TypeScript checking. The build still warns about an `ox` dynamic dependency expression and the unset WalletConnect project ID; injected wallets remain available.
+- The responsive matrix passed **28 route/viewport cases** for `/`, `/gap`, `/markets`, `/trade`, `/wallet`, and sentinel `/stock/:address` plus `/trade/:address` at 320, 390, 768, and 1440px. The sentinel details validate fallback layout, not live asset data or trading.
+- The hardening smoke previously passed against the public URL, but it is only a narrow endpoint check. It does not prove quote validity or wallet execution.
+- The user supplied a screenshot of the deployed monitor on `/`. No screenshot from the new local route build or final demo video has been captured.
 
 ## Status against submission needs
 
 | Requirement | Status | Evidence / remaining action |
 |---|---|---|
 | Public repository | Verified previously | Repository is public; keep it accessible through judging. |
-| Production link | Reachable in the prior review; revision not verified here | After release, check the live routes and deployment commit. HTTP 200 alone does not establish the correct build or live data. |
+| Production link | **`f12b935` deployment verified** | Vercel reports success; `/` still shows the full monitor until the local route correction is released. HTTP 200 alone does not establish live feed correctness. |
 | BSC tokenized-stock use case; spot-only | Implemented | The app is scoped to spot-eligible tokenized assets on BSC. The builder should re-check the official supported-instrument and eligibility terms. |
-| Listed/reference versus executable monitor | Implemented on the reconciliation branch; not released | `/` and `/gap` use the shared comparison path in this branch. Do not attribute these additional changes to production until deployed. |
-| Market directory | Preserved and hardened on the reconciliation branch | `/markets` remains available with its existing category navigation and now forwards explicit feed-failure state. |
+| Listed/reference versus executable monitor | Released; route presentation corrected locally | The full monitor remains at `/gap`; the homepage will show only a compact featured spotlight after the route correction is deployed. |
+| Market directory | Released and preserved | `/markets` remains available with its category navigation and explicit feed-failure state. |
 | Fail-closed feed handling | Automated locally | Malformed/unavailable lists do not become zero prices or inferred opportunities. Live upstream behavior still depends on the current Binance feed. |
 | Portfolio view | Implemented, read-only | `/api/wallet/portfolio` and `/wallet`; a connected-wallet data review is still owner-controlled. |
 | Responsive layout | Automated fallback coverage passed | 28 route/viewport checks passed. Sentinel routes are not evidence of real asset data. |
@@ -59,8 +61,8 @@ The [official event page](https://www.bnbchain.org/en/hackathons/tokenized-stock
 
 ## Next steps
 
-1. Review the reconciliation branch diff and its test results; keep the original dirty checkout as the source of any work that was not included.
-2. If the builder wants this code released, publish the reconciliation branch or merge it into `main`, then verify the deployment commit and public `/`, `/gap`, and `/markets` routes. No push or deployment is implied by this audit.
+1. Review and commit the route-correction branch; it currently passes logic tests, lint, build, and the 28-case responsive matrix.
+2. After the route correction is released, verify its exact Vercel deployment and confirm `/` is the landing page and `/gap` is the full monitor.
 3. Use a real supported asset and the intended wallet for any owner-controlled live-feed or wallet verification. Never treat sentinel tests as live evidence.
 4. Capture current screenshots and a truthful walkthrough after the target deployment is confirmed. A previously confirmed real trade can be documented without submitting a second trade.
 5. Have the builder personally finish the Developer Experience Report and attach only evidence they have actually observed.
