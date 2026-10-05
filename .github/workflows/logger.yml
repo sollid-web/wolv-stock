@@ -1,0 +1,48 @@
+name: logger
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: logger
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Write env file
+        env:
+          BK: ${{ secrets.BINANCE_API_KEY }}
+          BS: ${{ secrets.BINANCE_SECRET_KEY }}
+        run: |
+          printf 'BINANCE_API_KEY=%s\nBINANCE_SECRET_KEY=%s\n' "$BK" "$BS" > .env.local
+
+      - name: Run one cycle
+        run: node scripts/logger.mjs --once
+
+      - name: Commit data
+        run: |
+          rm -f .env.local
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/snapshots.jsonl
+          git diff --cached --quiet && exit 0
+          git commit -m "data: snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do
+            git pull --rebase && git push && exit 0
+            sleep 5
+          done
+          exit 1
