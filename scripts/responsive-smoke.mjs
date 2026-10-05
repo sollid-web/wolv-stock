@@ -145,7 +145,7 @@ async function run() {
     ? `/stock/${process.env.TEST_TOKEN_ADDRESS}`
     : null;
   const fixedRoutes = [
-    { path: "/", expected: /BSC tokenized markets|See the price/ },
+    { path: "/", expected: /TOKENIZED STOCKS|Find the price/ },
     { path: "/gap", expected: /Cross-venue price discovery|Listed vs Executable Price/ },
     { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
     { path: "/trade", expected: /Select an Asset to Trade/ },

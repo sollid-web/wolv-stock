@@ -8,7 +8,7 @@ WOLV currently lists Ondo and bStocks assets. It is spot-only, does not execute 
 
 | Route | Purpose |
 |---|---|
-| `/` | Market overview with BSC coverage counts and clear entry points to the asset directory and full price monitor |
+| `/` | Data-led homepage with live quote comparison, freshness/session context, transparent rule-based intelligence, and entry points to opportunities and trading |
 | `/gap` | Full reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
 | `/markets` | Focused searchable BSC spot-eligible tokenized-stock directory |
 | `/stock/:address` | Asset details, issuer/reference information, real chart data when available, executable quote, and trade entry point |

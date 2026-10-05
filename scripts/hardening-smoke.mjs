@@ -21,6 +21,10 @@ for (const path of ["/", "/gap", "/trade", "/wallet"]) {
 
 const home = await request("/");
 assert.match(home.text, /WOLV Spot Lens/);
+assert.match(home.text, /TOKENIZED STOCKS/);
+assert.match(home.text, /ON-CHAIN EXECUTION/);
+assert.match(home.text, /Execution opportunities/);
+assert.match(home.text, /No AI model is currently connected/);
 assert.doesNotMatch(home.text, /WOLV Stock Terminal/);
 
 await expectStatus("quote missing parameters", "/api/quote", 400);
