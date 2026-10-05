@@ -11,20 +11,20 @@ const chip = (active: boolean) =>
   }`;
 
 // Category is chosen via ?tab=<tabId>; the server page re-fetches the token list from Binance with that tabId.
-export default function CategoryTabs({ active }: { active: number | null }) {
+export default function CategoryTabs({ active, basePath = "/" }: { active: number | null; basePath?: string }) {
   const [open, setOpen] = useState(false);
   const activeMore = MORE_TABS.find((t) => t.id === active);
 
   return (
     <nav aria-label="Sector categories" className="px-4 sm:px-6 pb-3 flex items-center gap-2">
       <div className="flex gap-2 overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Link href="/" scroll={false} prefetch={false} aria-current={active == null ? "page" : undefined} className={chip(active == null)}>
+        <Link href={basePath} scroll={false} prefetch={false} aria-current={active == null ? "page" : undefined} className={chip(active == null)}>
           All
         </Link>
         {PRIMARY_TABS.map((t) => (
           <Link
             key={t.id}
-            href={`/?tab=${t.id}`}
+            href={`${basePath}?tab=${t.id}`}
             scroll={false}
             prefetch={false}
             aria-current={active === t.id ? "page" : undefined}
@@ -56,7 +56,7 @@ export default function CategoryTabs({ active }: { active: number | null }) {
               {MORE_TABS.map((t) => (
                 <Link
                   key={t.id}
-                  href={`/?tab=${t.id}`}
+                  href={`${basePath}?tab=${t.id}`}
                   scroll={false}
                   prefetch={false}
                   role="menuitem"

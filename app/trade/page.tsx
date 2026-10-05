@@ -76,7 +76,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
         </div>
       </div>
 
-      <CategoryTabs active={tabId} />
+      <CategoryTabs active={tabId} basePath="/trade" />
 
       {platformResponse.err && (
         <div role="status" className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">

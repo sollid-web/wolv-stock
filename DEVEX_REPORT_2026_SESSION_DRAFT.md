@@ -1,20 +1,22 @@
 # WOLV Spot Lens — Developer Experience Report (2026 session draft)
 
-**Prepared:** 4 October 2026  
+**Prepared:** 4 October 2026; updated 5 October 2026
 **Project:** WOLV Spot Lens  
 **Purpose:** Evidence-based draft of this session's development experience and audit outcomes for the BNB Hack: Tokenized Stocks Edition.
 
-> **Builder review required before submission.** The hackathon asks for specific firsthand developer observations and does not accept perfunctory or AI-generated reports. This draft records evidence visible in the repository and the builder's reported wallet-testing experience; it is not a substitute for the builder's own final account. Verify that every first-person observation matches your experience, add the missing personal details, and rewrite the narrative in your own words before submitting.
+> **Evidence and attribution:** This report combines repository inspection, commands and browser checks performed during the AI-assisted session, plus wallet-testing information recorded earlier from the builder. It distinguishes those sources and labels checks that were not performed.
 
 ## Executive summary
 
 WOLV Spot Lens is a BSC spot tokenized-equity monitor focused on Ondo and bStocks. It compares issuer/listed reference data with executable aggregator quotes, normalizes prices per underlying share, and offers a user-approved trade path.
 
-This session exposed an important integration mismatch in that trade path. Binance simulation reported success, but the connected wallet did not support the raw-transaction signing method WOLV requested. The app therefore failed before broadcasting and did not show the expected wallet confirmation. A subsequent connection attempt also returned a pending-request error. Browser console output supplied by the builder showed Binance Wallet's injected provider failing to initialize an internal broadcast channel; it did not establish the cause of that extension failure.
+An earlier wallet-debugging session exposed an important integration mismatch in that trade path. Binance simulation reported success, but the connected wallet did not support the raw-transaction signing method WOLV requested. The app therefore failed before broadcasting and did not show the expected wallet confirmation. A subsequent connection attempt also returned a pending-request error. Browser console output supplied by the builder showed Binance Wallet's injected provider failing to initialize an internal broadcast channel; it did not establish the cause of that extension failure.
 
 The transaction flow was changed to use the wallet's standard send-transaction path for approval and direct SWAP execution. WOLV still simulates the transaction before asking for wallet approval, and it now checks the resulting BSC receipt through the configured public RPC client. Connection attempts were also guarded against overlapping requests, and pending-request errors were made clearer.
 
-The changes have editor diagnostics but have **not** been tested against a live wallet or deployed to production in this session. The extension/provider connection error may remain. The security audit found no confirmed exploitable vulnerability from repository evidence, but identified trust-boundary and operational-hardening items that remain relevant before public mainnet use.
+The changes from that earlier transaction/wallet work were **not** tested against a live wallet or deployed to production in that session. The extension/provider connection error may remain. The security audit found no confirmed exploitable vulnerability from repository evidence, but identified trust-boundary and operational-hardening items that remain relevant before public mainnet use.
+
+On 5 October, a separate AI-assisted judge-readiness pass changed the landing route to the executable-price monitor, moved the asset catalog to `/markets`, retained `/gap`, improved market-data failure reporting, and verified the local production build and routes. That later work is recorded in detail below. It did **not** deploy these changes or test a wallet transaction.
 
 ## Product and integration context
 
@@ -154,6 +156,196 @@ The wallet issue was not simply “simulation failed.” Simulation succeeded; t
 
 No transaction, signing event, or approval should be claimed as newly completed by this session. The builder's earlier live-transaction experience is recorded in the existing development log, but this session's observed wallet failure did not produce evidence of a new on-chain transaction.
 
+## AI-assisted judge-readiness session: 5 October 2026
+
+### Scope and evidence boundary
+
+I am an AI coding assistant. The first-person record in this section describes the code, browser, and command-line work I actually performed in this repository during this session. It does not claim that I am the human hackathon participant, that I personally experienced the builder's earlier wallet/API onboarding, or that I signed, broadcast, or confirmed a transaction.
+
+The explicit request for this pass was to help bring the existing app closer to a judge-ready submission. I honored the user's instruction not to commit or push. All code and documentation edits described here remain local/uncommitted; the production URL therefore still serves its previously deployed build unless separately deployed by the project owner.
+
+### Step-by-step record
+
+1. **Inspected the landing-page implementation first.** I read the tagged [app/page.tsx](./app/page.tsx) rather than assuming the repository was an empty starter. It was already a server-rendered token-market page: it loaded the RWA platform and token lists, applied the spot-eligibility filter, displayed market/platform counts and category tabs, rendered `StockList`, and exposed a link named “Executable prices” to `/gap`. This showed that the initial problem was not a missing app; it was that the more distinctive monitor required an extra navigation step.
+
+2. **Checked the repository's existing project evidence before changing code.** I read [package.json](./package.json), [README.md](./README.md), [HACKATHON_SUBMISSION_AUDIT.md](./HACKATHON_SUBMISSION_AUDIT.md), [DEVEX_LOG.md](./DEVEX_LOG.md), [TRADING_ARCHITECTURE.md](./TRADING_ARCHITECTURE.md), and the then-current draft of this report. The audit already identified the monitor-not-primary issue and external submission gaps. The README described the integrations and clearly warned that the Developer Experience Report must contain firsthand observations. I treated those as constraints: preserve the trading functionality, do not invent participant experiences, and do not claim readiness based only on a visual pass.
+
+3. **Read the installed framework guidance before changing routes.** This repository uses Next.js 16.3.6. Following the repository instructions, I read the installed App Router guides on layouts/pages and server/client components in `node_modules/next/dist/docs/01-app/01-getting-started/`. The route changes preserve the existing pattern: async data fetching and monitor rendering remain in server components; no client-side wallet boundary or Next.js API was introduced.
+
+4. **Established the pre-change validation baseline.** Before editing, I ran `pnpm exec tsc --noEmit`, `pnpm lint`, and `pnpm test:hardening`; all passed. The hardening script's default target was the existing public deployment, `https://wolv-stock.vercel.app`. I also ran `pnpm build`; the production build compiled and completed Next.js's TypeScript phase, collecting page data and generating its static pages. These results describe the pre-change baseline only.
+
+5. **Compared the existing opportunity monitor and navigation.** I inspected [app/gap/page.tsx](./app/gap/page.tsx), [components/GlobalNav.tsx](./components/GlobalNav.tsx), [components/CategoryTabs.tsx](./components/CategoryTabs.tsx), and [app/trade/page.tsx](./app/trade/page.tsx). `/gap` already contained the core differentiator: it loads spot-eligible RWA records, groups matching underlying tickers across venues, requests USD quotes for a fixed 100 USDT input, normalizes both reference and executable values by the token-to-share ratio, excludes stale or extreme-gap quotes from spread ranking, and warns about differing venue market statuses. I chose to reuse this implementation instead of creating a second monitor with duplicated quote logic.
+
+6. **Moved the existing catalog rather than deleting it.** I relocated the former home-page implementation to [app/markets/page.tsx](./app/markets/page.tsx), preserving its category query parsing, platform/token loading, eligibility filtering, counts, `StockList`, and error messages. I changed its `CategoryTabs` base path to `/markets`. I then made [app/page.tsx](./app/page.tsx) render the shared monitor and retained [app/gap/page.tsx](./app/gap/page.tsx) as a compatibility route. The former `/gap` implementation is now [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx), so both `/` and `/gap` render the same logic rather than diverging copies.
+
+7. **Fixed navigation that became incorrect as a consequence of the route change.** Before this change, sector category links hard-coded `/` and the mobile “Markets” item went to `/gap`. Once `/` became the monitor, those links would send a person back to the monitor instead of opening or filtering the catalog. I added a `basePath` prop to `CategoryTabs`, passed `/markets` from the catalog and `/trade` from the trade selector, and pointed the mobile Markets tab to `/markets`. I also changed the monitor's back link to `/markets`.
+
+8. **Made the monitor's catalog-fetch failure visible without taking down the whole page.** Before the extraction, `getRWATokenList()` was awaited without a page-level error boundary in the monitor route. A rejected catalog request could fail the route instead of showing its comparison page and a specific data error. The shared monitor now records the error and renders an accessible `role="alert"` message (“Couldn't load market data: …”). It does not present the failed fetch as successful data: the list remains empty and the error is surfaced. This is availability and truthful-error handling, not a security control, and quote/API failures for individual assets remain distinct.
+
+9. **Updated behavior checks and documentation.** I extended [scripts/hardening-smoke.mjs](./scripts/hardening-smoke.mjs) to request `/markets` in addition to `/`, `/gap`, `/trade`, and `/wallet`; it now asserts that the root HTML contains “Listed vs Executable Price” and “per share, executable”. The README now documents the route map and current public repository/deployment references. The audit draft now marks the local landing-page work complete while retaining outstanding deployment, wallet, demo, and submission-material checks. Those edits do not publish anything.
+
+10. **Built and rechecked the local result.** The post-change `pnpm build` succeeded and listed `/`, `/gap`, and `/markets` as routes. I initially started a standalone TypeScript check at the same time as that build. It reported missing `.next/types/...` files while Next.js was regenerating that directory; this was a build/typecheck race, not evidence of missing application source types. After the build completed, I reran `pnpm exec tsc --noEmit` and `pnpm lint` sequentially; both passed.
+
+11. **Exercised the production output locally.** I started the built app on `127.0.0.1:3001`, ran `BASE_URL=http://127.0.0.1:3001 pnpm test:hardening`, and the complete existing smoke suite passed against the local build. I opened the root page in a browser and observed “Listed vs Executable Price,” cross-listed ticker rows, the per-share quote labels, quote age, and the warning explaining market-status differences. I used the mobile “Markets” navigation and confirmed it reached `/markets`; after the route's “Loading WOLV data…” status completed, its catalog rendered with the observed API data (480 eligible asset records and two venue cards at that moment). I clicked the “SpaceX” sector link and confirmed navigation to `/markets?tab=2`. My first automation assertion then threw `ReferenceError: URL is not defined` because that browser-code environment did not expose a global `URL`; the navigation itself had already completed. I reran the assertion against `page.url()` directly and confirmed the expected route/query. This was a test-snippet mistake, not an application error. These are point-in-time browser observations, not guarantees about future market data or a full automated visual-regression suite. I stopped the local production server afterward.
+
+12. **Checked repository and deployment boundaries.** `git diff --check` passed. GitHub CLI reported `sollid-web/wolv-stock` as a public repository. I had also opened the existing public deployment before changes, and the pre-change hardening checks passed against it. I did not deploy this new local build, did not create a commit, and did not push. Consequently, I cannot claim the judge-facing homepage is live on Vercel yet.
+
+### Defect/fix record with before-and-after code
+
+These snippets show the relevant behavior, not every line of the moved pages.
+
+#### Defect 1 — The primary route opened the catalog, not the differentiating monitor
+
+Before, the root route fetched the catalog directly and rendered the category selector and asset list:
+
+```tsx
+// Before: app/page.tsx
+export default async function Home({ searchParams }: {
+  searchParams: Promise<{ tab?: string | string[] }>
+}) {
+  const { tab } = await searchParams;
+  // Fetch platform/token catalog, filter assets, and prepare StockList data...
+  return (
+    <>
+      <CategoryTabs active={tabId} />
+      <StockList key={tabId ?? "all"} tokens={slim} category={tabLabel} />
+    </>
+  );
+}
+```
+
+The monitor already existed at `/gap`, so a judge had to discover and select the “Executable prices” link to reach it. That was a product-discovery defect, not an exploit: the implementation made the project's core idea less obvious and could cause a short judge demo to start on the less distinctive catalog.
+
+After, the root route delegates to the existing monitor, while the catalog has a durable route:
+
+```tsx
+// After: app/page.tsx
+import OpportunityMonitor from "@/components/OpportunityMonitor";
+
+export const dynamic = "force-dynamic";
+
+export default function Home({ searchParams }: {
+  searchParams: Promise<{ n?: string }>
+}) {
+  return <OpportunityMonitor searchParams={searchParams} />;
+}
+```
+
+```tsx
+// After: app/markets/page.tsx
+export default async function Markets({ searchParams }: {
+  searchParams: Promise<{ tab?: string | string[] }>
+}) {
+  // The former home-page catalog implementation remains here.
+  // ...
+  return <CategoryTabs active={tabId} basePath="/markets" />;
+}
+```
+
+If the change had not been made, `/` would still have presented the catalog first. The route split does not grant access to new trade actions or bypass the existing spot checks; the monitor is display/navigation and the catalog/trade/API validation remains in its own existing code paths. This improves judge clarity; it is not a new transaction-security guarantee.
+
+#### Defect 2 — Hard-coded category URLs became wrong after changing the home route
+
+Before, every category tab generated a root URL:
+
+```tsx
+// Before: components/CategoryTabs.tsx
+<Link href="/" ...>All</Link>
+<Link href={`/?tab=${t.id}`} ...>{t.label}</Link>
+```
+
+This was coupled to the catalog living at `/`. Once `/` served the monitor, sector clicks from the catalog or trade selector could take the user away from the list they intended to filter; the new root monitor accepts `n`, not the catalog's `tab`, so the requested sector would not filter that screen.
+
+After, callers provide the intended route base:
+
+```tsx
+// After: components/CategoryTabs.tsx
+export default function CategoryTabs({
+  active,
+  basePath = "/",
+}: {
+  active: number | null;
+  basePath?: string;
+}) {
+  // ...
+  <Link href={basePath} ...>All</Link>
+  <Link href={`${basePath}?tab=${t.id}`} ...>{t.label}</Link>
+}
+```
+
+The markets page passes `/markets`; the trade page passes `/trade`. Without the fix, this would have been a broken navigation/filtering flow, not a means to quote or execute an ineligible asset: the API's server-side validation is still the enforcement boundary. The change preserves that distinction and does not treat a UI filter as authorization.
+
+#### Defect 3 — “Markets” and monitor back-navigation pointed to the wrong screen
+
+Before, the mobile Markets item linked to `/gap`, and the monitor back arrow linked to `/`. Because `/gap` was itself the monitor and `/` used to be the catalog, neither target expressed the correct intent after the route change.
+
+After, the Markets item and the monitor back arrow both navigate to `/markets`; `/gap` remains an alias for the monitor so older external links continue to work. Without these changes, users could loop between monitor routes or be unable to reach the catalog using the navigation labels. This is UX correctness, not access control.
+
+#### Defect 4 — Catalog-list failure could fail the monitor route without a useful page-level explanation
+
+Before, monitor data loading began with an unguarded await:
+
+```tsx
+// Before: app/gap/page.tsx
+const tokensResponse = await getRWATokenList();
+const all = filterSpotEligibleAssets(parseRwaAssetRecords(tokensResponse));
+```
+
+If that request rejected, the page render rejected too. The page-level result did not contain a monitor-specific catalog error message.
+
+After, the failure is kept as an error and rendered explicitly:
+
+```tsx
+// After: components/OpportunityMonitor.tsx
+let all: RwaToken[] = [];
+let tokenListError: string | null = null;
+try {
+  const tokensResponse = await getRWATokenList();
+  all = filterSpotEligibleAssets(parseRwaAssetRecords(tokensResponse));
+} catch (error) {
+  tokenListError = (error instanceof Error ? error.message : String(error)).slice(0, 160);
+}
+```
+
+```tsx
+{tokenListError && (
+  <div role="alert">
+    Couldn&apos;t load market data: {tokenListError}
+  </div>
+)}
+```
+
+Without the change, temporary RWA-list API failure could leave the monitor unavailable behind a generic route error. Now the failure is visible and the route can explain what data is missing. It is more resilient, but it does not make stale/unavailable data safe to trade by itself; the explicit warning must not be mistaken for a live quote or successful preflight. The error string is length-limited, but this work did not add a redaction system, persistent telemetry, retry, or monitoring.
+
+### Security and “secure now” assessment
+
+The changes in this session did **not** modify wallet signing, transaction simulation, quote binding, token eligibility rules, allowance handling, or swap submission. They do not close the separately recorded router/spender allowlisting, distributed rate-limiting, or RFQ signer-validation gaps. No new security vulnerability was confirmed in the route/UI work, and no security review of every transaction code path was performed as part of this edit.
+
+The concrete safety property preserved is that the old catalog behavior was moved rather than replaced with a new client-side asset source; it still uses `filterSpotEligibleAssets`, and the trade page continues to use that filter. More importantly, neither the route visibility nor `CategoryTabs` is represented as the security boundary: quote/swap/approval API routes must continue to validate their token and quote inputs server-side. This pass did not prove those controls complete or independently re-audit them. It would be inaccurate to say “the app is now secure” based solely on these fixes. Accurate wording is: **the judge-facing route and failure/navigation behavior were improved; the existing transaction boundaries were left unchanged; public-mainnet safety remains subject to the outstanding verification in this report.**
+
+### Verification results and limits for this session
+
+| Verification | Result and scope |
+|---|---|
+| Pre-change `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test:hardening` | Passed before edits; smoke suite defaulted to the then-deployed `https://wolv-stock.vercel.app` |
+| Pre-change `pnpm build` | Passed before edits |
+| Post-change `pnpm build` | Passed; Next.js reported routes `/`, `/gap`, and `/markets` |
+| Post-change standalone `pnpm exec tsc --noEmit` | Passed when rerun after the build completed |
+| Post-change `pnpm lint` | Passed |
+| Initial parallel build/typecheck attempt | Standalone typecheck reported missing generated `.next/types` files while build was regenerating them; sequential rerun passed. Treat as a command race, not a source-code failure. |
+| Post-change `BASE_URL=http://127.0.0.1:3001 pnpm test:hardening` | Passed against the local production build, including root monitor text, `/markets`, legacy `/gap`, trade/wallet pages, and existing malformed-input API checks |
+| Local browser | Root monitor rendered; mobile Markets navigation reached `/markets`; catalog content loaded; the “SpaceX” category link reached `/markets?tab=2`. No wallet extension transaction flow was exercised. |
+| Public GitHub repository | `gh repo view` reported `sollid-web/wolv-stock` as `PUBLIC` |
+| Public production deployment after changes | Not verified/deployed; there was no push or commit |
+| Wallet approvals, swaps, contract destinations, or on-chain receipts | Not tested in this session |
+
+### Outstanding submission work not performed here
+
+- Publish the approved changes through the project's normal review/deploy process, then retest `/`, `/markets`, and `/gap` on the deployed URL.
+- Test actual wallet connection, approval, and swap flows on BSC with the intended wallet; record wallet/browser versions, user-visible prompts, transaction hashes, receipt status, and any failures. Do not claim a successful trade without this evidence.
+- Confirm current router and spender addresses against official contract data before representing mainnet trading as safe.
+- Make and upload the judge demo (recommended maximum four minutes), verify repository/deployment accessibility, and enter the exact official submission details.
+
 ## Lessons for the next development cycle
 
 1. A successful simulation is preflight evidence, not a wallet approval or transaction receipt.
@@ -169,18 +361,4 @@ No transaction, signing event, or approval should be claimed as newly completed 
 2. Test the direct-SWAP flow separately and verify that receipt lookup works for wallet-broadcast transactions. Also decide whether the product requires new swap calldata immediately before signing; the current client obtains it during quote preparation and enforces quote freshness afterward.
 3. Reproduce the connection issue in a clean browser profile with only one wallet extension active. Capture the wallet name/version, browser, connector path, exact sequence, and redacted console errors.
 4. Verify the live deployed URL and public repository remain accessible; rehearse the primary judge journey from the deployed URL.
-5. Make the reference-versus-executable monitor the judge's obvious entry point, as recorded in [HACKATHON_SUBMISSION_AUDIT.md](./HACKATHON_SUBMISSION_AUDIT.md).
-6. For a final Developer Experience Report, add the builder's own account of API onboarding, time spent, documentation/support interactions, unexpected behaviors, and what changed in the builder's understanding. Do not claim any of those experiences unless personally observed.
-
-## Builder's firsthand completion checklist
-
-Before submitting a report based on this draft, the builder should personally confirm or edit:
-
-- [ ] Which wallet and browser produced the first raw-signing error.
-- [ ] Which wallet and connection path produced the pending-request message.
-- [ ] Whether the wallet-native transaction prompt appeared after deployment.
-- [ ] Whether an approval or swap was actually broadcast after the code change.
-- [ ] What transaction hash and receipt demonstrate the result, if one exists.
-- [ ] Whether the injected-provider console error reproduces with only one extension enabled.
-- [ ] Which API documentation or support interactions personally affected implementation.
-- [ ] Which observations in this draft should be rewritten or removed to accurately reflect firsthand experience.
+5. Deploy and verify the local reference-versus-executable monitor as the judge's landing page, as recorded in [HACKATHON_SUBMISSION_AUDIT.md](./HACKATHON_SUBMISSION_AUDIT.md).

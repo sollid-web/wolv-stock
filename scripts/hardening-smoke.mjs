@@ -14,13 +14,14 @@ async function expectStatus(name, path, expected, options) {
   return text;
 }
 
-for (const path of ["/", "/gap", "/trade", "/wallet"]) {
+for (const path of ["/", "/gap", "/markets", "/trade", "/wallet"]) {
   const text = await expectStatus(`page ${path}`, path, 200);
   assert.ok(text.length > 500, `page ${path}: response is unexpectedly small`);
 }
 
 const home = await request("/");
-assert.match(home.text, /WOLV Spot Lens/);
+assert.match(home.text, /Listed vs Executable Price/);
+assert.match(home.text, /per share, executable/);
 assert.doesNotMatch(home.text, /WOLV Stock Terminal/);
 
 await expectStatus("quote missing parameters", "/api/quote", 400);

@@ -5,6 +5,15 @@ WOLV Spot Lens compares executable spot quotes for tokenized equities across BSC
 
 The project currently lists Ondo and bStocks assets. It does not execute perps, run an autonomous trading agent, or provide investment advice. Prices and liquidity can change between quote, simulation, and wallet confirmation.
 
+## Product Routes
+
+- `/` opens the judge-facing Listed vs Executable Price monitor, comparing BSC spot quotes with issuer reference data per underlying share.
+- `/markets` browses the supported tokenized-stock catalog and sectors.
+- `/trade` selects an asset for the wallet-approved spot trading flow.
+- `/wallet` shows the connected wallet view.
+
+The monitor is also available at `/gap` for compatibility with earlier links. A listed-versus-executable price difference is informational, not a guaranteed arbitrage or profit.
+
 ## Current Integration
 
 - **RWA Data API:** token/platform lists, sector filtering, token metadata, issuer profile, and reference-price fields.
@@ -43,7 +52,7 @@ The official main-track rules require a central bStocks, Ondo, or xStocks use ca
 
 The event also restricts participation and Binance Web3 developer-product access by location, residence/citizenship, and sanctions status. See the [official event eligibility rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks?tab=overview) and [Binance prohibited regions](https://web3.binance.com/en/dev-docs/web3-api-prohibited-regions). This app does not geofence or determine legal eligibility; participants and users must check current rules themselves.
 
-Submissions need a public repository and a working deployed link or reproducible instructions. A demo video of four minutes or less is strongly recommended. The Developer Experience Report is worth 25% of the score and must contain specific firsthand observations; `DEVEX_LOG.md` is raw working evidence, not a completed report. The event explicitly rejects perfunctory or AI-generated reports, so prepare that deliverable from the builder's own experience using the [official template](https://forms.gle/EUQ39xf54GHjC2ys5).
+Submissions need a public repository and a working deployed link or reproducible instructions. The [GitHub repository](https://github.com/sollid-web/wolv-stock) is public. The current deployment is [wolv-stock.vercel.app](https://wolv-stock.vercel.app); confirm the latest judge-facing build is deployed and accessible before submitting. A demo video of four minutes or less is strongly recommended. The Developer Experience Report is worth 25% of the score and must contain specific firsthand observations; `DEVEX_LOG.md` is raw working evidence, not a completed report. The event explicitly rejects perfunctory or AI-generated reports, so prepare that deliverable from the builder's own experience using the [official template](https://forms.gle/EUQ39xf54GHjC2ys5).
 
 The optional Agentic Wallet/Wallet Skills and BNB Agent Studio special prizes are not claimed by this implementation.
 
@@ -79,7 +88,7 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The judge-facing monitor is rendered from `components/OpportunityMonitor.tsx`; the asset catalog is at `app/markets/page.tsx`.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

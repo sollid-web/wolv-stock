@@ -22,7 +22,7 @@ export default function GlobalNav() {
         </span>
         <span className="mt-1">Home</span>
       </Link>
-      <Link href="/gap" className={`flex flex-col items-center text-sm font-medium ${isActive("/gap") ? "text-[#f0b90b]" : "text-[#64748b]"}`}>
+      <Link href="/markets" className={`flex flex-col items-center text-sm font-medium ${isActive("/markets") ? "text-[#f0b90b]" : "text-[#64748b]"}`}>
         <span className="w-8 h-8 rounded-full bg-[#f0b90b]/20 flex items-center justify-center text-xs font-black">
           📊
         </span>

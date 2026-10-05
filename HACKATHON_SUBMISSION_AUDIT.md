@@ -2,7 +2,7 @@
 
 ## Audit draft and repo readiness review
 
-Prepared: 2026-10-04
+Prepared: 2026-10-04; updated: 2026-10-05
 
 This document audits the current repository against the supplied Hackathon submission checklist and marks what is already implemented, what is partially satisfied, and what must be fixed before a judge-facing submission is considered ready.
 
@@ -18,18 +18,18 @@ The project is materially aligned with the core product idea and technical scope
 
 However, the repository is not yet fully aligned with the submission checklist as written. The biggest gaps are not technical feasibility; they are product/production readiness and judge clarity:
 
-1. The home screen is still a generic token list rather than the executable-price monitor the checklist calls for.
-2. Several submission requirements remain unverified in the repo itself (public repo, deployed link, live accessibility, demo video, and final judge journey under real conditions).
-3. Some UI language and navigation still read like a generic market explorer instead of a clear opportunity-discovery product.
+1. The executable-price monitor is now the `/` landing page; the token catalog remains available at `/markets`, and `/gap` remains as a compatibility URL.
+2. Several submission requirements remain unverified in the repo itself (public repository visibility, latest deployment, demo video, and final judge journey under real conditions).
+3. Live wallet execution and official router/spender validation still require hands-on verification before a mainnet demo.
 
-In other words: the repo is strong on technical capability, but it still needs a judge-first framing and final submission proof points.
+In other words: the repo is strong on technical capability and now has judge-first framing in the local build, but it still needs deployment verification and final submission proof points.
 
 ## Evidence reviewed
 
 - [README.md](./README.md)
 - [TRADING_ARCHITECTURE.md](./TRADING_ARCHITECTURE.md)
 - [app/page.tsx](./app/page.tsx)
-- [app/gap/page.tsx](./app/gap/page.tsx)
+- [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx)
 - [lib/compliance.ts](./lib/compliance.ts)
 - [lib/spotAssets.ts](./lib/spotAssets.ts)
 
@@ -52,11 +52,11 @@ In other words: the repo is strong on technical capability, but it still needs a
 - [x] The deliverable is a working project, not only a deck or concept.
   - The repository contains working Next.js code and API routes, and the app builds successfully.
 
-- [ ] The submission contains a public repository.
-  - This is not verifiable from the local repo alone; the public-facing GitHub URL still needs confirmation.
+- [x] The submission contains a public repository.
+  - Confirmed via GitHub: https://github.com/sollid-web/wolv-stock
 
 - [ ] The submission contains a working deployed link, or reproducible judge instructions.
-  - The repo includes a local dev/build setup, but not a confirmed deployed URL in the project docs.
+  - The existing deployment responds, but the local landing-page changes have not been deployed or verified there yet.
 
 - [ ] The demo video is no longer than four minutes.
   - No project artifact shows a finalized judge-facing demo output.
@@ -68,7 +68,7 @@ In other words: the repo is strong on technical capability, but it still needs a
   - The gap page explicitly says the spread is not guaranteed profit.
 
 - [x] The product clearly distinguishes reference/listed data from executable quotes.
-  - This is a core concept in [app/gap/page.tsx](./app/gap/page.tsx) and the README.
+  - This is a core concept in [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx) and the README.
 
 - [x] Eligibility and restricted-region terms are handled according to the official rules; the product does not make unsupported legal eligibility claims.
   - The docs include official links and caution that eligibility is user responsibility.
@@ -84,8 +84,8 @@ In other words: the repo is strong on technical capability, but it still needs a
 - [x] The product boundary is mostly respected.
   - It does not add broad DeFi or perpetual features, and it enforces a spot-only filter.
 
-- [ ] The home page still does not satisfy the “primary judge journey” framing as written in the checklist.
-  - [app/page.tsx](./app/page.tsx) opens on a generic token listing and market overview; the opportunity monitor is routed through [app/gap/page.tsx](./app/gap/page.tsx) rather than being the primary landing experience.
+- [x] The home page now opens on the primary judge journey.
+  - `/` renders the listed-versus-executable monitor in [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx); the former catalog is available at `/markets`.
 
 ### 3. Current implementation baseline to preserve
 
@@ -134,18 +134,16 @@ The following remain not yet fully confirmed from a repo-only audit:
 
 ### A1. Make the executable-price monitor the product entry point
 
-Status: Partial / not yet satisfied
+Status: Implemented locally; deployment still needs updating and verification
 
-Why it is still failing the checklist:
+What changed on 2026-10-05:
 
-- The home page in [app/page.tsx](./app/page.tsx) emphasizes “Explore tokenized stocks built for onchain trading” and presents a general token list.
-- The opportunity monitor is at [app/gap/page.tsx](./app/gap/page.tsx), but it is not the primary screen or dominant action on the landing experience.
-- The checklist expects a judge to understand the differentiator without reading the README, and the current landing screen does not do that clearly enough.
+- The root route now renders the listed-versus-executable monitor from [components/OpportunityMonitor.tsx](./components/OpportunityMonitor.tsx).
+- The former token catalog is available at `/markets`, with sector filters scoped to that route.
+- `/gap` remains available for earlier links, and the bottom navigation distinguishes Home from Markets.
+- Market-data failures now appear as an explicit alert on the monitor rather than taking down the whole page.
 
-What the repo already does well:
-
-- [app/gap/page.tsx](./app/gap/page.tsx) contains the actual comparison logic and price-normalization narrative.
-- The text on that page clearly positions the app as “Listed vs Executable Price”.
+The monitor contains the comparison logic and price-normalization narrative, and labels the screen “Listed vs Executable Price”.
 
 ### A2. Standardize the price definitions
 
@@ -159,8 +157,6 @@ What is already present:
 
 What remains to tighten up:
 
-- The landing page still does not consistently reinforce the same terminology.
-- The product should present the exact terms that the checklist requires at the first screen as a judge-facing statement, not only in the deeper comparison view.
 - The app should make the contract address, platform identifier, multiplier, quote direction, input amount, and age more explicit within each opportunity card if the user is meant to make fully judge-ready on-the-spot judgments.
 
 ## Product verdict
@@ -170,21 +166,22 @@ This repo is technically credible and materially close to the requirement set. I
 The app should be judged as:
 
 - Strong technical implementation: yes
-- Strong product story: partially yes, but not yet judged from the first screen
+- Strong product story: improved; the monitor is now the intended first screen in the local build
 - Submission-ready as currently documented: not yet
 
 ## Recommended submission action plan
 
-1. Reframe the home and navigation experience so the gap/opportunity monitor is the primary judge entry point.
-2. Make the first screen explicitly say: Reference price, Executable price, Per-share normalized price, Cross-venue spread, and Quote age.
-3. Confirm the live deployed URL and public repo URL in the final submission materials.
-4. Produce a judged demo flow that matches the expected primary journey.
-5. Add a final checklist file or submission brief that maps each requirement to the live product and cites the relevant routes/screens.
+1. Deploy the landing-page and navigation changes, then confirm the public deployment shows the monitor at `/` and the token catalog at `/markets`.
+2. Confirm the public repository URL and deployed link in the final submission materials.
+3. Test the deployed wallet approval and spot-swap flow with the target wallet and a small, affordable amount.
+4. Validate current router/spender destinations against official contract data before a public mainnet demo.
+5. Produce a judge-facing demo of four minutes or less and rehearse the journey from the deployed URL.
+6. Complete the Developer Experience Report from the builder's own firsthand observations; do not submit this AI-assisted draft as a finished report.
 
 ## Final repo verdict
 
 - Technical alignment: strong
 - Submission alignment: partial
-- Need for a revised “look-alike” document: yes, to reflect the actual repo state and the remaining judge-readiness gaps
+- Need for a revised “look-alike” document: no; maintain this audit as a readiness record, then complete the external submission materials
 
 This audit draft should be used as the basis for the final hackathon submission brief, with the current implementation treated as a strong beta-grade implementation rather than a final, fully judge-ready submission pack.
