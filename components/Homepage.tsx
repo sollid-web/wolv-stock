@@ -4,6 +4,7 @@ import type { OpportunityRow, VenueResult } from "@/lib/opportunityMath";
 import { marketLabel, MAX_RELIABLE_GAP_PERCENT, signedPercent } from "@/lib/opportunityMath";
 import { quoteAgeSeconds } from "@/lib/quotes";
 import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
+import MarketAnalysis from "@/components/MarketAnalysis";
 
 type HomepageProps = {
   rows: OpportunityRow[];
@@ -269,9 +270,7 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
       </div>
       {row.statusMismatch && <p className="mt-3 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-2 text-[10px] leading-4 text-amber-200">Market sessions differ; spread may not represent a tradable opportunity.</p>}
       <div className="mt-4 flex gap-2">
-        <Link href={`/stock/${representative.token.tokenContractAddress}`} className="flex-1 rounded-lg border border-white/[0.1] px-3 py-2.5 text-center text-[10px] font-bold text-slate-200 transition hover:border-white/20 hover:bg-white/[0.04]">
-          Analyze
-        </Link>
+        <MarketAnalysis row={row} />
         {bestTrade ? (
           <Link href={`/trade/${bestTrade.token.tokenContractAddress}`} className="flex-1 rounded-lg bg-[#f0b90b] px-3 py-2.5 text-center text-[10px] font-black text-[#111] transition hover:bg-[#ffd44d]">
             Trade <span aria-hidden="true">→</span>
@@ -305,7 +304,7 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
         <span className="rounded-full border border-sky-300/15 bg-sky-300/[0.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-sky-200">Transparent · rules-based</span>
       </div>
       <p className="mt-3 max-w-3xl text-xs leading-5 text-slate-400">
-        This explanation is derived from the displayed quote, reference gap, freshness, and market status. No AI model is currently connected; WOLV does not trade autonomously.
+        Click <span className="font-bold text-sky-200">Analyse</span> on any opportunity to open a lively plain-English read. WOLV grounds the explanation in the displayed quote, reference gap, freshness, and market status; it never trades autonomously.
       </p>
       <div className="mt-5 grid gap-3 md:grid-cols-[0.8fr_1.2fr]">
         <div className="rounded-xl border border-white/[0.07] bg-black/20 p-4">

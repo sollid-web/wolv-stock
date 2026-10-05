@@ -24,7 +24,7 @@ assert.match(home.text, /WOLV Spot Lens/);
 assert.match(home.text, /TOKENIZED STOCKS/);
 assert.match(home.text, /ON-CHAIN EXECUTION/);
 assert.match(home.text, /Execution opportunities/);
-assert.match(home.text, /No AI model is currently connected/);
+assert.match(home.text, /WOLV market intelligence/);
 assert.doesNotMatch(home.text, /WOLV Stock Terminal/);
 
 await expectStatus("quote missing parameters", "/api/quote", 400);
@@ -35,6 +35,11 @@ await expectStatus("approval missing quote binding", "/api/approve-transaction?t
 await expectStatus("portfolio invalid address", "/api/wallet/portfolio?address=invalid", 400);
 await expectStatus("transaction status invalid hash", "/api/transaction-status?txHash=bad", 400);
 await expectStatus("broadcast invalid payload", "/api/transaction/broadcast", 400, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: "{}",
+});
+await expectStatus("analysis invalid payload", "/api/analyze", 400, {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: "{}",

@@ -8,7 +8,7 @@ WOLV currently lists Ondo and bStocks assets. It is spot-only, does not execute 
 
 | Route | Purpose |
 |---|---|
-| `/` | Data-led homepage with live quote comparison, freshness/session context, transparent rule-based intelligence, and entry points to opportunities and trading |
+| `/` | Data-led homepage with live quote comparison, freshness/session context, click-to-open WOLV AI market analysis, and entry points to opportunities and trading |
 | `/gap` | Full reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
 | `/markets` | Focused searchable BSC spot-eligible tokenized-stock directory |
 | `/stock/:address` | Asset details, issuer/reference information, real chart data when available, executable quote, and trade entry point |
@@ -25,6 +25,7 @@ The product uses live Binance Web3 API data. If an upstream feed is unavailable,
 - **Transaction API:** Binance-signed BSC preflight simulation before wallet prompts. A successful simulation is not an approval, broadcast, or receipt.
 - **Wallet execution:** approval and direct SWAP transactions are sent through the connected wallet's normal confirmation flow; receipt status is read from BSC. RFQ execution uses wallet typed-data signing and Binance order status polling.
 - **Wallet API:** `/api/wallet/portfolio` and `/wallet` provide a read-only BSC holdings/portfolio view. The page does not sign or execute transactions.
+- **WOLV AI analysis:** Each opportunity card's **Analyse** button opens an animated plain-English market read grounded in the displayed quote, freshness, token/share normalization, reliability cap, and venue status. If `WOLV_AI_API_KEY` (or the server-only `OPENAI_API_KEY`) is configured, `/api/analyze` requests a structured explanation from the configured OpenAI-compatible model. Without a model key, it uses the deterministic WOLV rules fallback and labels the source honestly; it never invents missing prices or executes trades.
 
 Binance API credentials are server-only. Never expose `BINANCE_API_KEY` or `BINANCE_SECRET_KEY` through a `NEXT_PUBLIC_` variable or commit them. Quote binding, freshness, minimum-order, spot eligibility, router/spender checks, simulation, wallet confirmation, and transaction-status safeguards must remain intact.
 
@@ -40,6 +41,10 @@ Create `.env.local` with server-only Binance credentials. A WalletConnect projec
 BINANCE_API_KEY=your_web3_api_key
 BINANCE_SECRET_KEY=your_web3_api_secret
 NEXT_PUBLIC_WALLET_PROJECT_ID=your_walletconnect_project_id
+# Optional server-side AI explanation layer
+WOLV_AI_API_KEY=your_openai_compatible_key
+WOLV_AI_BASE_URL=https://api.openai.com/v1
+WOLV_AI_MODEL=gpt-5-mini
 ```
 
 Install and run:
