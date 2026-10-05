@@ -7,6 +7,7 @@ import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
 import AssetFeedUnavailable from "@/components/AssetFeedUnavailable";
 import { marketLabel, normalizePerSharePrice, positiveNumberValue } from "@/lib/opportunityMath";
+import { normalizeCandles } from "@/lib/candles";
 import GlobalNav from "@/components/GlobalNav";
 import MarketChart from "@/components/MarketChart";
 
@@ -31,26 +32,6 @@ const tone = (g: number | null) =>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseCandlePoints(value: unknown): { time: string; value: number }[] {
-  const root = isRecord(value) && Array.isArray(value.data) ? value.data : value;
-  const records = Array.isArray(root) ? root : isRecord(root) && Array.isArray(root.data) ? root.data : [];
-  return records.flatMap((record): { time: string; value: number }[] => {
-    let timestamp: unknown;
-    let close: unknown;
-    if (Array.isArray(record)) {
-      timestamp = record[0];
-      close = record[4] ?? record[1];
-    } else if (isRecord(record)) {
-      timestamp = record.timestamp ?? record.time ?? record.openTime ?? record[0];
-      close = record.close ?? record.closePrice ?? record.c ?? record.price;
-    }
-    const numericClose = num(close);
-    if (numericClose == null || numericClose <= 0) return [];
-    const date = typeof timestamp === "number" || typeof timestamp === "string" ? new Date(Number(timestamp)) : null;
-    return [{ time: date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—", value: numericClose }];
-  });
 }
 
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
@@ -114,7 +95,9 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     : status === "closed"
       ? "bg-yellow-900/20 text-yellow-400 border-yellow-800"
       : "bg-slate-900/30 text-slate-400 border-slate-700";
-  const chartPoints = parseCandlePoints(candles);
+  // Binance Market API candle arrays are [open, high, low, close, volume, timestamp, tradeCount].
+  // Anchor validation uses the per-token listed price, not the per-share reference price.
+  const chartPoints = normalizeCandles(candles, listed);
 
   const profRows: [string, string | number][] = prof
     ? Object.entries(prof).flatMap(([key, value]) =>
