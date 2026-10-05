@@ -4,41 +4,41 @@
 
 **Reviewed:** 5 October 2026 (UTC+1)
 
-**Route-correction commit:** `1e104d1` (`fix: restore product homepage and keep monitor at gap`), fast-forwarded to GitHub `main` from `f12b935`.
+**Route-reassignment commit:** `4a2e61f` (`fix: make market overview the homepage`), fast-forwarded to GitHub `main` from `28790cf`.
 
-**Production release:** Vercel marked `1e104d1` successful at 08:50:51Z on 5 October 2026. Direct checks returned HTTP 200 for `/`, `/gap`, and `/markets`; the root showed the product landing page and spotlight, and `/gap` showed the full comparison monitor.
+**Production release:** Vercel marked `4a2e61f` successful on 5 October 2026. Direct checks returned HTTP 200 for `/`, `/gap`, and `/markets`; `/` showed the market overview, `/markets` the searchable directory, and `/gap` the full comparison monitor.
 
 **Production URL:** <https://wolv-stock.vercel.app/>
 **Public repository:** <https://github.com/sollid-web/wolv-stock>
 
-> **Release distinction:** the feed validation, shared comparison helpers, wallet prompt guard, and homepage/route correction are now included in the successful production deployment at `1e104d1`. Live quote correctness still depends on upstream data and was not established by the route check.
+> **Release distinction:** the feed validation, shared comparison helpers, wallet prompt guard, and current homepage/directory/monitor route split are included in the successful production deployment at `4a2e61f`. Live quote correctness still depends on upstream data and was not established by the route check.
 
 ## Executive summary
 
-WOLV Spot Lens is a BSC spot tokenized-equity monitor and user-approved trading interface. Production now shows the product landing page at `/`, including a compact featured comparison. The detailed, polished monitor is at `/gap`; `/markets` remains the dedicated market directory.
+WOLV Spot Lens is a BSC spot tokenized-equity monitor and user-approved trading interface. Production now shows the market overview at `/`, the searchable asset directory at `/markets`, and the detailed, polished comparison monitor at `/gap`.
 
-The homepage includes a compact featured comparison and links to the full `/gap` view; it does not replace the landing page with the full monitor. The shared logic continues to normalize per-share prices, filter unreliable quotes, and show unavailable feed states instead of false zeros. Wallet execution remains user-initiated, guarded against duplicate prompts, simulated before approval, and confirmed in the user's wallet. No automated check signed or broadcast a trade.
+The homepage provides live coverage context and separate links into the directory and full `/gap` view. The shared logic continues to normalize per-share prices, filter unreliable quotes, and show unavailable feed states instead of false zeros. Wallet execution remains user-initiated, guarded against duplicate prompts, simulated before approval, and confirmed in the user's wallet. No automated check signed or broadcast a trade.
 
 ## Evidence verified in the reconciliation worktree
 
-- The route correction is based on `f12b935` and released as `1e104d1`; the previously dirty checkout was not reset or overwritten.
-- `/` has the established BSC tokenized-market landing layout with a compact featured comparison, while `/gap` renders the full cross-venue monitor. `/markets` remains the searchable directory. The static route manifest reflects those page roles.
+- The route reassignment is based on `28790cf` and released as `4a2e61f`; the previously dirty checkout was not reset or overwritten.
+- `/` now renders the BSC market overview and coverage summary, `/markets` is the focused searchable directory, and `/gap` renders the full cross-venue monitor. The static route manifest reflects those page roles.
 - Pages use shared RWA record parsing and explicit unavailable states. Per-share normalization, quote freshness, the 20% reliability cap, market-status sentinel handling, and quote selection are covered by pure helper tests.
 - The single-flight wallet request gate and trade-readiness blockers are covered by tests; no wallet was connected and no transaction was attempted.
-- On the route-correction branch: `pnpm test:logic` **35 passed**; lint passed; production build passed with Next.js TypeScript checking. The build still warns about an `ox` dynamic dependency expression and the unset WalletConnect project ID; injected wallets remain available.
-- The responsive matrix passed **28 route/viewport cases** for `/`, `/gap`, `/markets`, `/trade`, `/wallet`, and sentinel `/stock/:address` plus `/trade/:address` at 320, 390, 768, and 1440px. The sentinel details validate fallback layout, not live asset data or trading.
+- On the route-reassignment branch: `pnpm test:logic` **35 passed**; lint passed; production build passed with Next.js TypeScript checking. The build still warns about an `ox` dynamic dependency expression and the unset WalletConnect project ID; injected wallets remain available.
+- The responsive matrix passed **28 route/viewport cases** for `/`, `/gap`, `/markets`, `/trade`, `/wallet`, and test-address `/stock/:address` plus `/trade/:address` at 320, 390, 768, and 1440px. Those dynamic route checks validate fallback layout, not live asset data or trading.
 - The hardening smoke previously passed against the public URL, but it is only a narrow endpoint check. It does not prove quote validity or wallet execution.
-- The user supplied a screenshot of the previous deployed version, where the full monitor occupied `/`. No screenshot of the corrected live route split or final demo video has been captured yet.
+- The user supplied a screenshot of an earlier deployed version, where the full monitor occupied `/`. No screenshot of the current live route split or final demo video has been captured yet.
 
 ## Status against submission needs
 
 | Requirement | Status | Evidence / remaining action |
 |---|---|---|
 | Public repository | Verified previously | Repository is public; keep it accessible through judging. |
-| Production link | **`1e104d1` deployment verified** | Vercel reports success; `/`, `/gap`, and `/markets` return HTTP 200 with the expected page roles. This does not establish live feed correctness. |
+| Production link | **`4a2e61f` deployment verified** | Vercel reports success; `/`, `/gap`, and `/markets` return HTTP 200 with distinct intended page roles. This does not establish live feed correctness. |
 | BSC tokenized-stock use case; spot-only | Implemented | The app is scoped to spot-eligible tokenized assets on BSC. The builder should re-check the official supported-instrument and eligibility terms. |
-| Listed/reference versus executable monitor | Released | The homepage has a compact featured spotlight; the full comparison and reliability view is at `/gap`. |
-| Market directory | Released and preserved | `/markets` remains available with its category navigation and explicit feed-failure state. |
+| Listed/reference versus executable monitor | Released | The full comparison and reliability view is at `/gap`; the homepage links to it without duplicating the monitor page. |
+| Market directory | Released and distinct | `/markets` is the searchable directory with category navigation and an explicit feed-failure state; `/` is the market overview. |
 | Fail-closed feed handling | Automated locally | Malformed/unavailable lists do not become zero prices or inferred opportunities. Live upstream behavior still depends on the current Binance feed. |
 | Portfolio view | Implemented, read-only | `/api/wallet/portfolio` and `/wallet`; a connected-wallet data review is still owner-controlled. |
 | Responsive layout | Automated fallback coverage passed | 28 route/viewport checks passed. Sentinel routes are not evidence of real asset data. |

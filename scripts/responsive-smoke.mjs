@@ -145,9 +145,9 @@ async function run() {
     ? `/stock/${process.env.TEST_TOKEN_ADDRESS}`
     : null;
   const fixedRoutes = [
-    { path: "/", expected: /Reference price|Live executable-price monitor/ },
+    { path: "/", expected: /BSC tokenized markets|See the price/ },
     { path: "/gap", expected: /Cross-venue price discovery|Listed vs Executable Price/ },
-    { path: "/markets", expected: /BSC tokenized markets|See the price/ },
+    { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
     { path: "/trade", expected: /Select an Asset to Trade/ },
     { path: "/wallet", expected: /Wallet Address|Connect your wallet|Checking wallet connection/ },
   ];
@@ -172,7 +172,7 @@ async function run() {
       }))()`);
       assert.ok(layout.scrollWidth <= layout.clientWidth + 1, `${route.path} overflows horizontally at ${width}px (${layout.scrollWidth}px content in ${layout.clientWidth}px viewport)`);
 
-      if (route.path === "/" && !stockPath) {
+      if ((route.path === "/" || route.path === "/markets") && !stockPath) {
         stockPath = await evaluate(`Array.from(document.querySelectorAll('a[href^="/stock/"]')).map((link) => link.getAttribute("href")).find(Boolean) ?? null`);
       }
       console.log(`PASS ${width}px ${route.path} · ${layout.scrollWidth}/${layout.clientWidth}px`);
