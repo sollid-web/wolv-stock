@@ -107,68 +107,86 @@ function fallbackAnalysis(input: AnalysisInput) {
 }
 
 function modelConfig() {
-  const apiKey = process.env.WOLV_AI_API_KEY ?? process.env.OPENAI_API_KEY;
-  const baseUrl = (process.env.WOLV_AI_BASE_URL ?? process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = process.env.WOLV_AI_MODEL ?? "gpt-5-mini";
+  const groqKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.WOLV_AI_API_KEY ?? groqKey ?? process.env.OPENAI_API_KEY;
+  const baseUrl = (process.env.WOLV_AI_BASE_URL ?? (groqKey ? "https://api.groq.com/openai/v1" : process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1")).replace(/\/$/, "");
+  const model = process.env.WOLV_AI_MODEL ?? (groqKey ? "openai/gpt-oss-120b" : "gpt-5-mini");
   return apiKey ? { apiKey, baseUrl, model } : null;
 }
 
-async function modelAnalysis(input: AnalysisInput) {
-  const config = modelConfig();
-  if (!config) return null;
+function analysisMessages(input: AnalysisInput) {
+  return [
+    {
+      role: "system",
+      content: "You are WOLV AI, a cautious market explainer for non-technical users. Use only the supplied data. Never promise profit, invent prices, give personalized financial advice, or recommend signing without a fresh quote and simulation. Return ONLY one valid JSON object, with no markdown fences and no additional text. The object must contain: headline (string), summary (string), reasons (array of 1 to 4 short strings), nextStep (string), and tone (exactly one of positive, caution, neutral).",
+    },
+    { role: "user", content: JSON.stringify(input) },
+  ];
+}
+
+function parseModelContent(payload: unknown): string | null {
+  const content = isRecord(payload) && Array.isArray(payload.choices) && isRecord(payload.choices[0]) && isRecord(payload.choices[0].message)
+    ? payload.choices[0].message.content
+    : null;
+  if (typeof content !== "string") return null;
+  return content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+}
+
+function normalizeModelResult(parsed: unknown) {
+  if (!isRecord(parsed) || typeof parsed.headline !== "string" || typeof parsed.summary !== "string" || !Array.isArray(parsed.reasons) || typeof parsed.nextStep !== "string") {
+    throw new Error("AI analysis returned an invalid JSON shape");
+  }
+  const reasons = parsed.reasons.filter((reason): reason is string => typeof reason === "string").slice(0, 4).map((reason) => reason.slice(0, 220));
+  if (reasons.length === 0) throw new Error("AI analysis returned no reasons");
+  return {
+    source: "WOLV AI",
+    headline: parsed.headline.slice(0, 160),
+    summary: parsed.summary.slice(0, 500),
+    reasons,
+    nextStep: parsed.nextStep.slice(0, 240),
+    tone: parsed.tone === "positive" || parsed.tone === "caution" ? parsed.tone : "neutral",
+  } as const;
+}
+
+async function requestModel(config: { apiKey: string; baseUrl: string; model: string }, input: AnalysisInput, responseFormat?: { type: "json_object" }) {
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: config.model,
-      messages: [
-        {
-          role: "system",
-          content: "You are WOLV AI, a cautious market explainer for non-technical users. Use only the supplied data. Never promise profit, invent prices, give personalized financial advice, or recommend signing without a fresh quote and simulation. Return JSON with headline, summary, reasons (array of short strings), nextStep, and tone (positive, caution, or neutral).",
-        },
-        { role: "user", content: JSON.stringify(input) },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "wolv_market_analysis",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              headline: { type: "string" },
-              summary: { type: "string" },
-              reasons: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },
-              nextStep: { type: "string" },
-              tone: { type: "string", enum: ["positive", "caution", "neutral"] },
-            },
-            required: ["headline", "summary", "reasons", "nextStep", "tone"],
-            additionalProperties: false,
-          },
-        },
-      },
-      max_completion_tokens: 500,
+      messages: analysisMessages(input),
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+      temperature: 0.2,
+      max_tokens: 700,
     }),
     signal: AbortSignal.timeout(12_000),
   });
-  if (!response.ok) throw new Error(`AI analysis returned HTTP ${response.status}`);
-  const payload: unknown = await response.json();
-  const content = isRecord(payload) && Array.isArray(payload.choices) && isRecord(payload.choices[0]) && isRecord(payload.choices[0].message)
-    ? payload.choices[0].message.content
-    : null;
-  if (typeof content !== "string") throw new Error("AI analysis returned no text");
-  const parsed: unknown = JSON.parse(content);
-  if (!isRecord(parsed) || typeof parsed.headline !== "string" || typeof parsed.summary !== "string" || !Array.isArray(parsed.reasons) || typeof parsed.nextStep !== "string") {
-    throw new Error("AI analysis returned an invalid shape");
+  const responseText = await response.text();
+  if (!response.ok) throw new Error(`AI provider HTTP ${response.status}: ${responseText.slice(0, 240)}`);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(responseText);
+  } catch {
+    throw new Error("AI provider returned invalid JSON");
   }
-  return {
-    source: "WOLV AI",
-    headline: parsed.headline.slice(0, 160),
-    summary: parsed.summary.slice(0, 500),
-    reasons: parsed.reasons.filter((reason): reason is string => typeof reason === "string").slice(0, 4).map((reason) => reason.slice(0, 220)),
-    nextStep: parsed.nextStep.slice(0, 240),
-    tone: parsed.tone === "positive" || parsed.tone === "caution" ? parsed.tone : "neutral",
-  };
+  const content = parseModelContent(payload);
+  if (!content) throw new Error("AI provider returned no message content");
+  return normalizeModelResult(JSON.parse(content));
+}
+
+async function modelAnalysis(input: AnalysisInput) {
+  const config = modelConfig();
+  if (!config) return null;
+  try {
+    // JSON mode is supported by Groq's OpenAI-compatible endpoint and avoids
+    // the stricter json_schema compatibility gap on gpt-oss models.
+    return await requestModel(config, input, { type: "json_object" });
+  } catch (firstError) {
+    // Some OpenAI-compatible gateways reject response_format entirely; retry
+    // once with the explicit JSON-only prompt before using the safe fallback.
+    console.warn("WOLV AI JSON mode failed; retrying without response_format:", firstError);
+    return requestModel(config, input);
+  }
 }
 
 export async function POST(request: Request) {
@@ -180,7 +198,13 @@ export async function POST(request: Request) {
       const generated = await modelAnalysis(input);
       return NextResponse.json(generated ?? fallback);
     } catch (error) {
-      console.error("WOLV AI analysis unavailable; using rules fallback:", error);
+      const config = modelConfig();
+      console.error("WOLV AI analysis unavailable; using rules fallback:", {
+        error,
+        configured: Boolean(config),
+        baseUrl: config?.baseUrl,
+        model: config?.model,
+      });
       return NextResponse.json({ ...fallback, source: "WOLV rules · AI unavailable" });
     }
   } catch (error) {
