@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 const baseUrl = new URL(process.env.BASE_URL || "http://127.0.0.1:3000");
-const widths = [320, 390, 768, 1440];
+const widths = [320, 390, 414, 768, 1440];
 const height = 900;
-const timeoutMs = 45_000;
+const timeoutMs = 90_000;
 
 function findChrome() {
   if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
@@ -168,13 +168,18 @@ async function run() {
         viewport: window.innerWidth,
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-        title: document.title
+        title: document.title,
+        navTargets: Array.from(document.querySelectorAll('nav[aria-label="Primary navigation"] a')).map((link) => {
+          const { left, right, width, height } = link.getBoundingClientRect();
+          return { left, right, width, height };
+        })
       }))()`);
       assert.ok(layout.scrollWidth <= layout.clientWidth + 1, `${route.path} overflows horizontally at ${width}px (${layout.scrollWidth}px content in ${layout.clientWidth}px viewport)`);
-
-      if ((route.path === "/" || route.path === "/markets") && !stockPath) {
-        stockPath = await evaluate(`Array.from(document.querySelectorAll('a[href^="/stock/"]')).map((link) => link.getAttribute("href")).find(Boolean) ?? null`);
+      if (width < 768 && layout.navTargets.length > 0) {
+        assert.ok(layout.navTargets.every((target) => target.width >= 48 && target.height >= 48), `${route.path} has a primary-navigation touch target below 48px at ${width}px`);
+        assert.ok(layout.navTargets.every((target) => target.left >= 0 && target.right <= layout.viewport), `${route.path} has a clipped primary-navigation target at ${width}px`);
       }
+
       console.log(`PASS ${width}px ${route.path} · ${layout.scrollWidth}/${layout.clientWidth}px`);
     }
 

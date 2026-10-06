@@ -27,9 +27,6 @@ const big = (value: unknown) => {
   return "$" + n.toLocaleString();
 };
 const label = (k: string) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
-const tone = (g: number | null) =>
-  g == null ? "text-[#64748b]" : Math.abs(g) < 0.25 ? "text-green-400" : Math.abs(g) < 1 ? "text-yellow-400" : "text-red-400";
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -182,7 +179,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Gap</div>
-                  <div className={`font-black text-lg ${tone(gap)}`}>
+                  <div className="font-black text-lg text-[#f0b90b]">
                     {gap == null ? "—" : (gap > 0 ? "+" : "") + gap.toFixed(3) + "%"}
                   </div>
                 </div>

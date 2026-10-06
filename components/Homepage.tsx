@@ -11,7 +11,6 @@ type HomepageProps = {
   rows: OpportunityRow[];
   assetCount: number;
   feedUnavailable: boolean;
-  feedError: string | null;
 };
 
 function price(value: number | null): string {
@@ -94,7 +93,7 @@ function Navigation() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="hidden items-center gap-1.5 rounded-full border border-sky-300/20 bg-sky-300/[0.05] px-2.5 py-2 text-[9px] font-bold text-sky-200 sm:flex">
-            <span className="wolv-pulse size-1.5 rounded-full bg-sky-300" /> AI live
+            <span className="size-1.5 rounded-full bg-sky-300" /> AI market read
           </span>
           <span className="hidden items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-[10px] font-semibold text-slate-300 sm:flex">
             <span className="size-1.5 rounded-full bg-[#f0b90b]" />
@@ -347,7 +346,7 @@ function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) 
   );
 }
 
-export default function Homepage({ rows, assetCount, feedUnavailable, feedError }: HomepageProps) {
+export default function Homepage({ rows, assetCount, feedUnavailable }: HomepageProps) {
   const featured = rows[0];
   const spreadCount = rows.filter((row) => row.crossVenueSpread != null).length;
 
@@ -393,7 +392,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, feedError 
         <div role="alert" className="mx-auto mb-5 max-w-7xl px-4 sm:px-6">
           <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3 text-xs leading-5 text-amber-100">
             Live market data is unavailable. WOLV is not substituting sample prices or inferred opportunities.
-            {feedError && <span className="mt-1 block break-all text-[10px] text-amber-100/60">{feedError}</span>}
+            Retry when the upstream market feed is available.
           </div>
         </div>
       )}

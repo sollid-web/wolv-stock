@@ -11,7 +11,6 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   let tokens = [] as ReturnType<typeof parseRwaAssetRecords>;
   let feedUnavailable = false;
-  let feedError: string | null = null;
 
   try {
     const response: unknown = await getRWATokenList();
@@ -23,14 +22,13 @@ export default async function Home() {
   } catch (error) {
     console.error("Homepage RWA feed unavailable:", error);
     feedUnavailable = true;
-    feedError = error instanceof Error ? error.message.slice(0, 160) : "The live asset feed could not be validated";
   }
 
   const rows = feedUnavailable ? [] : await getOpportunityRows(tokens, 8);
 
   return (
     <>
-      <Homepage rows={rows} assetCount={tokens.length} feedUnavailable={feedUnavailable} feedError={feedError} />
+      <Homepage rows={rows} assetCount={tokens.length} feedUnavailable={feedUnavailable} />
       <GlobalNav />
     </>
   );

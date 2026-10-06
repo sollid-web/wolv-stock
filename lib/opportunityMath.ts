@@ -1,8 +1,10 @@
 import type { Q } from "./quotes";
 import type { RwaAssetRecord } from "./spotAssets";
+import { MAX_RELIABLE_GAP_PERCENT } from "./marketThresholds.js";
+
+export { MAX_RELIABLE_GAP_PERCENT } from "./marketThresholds.js";
 
 export const OPPORTUNITY_QUOTE_TTL_MS = 30_000;
-export const MAX_RELIABLE_GAP_PERCENT = 20;
 const UNAVAILABLE_MARKET_STATUSES = new Set([
   "unknown", "n/a", "na", "not available", "unavailable", "unspecified",
   "none", "null", "undefined", "pending", "not set", "-", "--", "–", "—", "status unavailable",

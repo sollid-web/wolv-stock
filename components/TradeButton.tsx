@@ -891,7 +891,6 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         open={isConnected && !isCorrectNetwork}
         isSwitching={isSwitchingNetwork}
         onSwitch={handleNetworkSwitch}
-        onClose={() => undefined}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <h3 style={{ margin: 0, fontSize: "1.125rem" }}>Trade {token.symbol}</h3>

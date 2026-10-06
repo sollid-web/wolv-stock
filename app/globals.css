@@ -37,6 +37,16 @@ body {
   scrollbar-color: #34344b #0a0a14;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #f0b90b;
+  outline-offset: 3px;
+}
+
 .wolv-grid {
   background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
   background-size: 34px 34px;
@@ -87,4 +97,13 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .wolv-float, .wolv-pulse, .wolv-scan, .wolv-chart-line, .wolv-chart-area, .home-reveal, .market-ticker-track { animation: none; }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

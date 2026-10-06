@@ -55,7 +55,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
           <div
             role="img"
             aria-label={`Usable executable prices range from ${price(minPrice)} to ${price(maxPrice)} per share across ${reliableVenues.length} venues`}
-            className="relative mt-3 h-3 rounded-full bg-gradient-to-r from-emerald-400/70 via-[#f0b90b]/70 to-[#f97316]/70"
+            className="relative mt-3 h-3 rounded-full bg-white/[0.08]"
           >
             {reliableVenues.map((venue, index) => {
               const amount = venue.executablePerShare as number;
@@ -64,7 +64,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
                 <span
                   key={venue.token.tokenContractAddress}
                   title={`${venue.token.platformId}: ${price(amount)} per share`}
-                  className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#07070f] shadow-[0_0_0_2px_rgba(7,7,15,.55)]"
+                  className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#f0b90b] bg-[#07070f] shadow-[0_0_0_2px_rgba(7,7,15,.55)]"
                   style={{ left: `${position}%`, zIndex: index + 1 }}
                 />
               );
