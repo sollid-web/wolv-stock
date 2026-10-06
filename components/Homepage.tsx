@@ -5,6 +5,7 @@ import { marketLabel, MAX_RELIABLE_GAP_PERCENT, signedPercent } from "@/lib/oppo
 import { quoteAgeSeconds } from "@/lib/quotes";
 import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import MarketAnalysis from "@/components/MarketAnalysis";
+import AIInsightStrip from "@/components/AIInsightStrip";
 
 type HomepageProps = {
   rows: OpportunityRow[];
@@ -92,6 +93,9 @@ function Navigation() {
           <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-full border border-sky-300/20 bg-sky-300/[0.05] px-2.5 py-2 text-[9px] font-bold text-sky-200 sm:flex">
+            <span className="wolv-pulse size-1.5 rounded-full bg-sky-300" /> AI live
+          </span>
           <span className="hidden items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-[10px] font-semibold text-slate-300 sm:flex">
             <span className="size-1.5 rounded-full bg-[#f0b90b]" />
             BNB Chain · Mainnet
@@ -301,7 +305,7 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
     <section id="intelligence" className="scroll-mt-24 overflow-hidden rounded-2xl border border-[#f0b90b]/15 bg-gradient-to-br from-[#111722] via-[#0b1017] to-[#090d13] p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionHeading eyebrow="WOLV market intelligence" title="Context before execution" />
-        <span className="rounded-full border border-sky-300/15 bg-sky-300/[0.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-sky-200">Transparent · rules-based</span>
+        <span className="rounded-full border border-sky-300/15 bg-sky-300/[0.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-sky-200">AI-assisted · rules-grounded</span>
       </div>
       <p className="mt-3 max-w-3xl text-xs leading-5 text-slate-400">
         Click <span className="font-bold text-sky-200">Analyse</span> on any opportunity to open a lively plain-English read. WOLV grounds the explanation in the displayed quote, reference gap, freshness, and market status; it never trades autonomously.
@@ -397,6 +401,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, feedError 
       <Ticker rows={rows} />
 
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:space-y-16 sm:px-6 sm:py-14">
+        <AIInsightStrip row={featured} />
         <section id="opportunities" className="scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
