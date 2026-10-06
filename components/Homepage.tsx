@@ -80,7 +80,7 @@ function Logo({ venue, ticker, size = 32 }: { venue: VenueResult; ticker: string
 
 function Navigation() {
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#070a0e]/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-white/[0.09] bg-[#070711]/70 backdrop-blur-2xl">
       <nav aria-label="Main navigation" className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="WOLV home">
           <span className="grid size-9 place-items-center rounded-xl bg-[#f0b90b] text-sm font-black text-black shadow-[0_0_22px_rgba(240,185,11,.18)]">W</span>
@@ -100,7 +100,7 @@ function Navigation() {
             <span className="size-1.5 rounded-full bg-[#f0b90b]" />
             BNB Chain · Mainnet
           </span>
-          <Link href="/wallet" className="rounded-lg bg-[#f0b90b] px-3 py-2 text-[11px] font-black text-[#111] transition hover:bg-[#ffd44d] sm:px-4">
+          <Link href="/wallet" className="wolv-glass-control rounded-lg bg-[#f0b90b]/90 px-3 py-2 text-[11px] font-black text-[#111] hover:bg-[#ffd44d] sm:px-4">
             Connect wallet
           </Link>
         </div>

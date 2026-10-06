@@ -36,7 +36,7 @@ export default function GlobalNav() {
   };
 
   return (
-    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.08] bg-[#090d13]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
+    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.1] bg-[#080912]/75 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
       <div className="mx-auto flex h-16 max-w-lg items-center">
         <Link href="/" aria-current={isActive("/") ? "page" : undefined} aria-label="Home" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/") ? "text-[#f0b90b]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="home" /><span>Home</span>
