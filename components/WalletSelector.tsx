@@ -38,7 +38,7 @@ function AppKitConnectButton() {
         type="button"
         onClick={() => void handleOpen()}
         disabled={isOpening || modalOpen || Boolean(connectingWallet)}
-        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#f0b90b] px-5 text-sm font-bold text-black transition-colors hover:bg-[#ffd44d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#d9a80a] px-5 text-sm font-bold text-black transition-colors hover:bg-[#f2c94c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
       >
         {isOpening || modalOpen || connectingWallet ? "Wallet connection pending..." : "Connect wallet"}
         <span aria-hidden="true">→</span>
@@ -58,14 +58,14 @@ export default function WalletSelector({
     <section className="w-full py-8">
       {isConnecting ? (
         <div className="flex flex-col items-center py-10 text-center" role="status">
-          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#f0b90b] border-t-transparent" />
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#d9a80a] border-t-transparent" />
           <p className="text-sm text-slate-300">Connecting to wallet...</p>
         </div>
       ) : (
         <>
           <header className="mb-7 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#f0b90b]/30 bg-[#f0b90b]/[0.08] px-3 py-1.5 text-xs font-semibold text-[#f0b90b]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#f0b90b]" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#d9a80a]/30 bg-[#d9a80a]/[0.08] px-3 py-1.5 text-xs font-semibold text-[#d9a80a]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#d9a80a]" />
               BSC MAINNET · CHAIN 56
             </div>
             <h1 className="mt-5 text-2xl font-bold">Connect your wallet</h1>
@@ -85,7 +85,7 @@ export default function WalletSelector({
               <button
                 type="button"
                 onClick={() => void onConnect("injected")}
-                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#f0b90b] px-5 text-sm font-bold text-black transition-colors hover:bg-[#ffd44d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#d9a80a] px-5 text-sm font-bold text-black transition-colors hover:bg-[#f2c94c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               >
                 Connect browser wallet
                 <span aria-hidden="true">→</span>

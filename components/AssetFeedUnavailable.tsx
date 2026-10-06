@@ -11,7 +11,7 @@ export default function AssetFeedUnavailable({ title, description, backHref, bac
   return (
     <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6">
-        <Link href={backHref} className="text-sm font-bold text-[#f0b90b] hover:text-[#ffd44d]">
+        <Link href={backHref} className="text-sm font-bold text-[#d9a80a] hover:text-[#f2c94c]">
           ← {backLabel}
         </Link>
       </nav>
@@ -23,7 +23,7 @@ export default function AssetFeedUnavailable({ title, description, backHref, bac
           <p className="mt-3 text-xs leading-5 text-slate-500">
             WOLV cannot verify this asset without the live RWA list. No price, quote, opportunity, or trade action is inferred from missing data.
           </p>
-          <Link href={backHref} className="mt-6 inline-flex min-h-11 items-center rounded-lg border border-[#f0b90b]/40 px-4 py-2 text-sm font-bold text-[#f0b90b] hover:bg-[#f0b90b]/10">
+          <Link href={backHref} className="mt-6 inline-flex min-h-11 items-center rounded-lg border border-[#d9a80a]/40 px-4 py-2 text-sm font-bold text-[#d9a80a] hover:bg-[#d9a80a]/10">
             {backLabel}
           </Link>
         </div>

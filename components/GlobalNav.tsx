@@ -36,21 +36,21 @@ export default function GlobalNav() {
   };
 
   return (
-    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.08] bg-[#090d13]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden">
+    <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.1] bg-[#080912]/75 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:hidden">
       <div className="mx-auto flex h-16 max-w-lg items-center">
-        <Link href="/" aria-current={isActive("/") ? "page" : undefined} aria-label="Home" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/") ? "text-[#f0b90b]" : "text-slate-500 hover:text-slate-200"}`}>
+        <Link href="/" aria-current={isActive("/") ? "page" : undefined} aria-label="Home" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="home" /><span>Home</span>
         </Link>
-        <Link href="/markets" aria-current={isActive("/markets") ? "page" : undefined} aria-label="Markets" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/markets") ? "text-[#f0b90b]" : "text-slate-500 hover:text-slate-200"}`}>
+        <Link href="/markets" aria-current={isActive("/markets") ? "page" : undefined} aria-label="Markets" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/markets") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="markets" /><span>Markets</span>
         </Link>
         <Link href="/#intelligence" aria-label="AI market analysis" className="flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold text-sky-300 transition-colors hover:text-sky-200">
           <span className="relative"><NavIcon name="ai" /><span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-sky-300" /></span><span>AI read</span>
         </Link>
-        <Link href="/trade" aria-current={isActive("/trade") || pathname.startsWith("/trade/") ? "page" : undefined} aria-label="Trade" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/trade") || pathname.startsWith("/trade/") ? "text-[#f0b90b]" : "text-slate-500 hover:text-slate-200"}`}>
+        <Link href="/trade" aria-current={isActive("/trade") || pathname.startsWith("/trade/") ? "page" : undefined} aria-label="Trade" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/trade") || pathname.startsWith("/trade/") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="trade" /><span>Trade</span>
         </Link>
-        <Link href="/wallet" aria-current={isActive("/wallet") ? "page" : undefined} aria-label="Portfolio and wallet" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/wallet") ? "text-[#f0b90b]" : "text-slate-500 hover:text-slate-200"}`}>
+        <Link href="/wallet" aria-current={isActive("/wallet") ? "page" : undefined} aria-label="Portfolio and wallet" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/wallet") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="wallet" /><span>Portfolio</span>
         </Link>
       </div>

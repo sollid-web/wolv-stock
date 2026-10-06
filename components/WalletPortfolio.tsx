@@ -145,14 +145,14 @@ export default function WalletPortfolio({ address, enabled }: { address: string;
               <div key={`${holding.binanceChainId}:${holding.tokenContractAddress}:${holding.symbol}`} className="flex items-center justify-between gap-3 border-b border-[#1b1b35] pb-3 last:border-none last:pb-0">
                 <div className="min-w-0">
                   {holding.tokenContractAddress ? (
-                    <Link href={`/stock/${holding.tokenContractAddress}`} className="font-bold text-white hover:text-[#f0b90b]">{holding.symbol}</Link>
+                    <Link href={`/stock/${holding.tokenContractAddress}`} className="font-bold text-white hover:text-[#d9a80a]">{holding.symbol}</Link>
                   ) : (
                     <span className="font-bold text-white">{holding.symbol}</span>
                   )}
                   <div className="truncate text-[10px] text-[#64748b]">{holding.balance == null ? "Balance unavailable" : holding.balance.toLocaleString(undefined, { maximumFractionDigits: 8 })} units · {holding.binanceChainId === "56" ? "BSC" : `Chain ${holding.binanceChainId}`}</div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold text-[#f0b90b]">{usd(holding.valueUsd)}</div>
+                  <div className="font-bold text-[#d9a80a]">{usd(holding.valueUsd)}</div>
                   <div className="text-[10px] text-[#64748b]">{holding.tokenPriceUsd == null ? "price unavailable" : `${usd(holding.tokenPriceUsd)} / unit`}</div>
                 </div>
               </div>

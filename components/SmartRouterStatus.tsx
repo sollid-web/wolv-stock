@@ -80,7 +80,7 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
     : "⚠️ Symbol Not Spot Compliant";
 
   return (
-    <div className="mb-6 rounded-2xl border border-[#1b1b35] bg-[#0e0e1c] p-4 shadow-[0_0_0_1px_rgba(240,185,11,0.08)]">
+    <div className="mb-6 rounded-2xl border border-[#1b1b35] bg-[#0e0e1c] p-4 shadow-[0_0_0_1px_rgba(217,168,10,0.08)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-[#94a3b8]">Protocol routing</div>
@@ -91,14 +91,14 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-[#f0b90b]/30 bg-[#f0b90b]/5 p-3">
+      <div className="mt-4 rounded-xl border border-[#d9a80a]/30 bg-[#d9a80a]/5 p-3">
         <div className="flex items-center justify-between gap-3 text-sm">
           <span className="text-[#94a3b8]">{best ? `Best execution for ${symbol}` : `Route status for ${symbol}`}</span>
-          <span className="rounded-full border border-[#f0b90b]/40 bg-[#f0b90b]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#f0b90b]">
+          <span className="rounded-full border border-[#d9a80a]/40 bg-[#d9a80a]/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-[#d9a80a]">
             {best ? `${best.platform} preferred` : feedUnavailable ? "Feed unavailable" : quotesUnavailable ? "Quotes unavailable" : "Awaiting quotes"}
           </span>
         </div>
-        <div className="mt-2 text-2xl font-black text-[#f0b90b]">
+        <div className="mt-2 text-2xl font-black text-[#d9a80a]">
           {best && best.effectiveUsd != null ? `$${best.effectiveUsd.toFixed(2)}` : feedUnavailable || quotesUnavailable ? "Unavailable" : "Quote pending"}
         </div>
         <div className="mt-1 text-xs text-[#94a3b8]">
@@ -125,14 +125,14 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
                 key={row.tokenContractAddress}
                 className={`rounded-xl border p-3 transition-all ${
                   selected
-                    ? "border-[#f0b90b]/60 bg-[#f0b90b]/10 shadow-[0_0_0_1px_rgba(240,185,11,0.2)]"
+                    ? "border-[#d9a80a]/60 bg-[#d9a80a]/10 shadow-[0_0_0_1px_rgba(217,168,10,0.2)]"
                     : "border-[#1b1b35] bg-[#0b0b17]"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-bold text-white">{row.platform}</span>
                   {selected && (
-                    <span className="rounded-full border border-[#f0b90b]/40 bg-[#f0b90b]/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-[#f0b90b]">
+                    <span className="rounded-full border border-[#d9a80a]/40 bg-[#d9a80a]/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-[#d9a80a]">
                       Best price
                     </span>
                   )}

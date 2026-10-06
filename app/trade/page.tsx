@@ -41,10 +41,10 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
+      <nav className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
+          <div className="w-8 h-8 rounded-full bg-[#d9a80a] flex items-center justify-center font-black text-black text-sm">W</div>
           <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Spot Lens</span>
         </div>
         <div className="flex items-center gap-2">
@@ -52,7 +52,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
             ← <span className="hidden sm:inline">Home</span>
           </Link>
           <span className="text-xs text-[#64748b]">/</span>
-            <Link href="/trade" className="text-xs font-bold text-[#f0b90b] sm:text-sm">
+            <Link href="/trade" className="text-xs font-bold text-[#d9a80a] sm:text-sm">
             Trade
           </Link>
         </div>
@@ -65,13 +65,13 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
             </div>
-            <div className="text-[#f0b90b] font-black text-xl">{list.err ? "—" : allTokens.filter((t) => t.platformId === p.platformId).length}</div>
+            <div className="text-[#d9a80a] font-black text-xl">{list.err ? "—" : allTokens.filter((t) => t.platformId === p.platformId).length}</div>
             <div className="text-[#64748b] text-xs">{list.err ? "feed unavailable" : "on BSC"}</div>
           </div>
         ))}
         <div className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
           <div className="text-[#64748b] text-xs mb-1">Total Available</div>
-          <div className="text-[#f0b90b] font-black text-xl">{list.err ? "—" : allTokens.length}</div>
+          <div className="text-[#d9a80a] font-black text-xl">{list.err ? "—" : allTokens.length}</div>
           <div className="text-[#64748b] text-xs">{list.err ? "feed unavailable" : "on BSC chain"}</div>
         </div>
       </div>

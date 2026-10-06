@@ -833,7 +833,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   if (connectionView === "checking") {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
-        <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
+        <div className="animate-spin w-8 h-8 border-2 border-[#d9a80a] border-t-transparent rounded-full mx-auto mb-2"></div>
         <p className="text-xs text-[#64748b]">Checking wallet connection...</p>
       </div>
     );
@@ -842,7 +842,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   if (connectionView === "connecting") {
     return (
       <div style={{ textAlign: "center", padding: "2rem" }}>
-        <div className="animate-spin w-8 h-8 border-2 border-[#f0b90b] border-t-transparent rounded-full mx-auto mb-2"></div>
+        <div className="animate-spin w-8 h-8 border-2 border-[#d9a80a] border-t-transparent rounded-full mx-auto mb-2"></div>
         <p className="text-xs text-[#64748b]">Connecting to wallet...</p>
       </div>
     );
@@ -927,7 +927,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           ["03", "Confirm", Boolean(transactionStatus?.status === "confirmed")],
         ] as const).map(([number, label, complete]) => (
           <div key={label as string} style={{ position: "relative", overflow: "hidden", borderRadius: "0.7rem", border: `1px solid ${complete ? "rgba(52,211,153,.4)" : "rgba(255,255,255,.08)"}`, background: complete ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.035)", padding: "0.6rem" }}>
-            <div className={complete ? "wolv-pulse" : ""} style={{ display: "inline-grid", placeItems: "center", width: "1.35rem", height: "1.35rem", borderRadius: "999px", background: complete ? "#34d399" : "rgba(240,185,11,.16)", color: complete ? "#06130e" : "#f0b90b", fontSize: "0.6rem", fontWeight: 900 }}>{complete ? "✓" : number}</div>
+            <div className={complete ? "wolv-pulse" : ""} style={{ display: "inline-grid", placeItems: "center", width: "1.35rem", height: "1.35rem", borderRadius: "999px", background: complete ? "#34d399" : "rgba(217,168,10,.16)", color: complete ? "#06130e" : "#d9a80a", fontSize: "0.6rem", fontWeight: 900 }}>{complete ? "✓" : number}</div>
             <div style={{ marginTop: "0.4rem", fontSize: "0.7rem", fontWeight: 800, color: complete ? "#a7f3d0" : "#cbd5e1" }}>{label}</div>
             <div style={{ marginTop: "0.15rem", fontSize: "0.6rem", color: "#64748b" }}>{label === "Quote" ? "Fresh price" : label === "Simulate" ? "No funds sent" : "Your approval"}</div>
           </div>
@@ -1013,7 +1013,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
             <div role="status" style={{ fontSize: "0.75rem", color: quoteIsFresh ? "#9ca3af" : "#fbbf24", marginTop: "0.25rem" }}>
               {quoteIsFresh ? `Price locked for about ${Math.max(0, Math.ceil((QUOTE_TTL_MS - quoteAgeSeconds * 1000) / 1000))} more seconds.` : "This price has expired. Get a fresh quote before continuing."}
               {!quoteIsFresh && (
-                <button type="button" onClick={fetchQuote} disabled={isLoading} style={{ display: "block", marginTop: "0.5rem", backgroundColor: "#f0b90b", color: "#111827", border: "none", borderRadius: "0.25rem", padding: "0.5rem 0.75rem", fontWeight: 700, cursor: isLoading ? "not-allowed" : "pointer" }}>
+                <button type="button" onClick={fetchQuote} disabled={isLoading} style={{ display: "block", marginTop: "0.5rem", backgroundColor: "#d9a80a", color: "#111827", border: "none", borderRadius: "0.25rem", padding: "0.5rem 0.75rem", fontWeight: 700, cursor: isLoading ? "not-allowed" : "pointer" }}>
                   {isLoading ? "Getting fresh price…" : "Get fresh quote"}
                 </button>
               )}
@@ -1088,7 +1088,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           marginBottom: "0.5rem",
           textAlign: "center"
         }}>
-          <div role="status" aria-live="polite" style={{ fontSize: "0.875rem", color: "#f0b90b" }}>
+          <div role="status" aria-live="polite" style={{ fontSize: "0.875rem", color: "#d9a80a" }}>
             {approvalPhase === "preparing" && "Running approval preflight once…"}
             {approvalPhase === "wallet" && "Waiting for one wallet prompt. Review it there; do not click again."}
             {approvalPhase === "confirming" && "Approval submitted. Waiting for BNB Smart Chain confirmation…"}
@@ -1205,7 +1205,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginTop: "1rem" }}>
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Transaction Status</div>
           {executionPhase !== "idle" && (
-            <div role="status" style={{ fontSize: "0.875rem", color: "#f0b90b", marginBottom: "0.25rem" }}>
+            <div role="status" style={{ fontSize: "0.875rem", color: "#d9a80a", marginBottom: "0.25rem" }}>
               {tradePhaseMessage(executionPhase)}
             </div>
           )}

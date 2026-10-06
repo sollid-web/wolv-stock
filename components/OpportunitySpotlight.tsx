@@ -5,12 +5,12 @@ import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 
 export default function OpportunitySpotlight({ row, feedUnavailable = false }: { row?: OpportunityRow; feedUnavailable?: boolean }) {
   return (
-    <section aria-labelledby="opportunity-spotlight-title" className="relative min-w-0 overflow-hidden rounded-2xl border border-[#f0b90b]/25 bg-gradient-to-br from-[#151322] via-[#0e0e1c] to-[#0a0a14] p-4 shadow-[0_20px_70px_rgba(0,0,0,.34)] sm:p-5">
-      <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-[#f0b90b]/[0.06] blur-3xl" />
+    <section aria-labelledby="opportunity-spotlight-title" className="relative min-w-0 overflow-hidden rounded-2xl border border-[#d9a80a]/25 bg-gradient-to-br from-[#151322] via-[#0e0e1c] to-[#0a0a14] p-4 shadow-[0_20px_70px_rgba(0,0,0,.34)] sm:p-5">
+      <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-[#d9a80a]/[0.06] blur-3xl" />
       <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#f0b90b]">
-            {!feedUnavailable && <span className="wolv-pulse size-1.5 rounded-full bg-[#f0b90b]" />}
+          <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d9a80a]">
+            {!feedUnavailable && <span className="wolv-pulse size-1.5 rounded-full bg-[#d9a80a]" />}
             {feedUnavailable ? "Executable-price monitor" : "Live executable-price monitor"}
           </div>
           <h2 id="opportunity-spotlight-title" className="mt-2 text-lg font-black leading-tight text-white sm:text-xl">Reference price ≠ executable price</h2>
@@ -18,7 +18,7 @@ export default function OpportunitySpotlight({ row, feedUnavailable = false }: {
             {QUOTE_AMOUNT_USDT} USDT spot-buy quotes, normalized to the underlying share. Fresh, reference-backed venues inform the spread; stale, outlier, or incomplete comparisons are labelled and excluded.
           </p>
         </div>
-        <Link href="/gap" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-[#f0b90b]/35 bg-[#f0b90b]/10 px-3 py-2 text-xs font-bold text-[#f0b90b] transition hover:bg-[#f0b90b]/20">
+        <Link href="/gap" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-[#d9a80a]/35 bg-[#d9a80a]/10 px-3 py-2 text-xs font-bold text-[#d9a80a] transition hover:bg-[#d9a80a]/20">
           Full monitor <span aria-hidden="true" className="ml-1">→</span>
         </Link>
       </div>

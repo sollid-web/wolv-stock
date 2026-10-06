@@ -33,17 +33,17 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white">
-      <nav className="sticky top-0 z-10 border-b border-white/[0.08] bg-[#0a0a14]/90 px-4 py-4 backdrop-blur-xl sm:px-8">
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white">
+      <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3" aria-label="Back to WOLV home">
-            <div className="grid size-9 place-items-center rounded-xl bg-[#f0b90b] text-sm font-black text-black shadow-[0_0_24px_rgba(240,185,11,0.2)]">W</div>
+            <div className="grid size-9 place-items-center rounded-xl bg-[#d9a80a] text-sm font-black text-black shadow-[0_0_24px_rgba(217,168,10,0.2)]">W</div>
             <div>
               <span className="block text-sm font-black tracking-[0.18em] text-white">WOLV</span>
               <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:block">Spot Lens</span>
             </div>
           </Link>
-          <Link href="/gap" className="rounded-full border border-[#f0b90b]/40 bg-[#f0b90b]/10 px-3 py-2 text-xs font-bold text-[#f0b90b] transition hover:bg-[#f0b90b]/20 sm:px-4">
+          <Link href="/gap" className="rounded-full border border-[#d9a80a]/40 bg-[#d9a80a]/10 px-3 py-2 text-xs font-bold text-[#d9a80a] transition hover:bg-[#d9a80a]/20 sm:px-4">
             Price monitor <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -51,7 +51,7 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
 
       <section className="mx-auto max-w-7xl px-4 pb-5 pt-8 sm:px-8 sm:pt-12">
         <div className="max-w-3xl">
-          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#f0b90b]/25 bg-[#f0b90b]/[0.08] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#f0b90b]">
+          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#d9a80a]/25 bg-[#d9a80a]/[0.08] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d9a80a]">
             BSC spot directory
           </p>
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Browse tokenized markets</h1>

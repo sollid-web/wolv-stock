@@ -70,7 +70,7 @@ function Logo({ venue, ticker, size = 32 }: { venue: VenueResult; ticker: string
   return (
     <span
       aria-hidden="true"
-      className="grid shrink-0 place-items-center rounded-full border border-[#f0b90b]/20 bg-[#f0b90b]/[0.08] font-bold text-[#f0b90b]"
+      className="grid shrink-0 place-items-center rounded-full border border-[#d9a80a]/20 bg-[#d9a80a]/[0.08] font-bold text-[#d9a80a]"
       style={{ width: size, height: size, fontSize: Math.max(10, size * 0.34) }}
     >
       {ticker.slice(0, 2)}
@@ -80,10 +80,10 @@ function Logo({ venue, ticker, size = 32 }: { venue: VenueResult; ticker: string
 
 function Navigation() {
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#070a0e]/90 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-white/[0.09] bg-[#070711]/70 backdrop-blur-2xl">
       <nav aria-label="Main navigation" className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="WOLV home">
-          <span className="grid size-9 place-items-center rounded-xl bg-[#f0b90b] text-sm font-black text-black shadow-[0_0_22px_rgba(240,185,11,.18)]">W</span>
+          <span className="grid size-9 place-items-center rounded-full border border-[#d9a80a]/80 bg-[#d9a80a]/12 text-sm font-black text-[#f2c94c] shadow-[0_0_22px_rgba(217,168,10,.14)] ring-1 ring-white/10">W</span>
           <span className="text-sm font-black tracking-[0.2em] text-white">WOLV</span>
         </Link>
         <div className="hidden items-center gap-7 md:flex">
@@ -97,10 +97,10 @@ function Navigation() {
             <span className="size-1.5 rounded-full bg-sky-300" /> AI market read
           </span>
           <span className="hidden items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-[10px] font-semibold text-slate-300 sm:flex">
-            <span className="size-1.5 rounded-full bg-[#f0b90b]" />
+            <span className="size-1.5 rounded-full bg-[#d9a80a]" />
             BNB Chain · Mainnet
           </span>
-          <Link href="/wallet" className="rounded-lg bg-[#f0b90b] px-3 py-2 text-[11px] font-black text-[#111] transition hover:bg-[#ffd44d] sm:px-4">
+          <Link href="/wallet" className="wolv-glass-control rounded-lg bg-[#d9a80a]/90 px-3 py-2 text-[11px] font-black text-[#111] hover:bg-[#f2c94c] sm:px-4">
             Connect wallet
           </Link>
         </div>
@@ -120,7 +120,7 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
     <section aria-label="Live opportunity preview" className="wolv-glass wolv-glass-hover relative overflow-hidden rounded-2xl p-4 shadow-[0_22px_70px_rgba(0,0,0,.45)] sm:p-5">
       <div className="pointer-events-none absolute inset-0 opacity-30">
         <div className="wolv-grid absolute inset-0" />
-        <div className="absolute -right-24 -top-24 size-64 rounded-full bg-[#f0b90b]/10 blur-3xl" />
+        <div className="absolute -right-24 -top-24 size-64 rounded-full bg-[#d9a80a]/10 blur-3xl" />
       </div>
       <div className="relative flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.08] pb-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -180,7 +180,7 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
               <div className={`mt-1 text-xs font-bold ${signal?.tone}`}>{signal?.label} <span className="font-normal text-slate-500">· {comparableCount} comparable venue{comparableCount === 1 ? "" : "s"}</span></div>
             </div>
             {isComparable(featuredVenue) ? (
-              <Link href={`/trade/${featuredVenue.token.tokenContractAddress}`} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[#f0b90b] px-4 text-xs font-black text-[#111] transition hover:bg-[#ffd44d]">
+              <Link href={`/trade/${featuredVenue.token.tokenContractAddress}`} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[#d9a80a] px-4 text-xs font-black text-[#111] transition hover:bg-[#f2c94c]">
                 Trade {row.ticker} <span aria-hidden="true" className="ml-2">→</span>
               </Link>
             ) : (
@@ -200,7 +200,7 @@ function Metric({ label, value, accent = false }: { label: string; value: string
   return (
     <div className="min-w-0 rounded-lg border border-white/[0.06] bg-black/20 p-3">
       <div className="truncate text-[9px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className={`mt-1 break-words text-sm font-black tracking-tight sm:text-base ${accent ? "text-[#f0b90b]" : "text-white"}`}>{value}</div>
+      <div className={`mt-1 break-words text-sm font-black tracking-tight sm:text-base ${accent ? "text-[#d9a80a]" : "text-white"}`}>{value}</div>
     </div>
   );
 }
@@ -262,7 +262,7 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.07] pt-3 text-[10px]">
         <span className="text-slate-500">Cross-venue spread</span>
-        <span className={`font-bold ${row.crossVenueSpread == null ? "text-slate-500" : "text-[#f0b90b]"}`}>
+        <span className={`font-bold ${row.crossVenueSpread == null ? "text-slate-500" : "text-[#d9a80a]"}`}>
           {row.crossVenueSpread == null ? "Not comparable" : signedPercent(row.crossVenueSpread)}
         </span>
       </div>
@@ -276,7 +276,7 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
       <div className="mt-4 flex gap-2">
         <MarketAnalysis row={row} />
         {bestTrade ? (
-          <Link href={`/trade/${bestTrade.token.tokenContractAddress}`} className="flex-1 rounded-lg bg-[#f0b90b] px-3 py-2.5 text-center text-[10px] font-black text-[#111] transition hover:bg-[#ffd44d]">
+          <Link href={`/trade/${bestTrade.token.tokenContractAddress}`} className="flex-1 rounded-lg bg-[#d9a80a] px-3 py-2.5 text-center text-[10px] font-black text-[#111] transition hover:bg-[#f2c94c]">
             Trade <span aria-hidden="true">→</span>
           </Link>
         ) : (
@@ -341,7 +341,7 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
 function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
     <div>
-      <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#f0b90b]">{eyebrow}</p>
+      <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">{eyebrow}</p>
       <h2 className="mt-1 text-lg font-black tracking-tight text-white sm:text-xl">{title}</h2>
     </div>
   );
@@ -352,38 +352,38 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
   const spreadCount = rows.filter((row) => row.crossVenueSpread != null).length;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#070a0e] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+    <main className="wolv-app-shell min-h-screen overflow-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <Navigation />
 
-      <section className="relative mx-auto grid max-w-7xl gap-8 px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-14 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+      <section className="wolv-hero relative mx-auto grid max-w-7xl gap-8 px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-14 lg:grid-cols-[0.94fr_1.06fr] lg:items-center">
         <div className="wolv-grid pointer-events-none absolute inset-0 opacity-40" />
         <ParticleCanvas />
-        <div className="wolv-hero-glow wolv-orb-a" style={{width:"520px",height:"520px",top:"-160px",left:"-80px",background:"radial-gradient(circle,rgba(240,185,11,0.13),transparent 70%)"}} />
+        <div className="wolv-hero-glow wolv-orb-a" style={{width:"520px",height:"520px",top:"-160px",left:"-80px",background:"radial-gradient(circle,rgba(217,168,10,0.13),transparent 70%)"}} />
         <div className="wolv-hero-glow wolv-orb-b" style={{width:"400px",height:"400px",top:"60px",right:"-100px",background:"radial-gradient(circle,rgba(51,65,120,0.18),transparent 70%)"}} />
         <div className="relative home-reveal">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#f0b90b]/20 bg-[#f0b90b]/[0.05] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.17em] text-[#f4c834]">
-            <span className="wolv-pulse size-1.5 rounded-full bg-[#f0b90b]" />
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#d9a80a]/20 bg-[#d9a80a]/[0.05] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.17em] text-[#f4c834]">
+            <span className="wolv-pulse size-1.5 rounded-full bg-[#d9a80a]" />
             BNB Chain · Tokenized stocks · Spot only
           </div>
           <h1 className="max-w-2xl text-4xl font-black leading-[1.03] tracking-[-0.055em] text-white sm:text-5xl xl:text-6xl">
             TOKENIZED STOCKS.<br />
-            <span className="text-[#f0b90b]">ON-CHAIN EXECUTION.</span>
+            <span className="text-[#d9a80a]">ON-CHAIN EXECUTION.</span>
           </h1>
           <p className="mt-5 text-base font-semibold text-slate-200 sm:text-lg">Find the price. See the execution.</p>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
             WOLV compares issuer reference data with executable BSC spot quotes, normalizes prices per share, and surfaces quote freshness and market status before you decide whether to trade.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#f0b90b] px-5 text-xs font-black text-[#101010] shadow-[0_8px_24px_rgba(240,185,11,.16)] transition hover:-translate-y-0.5 hover:bg-[#ffd44d]">
+            <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d9a80a] px-5 text-xs font-black text-[#101010] shadow-[0_8px_24px_rgba(217,168,10,.16)] transition hover:-translate-y-0.5 hover:bg-[#f2c94c]">
               Explore opportunities <span aria-hidden="true" className="ml-2">→</span>
             </a>
-            <a href="#how-it-works" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/[0.12] bg-white/[0.025] px-4 text-xs font-bold text-slate-200 transition hover:border-white/25 hover:bg-white/[0.05]">
+            <a href="#how-it-works" className="wolv-glass-control inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-xs font-bold text-slate-200">
               How WOLV works
             </a>
           </div>
           <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500">
             <span className="inline-flex items-center gap-2"><span className="size-1.5 rounded-full bg-emerald-400" /> Reference-backed data</span>
-            <span className="inline-flex items-center gap-2"><span className="size-1.5 rounded-full bg-[#f0b90b]" /> Preflight before signing</span>
+            <span className="inline-flex items-center gap-2"><span className="size-1.5 rounded-full bg-[#d9a80a]" /> Preflight before signing</span>
             <span className="inline-flex items-center gap-2"><span className="size-1.5 rounded-full bg-sky-300" /> User-controlled execution</span>
           </div>
         </div>
@@ -415,7 +415,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
                   : `${assetCount} eligible asset records · ${rows.length} live ticker comparisons · ${spreadCount} with a reliable cross-venue spread`}
               </p>
             </div>
-            <Link href="/gap?n=40" className="text-[10px] font-bold text-[#f0b90b] transition hover:text-[#ffe27a]">
+            <Link href="/gap?n=40" className="text-[10px] font-bold text-[#d9a80a] transition hover:text-[#ffe27a]">
               Open full monitor <span aria-hidden="true">→</span>
             </Link>
           </div>
@@ -446,7 +446,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
             ].map((step, index) => (
               <article key={step.number} className="home-reveal rounded-xl border border-white/[0.08] bg-[#0b1017]/75 p-4" style={{ animationDelay: `${index * 75}ms` }}>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black tracking-[0.16em] text-[#f0b90b]">{step.number}</span>
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#d9a80a]">{step.number}</span>
                   <span className="h-px flex-1 bg-white/[0.08] mx-3" />
                   <span className="size-2 rounded-full border border-sky-300/50 bg-sky-300/10" />
                 </div>
@@ -457,16 +457,16 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
           </div>
         </section>
 
-        <section className="relative overflow-hidden rounded-2xl border border-[#f0b90b]/15 bg-[#0b1017] p-5 sm:p-7">
+        <section className="relative overflow-hidden rounded-2xl border border-[#d9a80a]/15 bg-[#0b1017] p-5 sm:p-7">
           <div className="pointer-events-none absolute -right-12 -top-16 size-64 rounded-full bg-sky-400/[0.06] blur-3xl" />
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="max-w-2xl">
-              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#f0b90b]">Built for BNB Chain</p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">Built for BNB Chain</p>
               <h2 className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">BSC spot markets. Wallet-first execution.</h2>
               <p className="mt-2 text-xs leading-5 text-slate-400">WOLV reads market data server-side and requests user approval for on-chain transactions. The connected wallet remains in control of signing.</p>
             </div>
             <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3">
-              <span className="grid size-10 place-items-center rounded-xl border border-[#f0b90b]/25 bg-[#f0b90b]/[0.07] text-sm font-black text-[#f0b90b]">B</span>
+              <span className="grid size-10 place-items-center rounded-xl border border-[#d9a80a]/25 bg-[#d9a80a]/[0.07] text-sm font-black text-[#d9a80a]">B</span>
               <div>
                 <p className="text-xs font-bold text-white">BNB Smart Chain</p>
                 <p className="mt-1 text-[9px] uppercase tracking-wider text-slate-500">Mainnet · Chain 56</p>
@@ -476,10 +476,10 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         </section>
 
         <section className="flex flex-col items-center rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#0b1017] via-[#11151a] to-[#0b1017] px-5 py-9 text-center sm:py-12">
-          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#f0b90b]">WOLV · BSC tokenized markets</p>
+          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">WOLV · BSC tokenized markets</p>
           <h2 className="mt-3 max-w-xl text-2xl font-black tracking-tight text-white sm:text-3xl">See what the market is actually offering.</h2>
           <p className="mt-3 max-w-lg text-xs leading-5 text-slate-400">Inspect a live comparison, then decide whether to open the asset and request a fresh trade quote.</p>
-          <a href="#opportunities" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#f0b90b] px-5 text-xs font-black text-[#111] transition hover:bg-[#ffd44d]">
+          <a href="#opportunities" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d9a80a] px-5 text-xs font-black text-[#111] transition hover:bg-[#f2c94c]">
             Explore opportunities <span aria-hidden="true" className="ml-2">→</span>
           </a>
         </section>
