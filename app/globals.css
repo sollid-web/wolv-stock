@@ -39,6 +39,31 @@ button, a {
   transition: color .2s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
 }
 
+.wolv-app-shell {
+  background:
+    radial-gradient(circle at 62% 7%, rgba(0, 153, 255, .09), transparent 28rem),
+    linear-gradient(180deg, rgba(2, 7, 18, .98), rgba(4, 8, 16, .94));
+}
+
+.wolv-hero::after {
+  content: "";
+  position: absolute;
+  right: 7%;
+  top: 9%;
+  width: min(34vw, 430px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: .32;
+  background:
+    radial-gradient(circle at 35% 32%, rgba(255, 208, 36, .24), transparent 4%),
+    radial-gradient(circle at 55% 50%, rgba(240, 185, 11, .12), transparent 45%),
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 28px, rgba(240, 185, 11, .12) 29px 30px),
+    radial-gradient(circle, rgba(7, 13, 25, .1), rgba(0, 0, 0, .75) 70%);
+  box-shadow: 0 0 80px rgba(240, 185, 11, .12), inset 0 0 55px rgba(240, 185, 11, .14);
+  border: 1px solid rgba(240, 185, 11, .12);
+}
+
 .wolv-glass-control {
   border: 1px solid rgba(255,255,255,.12);
   background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.035));

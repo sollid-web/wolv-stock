@@ -352,10 +352,10 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
   const spreadCount = rows.filter((row) => row.crossVenueSpread != null).length;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#070a0e] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+    <main className="wolv-app-shell min-h-screen overflow-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <Navigation />
 
-      <section className="relative mx-auto grid max-w-7xl gap-8 px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-14 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+      <section className="wolv-hero relative mx-auto grid max-w-7xl gap-8 px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-14 lg:grid-cols-[0.94fr_1.06fr] lg:items-center">
         <div className="wolv-grid pointer-events-none absolute inset-0 opacity-40" />
         <ParticleCanvas />
         <div className="wolv-hero-glow wolv-orb-a" style={{width:"520px",height:"520px",top:"-160px",left:"-80px",background:"radial-gradient(circle,rgba(240,185,11,0.13),transparent 70%)"}} />
@@ -377,7 +377,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
             <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#f0b90b] px-5 text-xs font-black text-[#101010] shadow-[0_8px_24px_rgba(240,185,11,.16)] transition hover:-translate-y-0.5 hover:bg-[#ffd44d]">
               Explore opportunities <span aria-hidden="true" className="ml-2">→</span>
             </a>
-            <a href="#how-it-works" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/[0.12] bg-white/[0.025] px-4 text-xs font-bold text-slate-200 transition hover:border-white/25 hover:bg-white/[0.05]">
+            <a href="#how-it-works" className="wolv-glass-control inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-xs font-bold text-slate-200">
               How WOLV works
             </a>
           </div>
