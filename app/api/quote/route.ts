@@ -6,10 +6,6 @@ import { createQuoteBinding } from "@/lib/quoteBinding";
 
 export const dynamic = "force-dynamic";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -46,12 +42,8 @@ export async function GET(request: Request) {
     }
 
     const result = await getAggregatorQuote(toToken, amount, userWalletAddress);
-    // Binance returns best-first route candidates. Keep the current best quote
-    // contract intact while exposing bounded display-only metadata for the terminal.
-    const rawRoutes: Record<string, unknown>[] = Array.isArray(result?.data)
-      ? (result.data as unknown[]).filter(isRecord).slice(0, 8)
-      : [];
-    const quote = rawRoutes[0] ?? null;
+    // Aggregator returns an array — take the best (first) quote
+    const quote = result?.data?.[0] ?? null;
     if (!quote) {
       return NextResponse.json(
         { error: "No quote returned from aggregator" },
@@ -68,31 +60,8 @@ export async function GET(request: Request) {
     const approveTarget = typeof quote.approveTarget === "string" && EVM_ADDRESS_PATTERN.test(quote.approveTarget)
       ? quote.approveTarget
       : undefined;
-    const availableRoutes = rawRoutes.map((route) => {
-      const fromToken = isRecord(route.fromToken) ? route.fromToken : {};
-      const toToken = isRecord(route.toToken) ? route.toToken : {};
-      return {
-        quoteId: typeof route.quoteId === "string" ? route.quoteId : undefined,
-        vendorName: typeof route.vendorName === "string" ? route.vendorName.slice(0, 80) : "Aggregator route",
-        executionMode: typeof route.executionMode === "string" ? route.executionMode : "RFQ",
-        fromTokenAmount: typeof route.fromTokenAmount === "string" ? route.fromTokenAmount : undefined,
-        toTokenAmount: typeof route.toTokenAmount === "string" ? route.toTokenAmount : undefined,
-        fromToken: {
-          decimal: typeof fromToken.decimal === "string" || typeof fromToken.decimal === "number" ? fromToken.decimal : undefined,
-          tokenUnitPrice: typeof fromToken.tokenUnitPrice === "string" || typeof fromToken.tokenUnitPrice === "number" ? fromToken.tokenUnitPrice : undefined,
-          tokenSymbol: typeof fromToken.tokenSymbol === "string" ? fromToken.tokenSymbol.slice(0, 24) : undefined,
-        },
-        toToken: {
-          decimal: typeof toToken.decimal === "string" || typeof toToken.decimal === "number" ? toToken.decimal : undefined,
-          tokenUnitPrice: typeof toToken.tokenUnitPrice === "string" || typeof toToken.tokenUnitPrice === "number" ? toToken.tokenUnitPrice : undefined,
-          tokenSymbol: typeof toToken.tokenSymbol === "string" ? toToken.tokenSymbol.slice(0, 24) : undefined,
-        },
-        priceImpactPercent: typeof route.priceImpactPercent === "string" || typeof route.priceImpactPercent === "number" ? route.priceImpactPercent : undefined,
-      };
-    });
     return NextResponse.json({
       ...quote,
-      availableRoutes,
       quoteFetchedAt,
       quoteBinding: createQuoteBinding({
         toToken,

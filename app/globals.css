@@ -77,15 +77,6 @@ body {
 .market-ticker-track { animation: market-ticker 42s linear infinite; }
 .market-ticker-track:hover { animation-play-state: paused; }
 
-.animate-marquee {
-  display: flex;
-  width: 200%;
-  animation: marquee 25s linear infinite;
-}
-.animate-marquee:hover { animation-play-state: paused; }
-.animate-radar { animation: radarScan 4s linear infinite; }
-.animate-flow { stroke-dasharray: 6; animation: flowLine 1s linear infinite; }
-
 @keyframes wolv-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes wolv-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(240,185,11,.28); } 50% { box-shadow: 0 0 0 7px rgba(240,185,11,0); } }
 @keyframes wolv-scan { 0% { transform: translateX(-110%); opacity: 0; } 25%, 75% { opacity: .8; } 100% { transform: translateX(260%); opacity: 0; } }
@@ -93,10 +84,7 @@ body {
 @keyframes wolv-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes home-reveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes market-ticker { to { transform: translateX(-50%); } }
-@keyframes marquee { 0% { transform: translateX(0%); } 100% { transform: translateX(-50%); } }
-@keyframes radarScan { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-@keyframes flowLine { 0% { stroke-dashoffset: 24; } 100% { stroke-dashoffset: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .wolv-float, .wolv-pulse, .wolv-scan, .wolv-chart-line, .wolv-chart-area, .home-reveal, .market-ticker-track, .animate-marquee, .animate-radar, .animate-flow { animation: none; }
+  .wolv-float, .wolv-pulse, .wolv-scan, .wolv-chart-line, .wolv-chart-area, .home-reveal, .market-ticker-track { animation: none; }
 }
