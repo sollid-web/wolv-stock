@@ -26,7 +26,7 @@ function Logo({ url, tk }: { url?: string; tk: string }) {
   const [bad, setBad] = useState(false);
   if (!url || bad)
     return (
-      <div className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0 flex items-center justify-center text-xs font-black text-[#f0b90b]">
+      <div className="w-9 h-9 rounded-full bg-[#1b1b35] shrink-0 flex items-center justify-center text-xs font-black text-[#d9a80a]">
         {tk.slice(0, 4)}
       </div>
     );
@@ -64,7 +64,7 @@ export default function StockList({ tokens, category, feedUnavailable = false }:
   const chip = (active: boolean) =>
     `px-3 py-1 rounded-full text-xs font-bold capitalize border transition-colors ${
       active
-        ? "bg-[#f0b90b] text-black border-[#f0b90b]"
+        ? "bg-[#d9a80a] text-black border-[#d9a80a]"
         : "bg-[#0e0e1c] text-[#94a3b8] border-[#1b1b35]"
     }`;
 
@@ -83,7 +83,7 @@ export default function StockList({ tokens, category, feedUnavailable = false }:
             value={q}
             onChange={(e) => { setQ(e.target.value); setLimit(50); }}
             placeholder="Search ticker or company"
-            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#f0b90b]/60 focus:bg-white/[0.06]"
+            className="w-full rounded-xl border border-white/[0.1] bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#d9a80a]/60 focus:bg-white/[0.06]"
           />
         </label>
       </div>
@@ -118,7 +118,7 @@ export default function StockList({ tokens, category, feedUnavailable = false }:
             <Link
               key={t.tokenContractAddress}
               href={`/stock/${t.tokenContractAddress}`}
-              className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] backdrop-blur-xl px-4 py-4 transition duration-300 hover:-translate-y-1 hover:border-[#f0b90b]/50 hover:bg-white/[0.06] hover:shadow-[0_12px_36px_rgba(240,185,11,.08)] sm:px-5"
+              className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.035] backdrop-blur-xl px-4 py-4 transition duration-300 hover:-translate-y-1 hover:border-[#d9a80a]/50 hover:bg-white/[0.06] hover:shadow-[0_12px_36px_rgba(217,168,10,.08)] sm:px-5"
             >
               <span className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/4 -skew-x-12 bg-gradient-to-r from-transparent via-white/[0.08] to-transparent opacity-0 transition duration-700 group-hover:left-[120%] group-hover:opacity-100" />
               <div className="flex items-center gap-3 min-w-0">
@@ -139,7 +139,7 @@ export default function StockList({ tokens, category, feedUnavailable = false }:
               </div>
               <div className="text-right shrink-0 ml-3">
                 <div className="text-xs text-slate-300 capitalize">{t.platformId}</div>
-                <div className="text-xs text-[#f0b90b] font-bold mt-0.5">BSC →</div>
+                <div className="text-xs text-[#d9a80a] font-bold mt-0.5">BSC →</div>
               </div>
             </Link>
           ))}
@@ -149,7 +149,7 @@ export default function StockList({ tokens, category, feedUnavailable = false }:
       {rows.length > limit && (
         <button
           onClick={() => setLimit(limit + 100)}
-          className="mt-4 w-full py-3 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] text-sm font-bold text-[#f0b90b]"
+          className="mt-4 w-full py-3 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] text-sm font-bold text-[#d9a80a]"
         >
           Show more ({rows.length - limit} left)
         </button>

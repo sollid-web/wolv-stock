@@ -38,7 +38,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
         <div className="text-center">
           <div className="text-4xl mb-4">⚠️</div>
           <p className="text-[#64748b]">Asset not found. Please check the asset address or return to the trade page to select an asset.</p>
-          <Link href="/trade" className="text-[#f0b90b] text-sm mt-4 block">← Back to Trade Page</Link>
+          <Link href="/trade" className="text-[#d9a80a] text-sm mt-4 block">← Back to Trade Page</Link>
         </div>
       </main>
     );

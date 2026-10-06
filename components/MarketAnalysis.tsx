@@ -157,13 +157,13 @@ export default function MarketAnalysis({ row }: { row: OpportunityRow }) {
                     ))}
                   </div>
                   <p className="text-[9px] text-slate-500">{analysis.dataSources.join(" · ")} · checked {new Date(analysis.checkedAt).toLocaleTimeString()}</p>
-                  <div className="rounded-xl border border-[#f0b90b]/20 bg-[#f0b90b]/[0.05] p-4">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-[#f0b90b]">Suggested next step</div>
+                  <div className="rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.05] p-4">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-[#d9a80a]">Suggested next step</div>
                     <p className="mt-1 text-xs leading-5 text-slate-200">{analysis.nextStep}</p>
                   </div>
                   <div className="flex flex-wrap gap-2 border-t border-white/[0.07] pt-4">
                     {best && <Link href={`/stock/${best.token.tokenContractAddress}`} onClick={() => setOpen(false)} className="inline-flex min-h-10 items-center rounded-lg border border-white/[0.12] px-4 text-xs font-bold text-slate-200 transition hover:border-white/25 hover:bg-white/[0.05]">Open full analysis</Link>}
-                    {best && isComparable(best) && <Link href={`/trade/${best.token.tokenContractAddress}`} onClick={() => setOpen(false)} className="inline-flex min-h-10 items-center rounded-lg bg-[#f0b90b] px-4 text-xs font-black text-[#111] transition hover:bg-[#ffd44d]">Request fresh quote →</Link>}
+                    {best && isComparable(best) && <Link href={`/trade/${best.token.tokenContractAddress}`} onClick={() => setOpen(false)} className="inline-flex min-h-10 items-center rounded-lg bg-[#d9a80a] px-4 text-xs font-black text-[#111] transition hover:bg-[#f2c94c]">Request fresh quote →</Link>}
                   </div>
                   <p className="text-[10px] leading-4 text-slate-600">Informational only. WOLV does not place trades from this analysis. Your wallet remains in control of every approval and transaction.</p>
                 </div>

@@ -57,7 +57,7 @@ export default async function OpportunityMonitor({
               Reference price vs executable route · {QUOTE_AMOUNT_USDT} USDT quote size · BSC spot
             </p>
           </div>
-          <Link href="/markets" className="shrink-0 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-[#f0b90b]/40 hover:text-[#f0b90b]">
+          <Link href="/markets" className="shrink-0 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-[#d9a80a]/40 hover:text-[#d9a80a]">
             Browse markets
           </Link>
         </div>
@@ -109,7 +109,7 @@ export default async function OpportunityMonitor({
                     <div className="break-words font-bold">
                       {token.underlyingTicker} <span className="font-normal capitalize text-[#64748b]">{token.platformId}</span>
                     </div>
-                    <div className="break-words font-black text-[#f0b90b]">
+                    <div className="break-words font-black text-[#d9a80a]">
                       {positiveNumberValue(token.tokenToShareRatio)?.toFixed(3)}× shares/token
                     </div>
                   </Link>

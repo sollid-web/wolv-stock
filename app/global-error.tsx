@@ -16,7 +16,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             <p className="mt-3 text-sm leading-relaxed text-[#94a3b8]">
               The application shell failed to load. Retry the page; wallet actions are not available while this screen is shown.
             </p>
-            <button onClick={reset} className="mt-6 rounded-xl bg-[#f0b90b] px-5 py-3 text-sm font-bold text-black hover:bg-[#f0b90b]/90">
+            <button onClick={reset} className="mt-6 rounded-xl bg-[#d9a80a] px-5 py-3 text-sm font-bold text-black hover:bg-[#d9a80a]/90">
               Reload application
             </button>
           </section>

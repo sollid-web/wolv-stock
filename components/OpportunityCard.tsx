@@ -34,7 +34,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
         </div>
         <div className="min-w-[8rem] text-left sm:text-right">
           <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Executable spread · per share</div>
-          <div className={`mt-1 text-lg font-black ${row.crossVenueSpread == null ? "text-slate-400" : "text-[#f0b90b]"}`}>
+          <div className={`mt-1 text-lg font-black ${row.crossVenueSpread == null ? "text-slate-400" : "text-[#d9a80a]"}`}>
             {row.crossVenueSpread == null ? "Unavailable" : signedPercent(row.crossVenueSpread)}
           </div>
         </div>
@@ -64,7 +64,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
                 <span
                   key={venue.token.tokenContractAddress}
                   title={`${venue.token.platformId}: ${price(amount)} per share`}
-                  className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#f0b90b] bg-[#07070f] shadow-[0_0_0_2px_rgba(7,7,15,.55)]"
+                  className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#d9a80a] bg-[#07070f] shadow-[0_0_0_2px_rgba(7,7,15,.55)]"
                   style={{ left: `${position}%`, zIndex: index + 1 }}
                 />
               );
@@ -82,7 +82,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
             <Link
               key={venue.token.tokenContractAddress}
               href={`/stock/${venue.token.tokenContractAddress}`}
-              className={`block min-w-0 rounded-xl border p-3 transition-colors hover:border-[#f0b90b]/40 ${
+              className={`block min-w-0 rounded-xl border p-3 transition-colors hover:border-[#d9a80a]/40 ${
                 venue.stale || venue.unreliable || !venue.quote.ok || venue.referenceGap == null
                   ? "border-yellow-900/50 bg-yellow-900/[0.04]"
                   : "border-white/[0.07] bg-[#0a0a14]"

@@ -24,7 +24,7 @@ export default function ParticleCanvas() {
             if (p.y < 0 || p.y > H) p.vy *= -1;
             ctx!.beginPath();
             ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-            ctx!.fillStyle = "rgba(240,185,11,0.7)";
+            ctx!.fillStyle = "rgba(217,168,10,0.7)";
             ctx!.fill();
           }
           for (let i = 0; i < pts.length; i++)
@@ -35,7 +35,7 @@ export default function ParticleCanvas() {
                 ctx!.beginPath();
                 ctx!.moveTo(pts[i].x, pts[i].y);
                 ctx!.lineTo(pts[j].x, pts[j].y);
-                ctx!.strokeStyle = `rgba(240,185,11,${0.12 * (1 - d / 120)})`;
+                ctx!.strokeStyle = `rgba(217,168,10,${0.12 * (1 - d / 120)})`;
                 ctx!.lineWidth = 0.5;
                 ctx!.stroke();
               }

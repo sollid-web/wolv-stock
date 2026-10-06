@@ -4,10 +4,10 @@ import Link from "next/link";
 import { PRIMARY_TABS, MORE_TABS } from "@/lib/rwaData";
 
 const chip = (active: boolean) =>
-  `whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border transition-colors focus-visible:outline-2 focus-visible:outline-[#f0b90b] ${
+  `whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold border transition-colors focus-visible:outline-2 focus-visible:outline-[#d9a80a] ${
     active
-      ? "bg-[#f0b90b] text-black border-[#f0b90b]"
-      : "bg-[#0e0e1c] text-[#94a3b8] border-[#1b1b35] hover:border-[#f0b90b]/40"
+      ? "bg-[#d9a80a] text-black border-[#d9a80a]"
+      : "bg-[#0e0e1c] text-[#94a3b8] border-[#1b1b35] hover:border-[#d9a80a]/40"
   }`;
 
 // Category is chosen via ?tab=<tabId>; the server page re-fetches the token list from Binance with that tabId.
@@ -62,7 +62,7 @@ export default function CategoryTabs({ active, basePath = "/" }: { active: numbe
                   role="menuitem"
                   onClick={() => setOpen(false)}
                   className={`block px-3 py-2 rounded-lg text-xs font-bold ${
-                    active === t.id ? "bg-[#f0b90b] text-black" : "text-[#94a3b8] hover:bg-[#1b1b35]"
+                    active === t.id ? "bg-[#d9a80a] text-black" : "text-[#94a3b8] hover:bg-[#1b1b35]"
                   }`}
                 >
                   {t.label}

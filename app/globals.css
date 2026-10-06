@@ -24,7 +24,7 @@ body {
   background:
     radial-gradient(circle at 8% -8%, rgba(0, 229, 255, 0.13), transparent 26rem),
     radial-gradient(circle at 94% 4%, rgba(105, 56, 255, 0.16), transparent 30rem),
-    radial-gradient(circle at 50% 80%, rgba(240, 185, 11, 0.045), transparent 34rem),
+    radial-gradient(circle at 50% 80%, rgba(217, 168, 10, 0.045), transparent 34rem),
     #050711;
   color: #f8fafc;
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
@@ -65,11 +65,11 @@ button, a {
   opacity: .32;
   background:
     radial-gradient(circle at 35% 32%, rgba(255, 208, 36, .24), transparent 4%),
-    radial-gradient(circle at 55% 50%, rgba(240, 185, 11, .12), transparent 45%),
-    repeating-radial-gradient(circle at 50% 50%, transparent 0 28px, rgba(240, 185, 11, .12) 29px 30px),
+    radial-gradient(circle at 55% 50%, rgba(217, 168, 10, .12), transparent 45%),
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 28px, rgba(217, 168, 10, .12) 29px 30px),
     radial-gradient(circle, rgba(7, 13, 25, .1), rgba(0, 0, 0, .75) 70%);
-  box-shadow: 0 0 80px rgba(240, 185, 11, .12), inset 0 0 55px rgba(240, 185, 11, .14);
-  border: 1px solid rgba(240, 185, 11, .12);
+  box-shadow: 0 0 80px rgba(217, 168, 10, .12), inset 0 0 55px rgba(217, 168, 10, .14);
+  border: 1px solid rgba(217, 168, 10, .12);
 }
 
 .wolv-glass {
@@ -96,7 +96,7 @@ button, a {
 }
 
 ::selection {
-  background: #f0b90b;
+  background: #d9a80a;
   color: #07070f;
 }
 
@@ -110,7 +110,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 2px solid #f0b90b;
+  outline: 2px solid #d9a80a;
   outline-offset: 3px;
 }
 
@@ -121,7 +121,7 @@ summary:focus-visible {
 }
 
 .wolv-sheen {
-  background: linear-gradient(115deg, rgba(240,185,11,.14), rgba(240,185,11,.02) 36%, rgba(255,255,255,.04) 58%, rgba(34,211,238,.08));
+  background: linear-gradient(115deg, rgba(217,168,10,.14), rgba(217,168,10,.02) 36%, rgba(255,255,255,.04) 58%, rgba(34,211,238,.08));
 }
 
 .wolv-glass {
@@ -155,7 +155,7 @@ summary:focus-visible {
 .market-ticker-track:hover { animation-play-state: paused; }
 
 @keyframes wolv-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-@keyframes wolv-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(240,185,11,.28); } 50% { box-shadow: 0 0 0 7px rgba(240,185,11,0); } }
+@keyframes wolv-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(217,168,10,.28); } 50% { box-shadow: 0 0 0 7px rgba(217,168,10,0); } }
 @keyframes wolv-scan { 0% { transform: translateX(-110%); opacity: 0; } 25%, 75% { opacity: .8; } 100% { transform: translateX(260%); opacity: 0; } }
 @keyframes wolv-draw { to { stroke-dashoffset: 0; } }
 @keyframes wolv-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -179,11 +179,11 @@ summary:focus-visible {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .wolv-glass-hover:hover {
-  border-color: rgba(240, 185, 11, 0.28);
+  border-color: rgba(217, 168, 10, 0.28);
   box-shadow:
     0 0 0 1px rgba(255,255,255,0.06) inset,
     0 16px 48px rgba(0,0,0,0.55),
-    0 0 80px rgba(240,185,11,0.07) inset;
+    0 0 80px rgba(217,168,10,0.07) inset;
 }
 
 .wolv-hero-glow {
