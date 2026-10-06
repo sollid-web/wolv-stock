@@ -105,6 +105,8 @@ summary:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
 
 .wolv-glass-hover {
   transition: border-color 0.2s, box-shadow 0.2s;
