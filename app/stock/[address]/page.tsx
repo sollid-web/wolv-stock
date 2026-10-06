@@ -116,8 +116,8 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   ];
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+      <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
   {token.tokenLogoUrl && <Image src={token.tokenLogoUrl} width={32} height={32} className="rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
         <div className="min-w-0">

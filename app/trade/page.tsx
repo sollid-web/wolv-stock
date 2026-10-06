@@ -41,8 +41,8 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
   }));
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-10">
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
+      <nav className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
           <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Spot Lens</span>

@@ -38,8 +38,8 @@ export default function WalletPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <nav className="border-b border-[#1b1b35] bg-[#0e0e1c] px-4 sm:px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+      <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#f0b90b] flex items-center justify-center font-black text-black text-sm">W</div>
@@ -79,7 +79,7 @@ export default function WalletPage() {
               onSwitch={handleNetworkSwitch}
             />
 
-            <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">
+            <div className="wolv-glass rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-xs text-[#64748b] font-medium">Wallet Address</div>
                 <button
@@ -94,7 +94,7 @@ export default function WalletPage() {
               </div>
             </div>
 
-            <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">
+            <div className="wolv-glass rounded-xl p-6">
               <div className="text-xs text-[#64748b] font-medium mb-2">Network Status</div>
               <div className="flex items-center space-x-3">
                 <div className={`w-3 h-3 rounded-full ${isCorrectNetwork ? "bg-[#f0b90b]" : "bg-[#ef4444]"}`}></div>
@@ -109,7 +109,7 @@ export default function WalletPage() {
             <div className="mt-8">
               <button
                 onClick={disconnect}
-                className="w-full max-w-xs bg-[#dc2626] hover:bg-[#dc2626]/90 text-white font-bold py-3 px-6 rounded-xl"
+                className="wolv-glass-control w-full max-w-xs rounded-xl bg-red-500/80 px-6 py-3 font-bold text-white hover:bg-red-500"
               >
                 Disconnect Wallet
               </button>
