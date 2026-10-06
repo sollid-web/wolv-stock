@@ -47,10 +47,30 @@ body {
   background: linear-gradient(115deg, rgba(240,185,11,.14), rgba(240,185,11,.02) 36%, rgba(255,255,255,.04) 58%, rgba(34,211,238,.08));
 }
 
+.wolv-glass {
+  background: linear-gradient(135deg, rgba(20, 21, 26, .58), rgba(9, 13, 19, .38));
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+  border: 1px solid rgba(255,255,255,.075);
+  box-shadow: 0 12px 40px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.wolv-glass-chart {
+  background: linear-gradient(180deg, rgba(18, 23, 34, .72), rgba(7, 10, 14, .55));
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,.37), inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.wolv-status-open { box-shadow: 0 0 22px rgba(52,211,153,.14); }
+.wolv-status-warn { box-shadow: 0 0 22px rgba(251,191,36,.14); }
+.wolv-status-muted { box-shadow: 0 0 22px rgba(148,163,184,.1); }
+
 .wolv-float { animation: wolv-float 6s ease-in-out infinite; }
 .wolv-pulse { animation: wolv-pulse 2.4s ease-in-out infinite; }
 .wolv-scan { animation: wolv-scan 3.2s ease-in-out infinite; }
-.wolv-chart-line { stroke-dasharray: 900; stroke-dashoffset: 900; animation: wolv-draw 1.7s ease-out forwards; }
+.wolv-chart-line { stroke-dasharray: 900; stroke-dashoffset: 900; filter: drop-shadow(0 0 5px currentColor); animation: wolv-draw 1.7s ease-out forwards; }
 .wolv-chart-area { animation: wolv-fade-in 1.2s ease-out forwards; }
 .home-reveal { animation: home-reveal .55s cubic-bezier(.2,.7,.2,1) both; }
 .home-reveal-delay { animation-delay: .12s; }

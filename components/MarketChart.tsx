@@ -37,7 +37,7 @@ export default function MarketChart({ points, ticker, status }: { points: ChartP
   const positive = change >= 0;
 
   return (
-    <section className="wolv-sheen min-w-0 overflow-hidden rounded-2xl border border-white/[0.09] p-4 shadow-[0_18px_70px_rgba(0,0,0,.24)] sm:p-5" aria-label={`${ticker} market chart`}>
+    <section className="wolv-glass min-w-0 overflow-hidden rounded-2xl p-4 shadow-[0_18px_70px_rgba(0,0,0,.24)] sm:p-5" aria-label={`${ticker} market chart`}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -50,7 +50,7 @@ export default function MarketChart({ points, ticker, status }: { points: ChartP
           <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">period change</div>
         </div>
       </div>
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-[#080914]/70 p-2">
+      <div className="wolv-glass-chart relative overflow-hidden rounded-xl p-2">
         <div className="wolv-scan pointer-events-none absolute inset-y-0 -left-1/4 w-1/4 bg-gradient-to-r from-transparent via-[#f0b90b]/10 to-transparent" />
         <svg viewBox={`0 0 ${width} ${height}`} className="h-48 w-full sm:h-64" role="img" aria-label={`${ticker} price trend from ${min.toFixed(2)} to ${max.toFixed(2)}`}>
           {[0, 1, 2, 3].map((step) => {
@@ -58,12 +58,12 @@ export default function MarketChart({ points, ticker, status }: { points: ChartP
             return <line key={step} x1={pad} x2={width - pad} y1={y} y2={y} stroke="rgba(255,255,255,.07)" strokeDasharray="4 8" />;
           })}
           <polygon points={area} fill="url(#wolvArea)" className="wolv-chart-area" />
-          <polyline points={line} fill="none" stroke={positive ? "#34d399" : "#fb7185"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="wolv-chart-line" />
+          <polyline points={line} fill="none" stroke={positive ? "#00ffb2" : "#fb7185"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="wolv-chart-line" />
           <circle cx={plotted[plotted.length - 1].x} cy={plotted[plotted.length - 1].y} r="5" fill={positive ? "#34d399" : "#fb7185"} className="wolv-pulse" />
           <defs>
             <linearGradient id="wolvArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={positive ? "#34d399" : "#fb7185"} stopOpacity=".28" />
-              <stop offset="100%" stopColor={positive ? "#34d399" : "#fb7185"} stopOpacity="0" />
+              <stop offset="0%" stopColor={positive ? "#00ffb2" : "#fb7185"} stopOpacity=".3" />
+              <stop offset="100%" stopColor={positive ? "#00ffb2" : "#fb7185"} stopOpacity="0" />
             </linearGradient>
           </defs>
         </svg>
