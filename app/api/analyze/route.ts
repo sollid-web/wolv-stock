@@ -107,11 +107,16 @@ function fallbackAnalysis(input: AnalysisInput) {
 }
 
 function modelConfig() {
-  const groqKey = process.env.GROQ_API_KEY;
-  const apiKey = process.env.WOLV_AI_API_KEY ?? groqKey ?? process.env.OPENAI_API_KEY;
-  const baseUrl = (process.env.WOLV_AI_BASE_URL ?? (groqKey ? "https://api.groq.com/openai/v1" : process.env.OPENAI_API_BASE ?? "https://api.openai.com/v1")).replace(/\/$/, "");
-  const model = process.env.WOLV_AI_MODEL ?? (groqKey ? "openai/gpt-oss-120b" : "gpt-5-mini");
-  return apiKey ? { apiKey, baseUrl, model } : null;
+  const configuredKey = process.env.WOLV_AI_API_KEY ?? process.env.GROQ_API_KEY ?? process.env.OPENAI_API_KEY;
+  if (!configuredKey) return null;
+  const configuredBase = process.env.WOLV_AI_BASE_URL ?? process.env.OPENAI_API_BASE;
+  const configuredModel = process.env.WOLV_AI_MODEL;
+  const looksLikeGroq = configuredKey.startsWith("gsk_") || configuredBase?.includes("api.groq.com") === true || configuredModel?.startsWith("openai/gpt-oss") === true;
+  const baseUrl = (looksLikeGroq
+    ? (configuredBase && !configuredBase.includes("api.openai.com") ? configuredBase : "https://api.groq.com/openai/v1")
+    : configuredBase ?? "https://api.openai.com/v1").replace(/\/$/, "");
+  const model = configuredModel ?? (looksLikeGroq ? "openai/gpt-oss-120b" : "gpt-5-mini");
+  return { apiKey: configuredKey, baseUrl, model, provider: looksLikeGroq ? "groq" : "openai" };
 }
 
 function analysisMessages(input: AnalysisInput) {
@@ -148,7 +153,7 @@ function normalizeModelResult(parsed: unknown) {
   } as const;
 }
 
-async function requestModel(config: { apiKey: string; baseUrl: string; model: string }, input: AnalysisInput, responseFormat?: { type: "json_object" }) {
+async function requestModel(config: { apiKey: string; baseUrl: string; model: string; provider: string }, input: AnalysisInput, responseFormat?: { type: "json_object" }) {
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
@@ -204,6 +209,7 @@ export async function POST(request: Request) {
         configured: Boolean(config),
         baseUrl: config?.baseUrl,
         model: config?.model,
+        provider: config?.provider,
       });
       return NextResponse.json({ ...fallback, source: "WOLV rules · AI unavailable" });
     }
