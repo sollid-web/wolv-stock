@@ -77,21 +77,30 @@ export function buildRulesAnalysis(input: MarketAnalysisInput) {
   let verdict = "Wait for a clearer comparison";
   let tone: "positive" | "caution" | "neutral" = "neutral";
 
+  const statusList = input.statuses.join(" vs ");
+  const venueNames = input.venues.map((v) => v.platform).join(" and ");
+
   if (input.statusMismatch) {
-    reasons.push("The supported venues report different market sessions, so the spread may reflect timing rather than a tradable difference.");
+    const openVenues = input.venues.filter((v) => v.status === "open" || v.status === "regular").map((v) => v.platform);
+    const closedVenues = input.venues.filter((v) => v.status !== "open" && v.status !== "regular").map((v) => v.platform);
+    reasons.push(`${venueNames} report different market sessions (${statusList}). ${openVenues.length ? openVenues.join(", ") + " is trading" : "No venue is in regular session"}${closedVenues.length ? " while " + closedVenues.join(", ") + " is in " + (closedVenues.length === 1 ? input.venues.find(v => closedVenues.includes(v.platform))?.status ?? "a different session" : "off-hours") : ""}.`);
+    reasons.push("Price gaps between sessions reflect different trading states, not an executable arbitrage. Wait for both venues to align before comparing spreads.");
     verdict = "Session mismatch — check again when venues align";
     tone = "caution";
   } else if (outliers.length > 0) {
-    reasons.push(`${outliers.length} quote${outliers.length === 1 ? " is" : "s are"} outside WOLV's ±${MAX_RELIABLE_GAP_PERCENT}% reliability cap and excluded from the comparison.`);
+    reasons.push(`${outliers.length} quote${outliers.length === 1 ? " is" : "s are"} outside WOLV's ±${MAX_RELIABLE_GAP_PERCENT}% reliability cap and excluded. This usually means thin liquidity or a stale reference price on that venue.`);
     verdict = "Caution — an outlier is excluded";
     tone = "caution";
   } else if (fresh.length >= 2 && input.spread != null) {
-    reasons.push(`${fresh.length} fresh venue quotes can be compared after token/share normalization.`);
-    reasons.push(`The displayed cross-venue spread is ${input.spread >= 0 ? "+" : ""}${input.spread.toFixed(3)}% before fees, gas, slippage, and execution changes.`);
-    verdict = input.spread < 1 ? "Small difference — verify the latest quote" : "Meaningful difference — verify execution costs";
-    tone = input.spread < 1 ? "neutral" : "positive";
+    const spreadAbs = Math.abs(input.spread);
+    const spreadDir = input.spread >= 0 ? "above" : "below";
+    reasons.push(`${fresh.length} fresh venue quotes are comparable after per-share normalization. ${input.ticker} is quoted ${spreadAbs.toFixed(3)}% ${spreadDir} reference price on the more expensive venue.`);
+    reasons.push(`This ${spreadAbs.toFixed(3)}% spread is pre-fees. BSC gas, DEX slippage, and the quote-size effect (${100} USDT) all reduce the net difference. Request a live quote on the trade screen to see the exact execution price.`);
+    verdict = spreadAbs < 0.5 ? "Tight spread — verify execution costs" : spreadAbs < 2 ? "Visible spread — check execution costs before acting" : "Wide spread — review carefully";
+    tone = spreadAbs < 0.5 ? "neutral" : "positive";
   } else {
-    reasons.push("There are not enough fresh, reference-backed quotes to call this a reliable opportunity.");
+    reasons.push("There are not enough fresh, reference-backed quotes to produce a reliable comparison right now.");
+    reasons.push("This can happen during low-liquidity periods or when a venue's reference price is not updating. Try again in a few minutes.");
     tone = "caution";
   }
 
