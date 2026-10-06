@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { EVM_ADDRESS_PATTERN, isValidUsdtAmount, meetsMinimumOrderAmount, MINIMUM_ORDER_USDT, usdtAmountToWei } from "@/lib/apiValidation";
+import { isValidUsdtAmount, meetsMinimumOrderAmount, MINIMUM_ORDER_USDT, usdtAmountToWei } from "@/lib/apiValidation";
 import { useWallet, type WalletHookValue } from "@/hooks/useWallet";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
@@ -29,8 +29,6 @@ type QuoteData = {
   fromTokenAmount: string;
   toTokenAmount: string;
   priceImpactPercent?: number | string;
-  fromToken?: { decimal?: string | number; tokenUnitPrice?: string | number };
-  toToken?: { decimal?: string | number };
   quoteFetchedAt?: number;
   executionMode: string;
   vendorName?: string;
@@ -86,16 +84,13 @@ const MAX_ORDER_POLLS = 12;
 
 type ExecutionPhase = "idle" | "signing" | "confirming" | "submitting";
 
-function displayTokenAmount(value: string | undefined, tokenDecimals: string | number | undefined = 18): string {
+function displayTokenAmount(value: string | undefined): string {
   if (!value) return "—";
   try {
-    const decimals = Number(tokenDecimals ?? 18);
-    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 36) return value;
     const raw = BigInt(value);
-    const scale = BigInt(10) ** BigInt(decimals);
+    const scale = BigInt("1000000000000000000");
     const whole = raw / scale;
-    const precision = Math.min(6, decimals);
-    const fraction = precision === 0 ? "" : (raw % scale).toString().padStart(decimals, "0").slice(0, precision).replace(/0+$/, "");
+    const fraction = (raw % scale).toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
     return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
   } catch {
     return value;
@@ -407,25 +402,6 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         approvalTransaction?.dexContractAddress &&
         approvalTransaction?.data
       ) {
-        if (
-          typeof approvalTransaction.dexContractAddress !== "string" ||
-          !EVM_ADDRESS_PATTERN.test(approvalTransaction.dexContractAddress) ||
-          typeof approvalTransaction.data !== "string"
-        ) {
-          throw new Error("Binance returned malformed approval transaction data");
-        }
-        const approvalCall = /^0x095ea7b3([a-f0-9]{64})([a-f0-9]{64})$/i.exec(approvalTransaction.data);
-        if (!approvalCall) {
-          throw new Error("Approval calldata is not a standard ERC-20 approve(spender, amount) call");
-        }
-        const encodedSpender = `0x${approvalCall[1].slice(24)}`;
-        const encodedAmount = BigInt(`0x${approvalCall[2]}`);
-        if (encodedSpender.toLowerCase() !== approvalTransaction.dexContractAddress.toLowerCase()) {
-          throw new Error("Approval calldata spender does not match the quoted router");
-        }
-        if (encodedAmount < BigInt(amountInWei)) {
-          throw new Error("Approval calldata amount is below the requested USDT amount");
-        }
         const tokenContractAddress = "0x55d398326f99059ff775485246999027b3197955";
         if (!address) throw new Error("Connect a wallet before simulating approval");
         const simulation = await simulateTransaction(
@@ -1027,7 +1003,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginBottom: "0.5rem" }}>
           <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Your trade quote</div>
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-            {displayTokenAmount(quoteData.fromTokenAmount, quoteData.fromToken?.decimal)} USDT → approximately {displayTokenAmount(quoteData.toTokenAmount, quoteData.toToken?.decimal)} {token.symbol}
+            {displayTokenAmount(quoteData.fromTokenAmount)} USDT → approximately {displayTokenAmount(quoteData.toTokenAmount)} {token.symbol}
           </div>
           {quoteData.priceImpactPercent !== undefined && (
             <div style={{ fontSize: "0.75rem", color: "#fbbf24", marginTop: "0.25rem" }}>

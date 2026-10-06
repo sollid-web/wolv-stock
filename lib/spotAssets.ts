@@ -13,7 +13,6 @@ export type RwaAssetRecord = SpotAssetIdentity & {
   symbol?: string;
   name?: string;
   tokenLogoUrl?: string;
-  decimals?: RwaScalar;
   tokenToShareRatio?: RwaScalar;
   tokenPrice?: RwaScalar;
   referencePrice?: RwaScalar;
@@ -61,7 +60,6 @@ export function parseRwaAssetRecords(response: unknown): RwaAssetRecord[] {
       underlyingTicker: value.underlyingTicker,
       platformId: value.platformId,
       tokenLogoUrl: typeof value.tokenLogoUrl === "string" ? value.tokenLogoUrl : undefined,
-      decimals: scalar(value.decimals),
       underlyingName: optionalString(value.underlyingName),
       tokenName: optionalString(value.tokenName),
       name: optionalString(value.name),
