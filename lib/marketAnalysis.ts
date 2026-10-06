@@ -35,25 +35,29 @@ export function parseAnalysisRequest(value: unknown): AnalysisRequest | null {
   return { ticker: normalized };
 }
 
-export function normalizeModelSummary(value: unknown, authoritativeText: string): string {
+export function normalizeModelSummary(value: unknown, authoritativeText: string, input?: MarketAnalysisInput): string {
   if (!isRecord(value) || typeof value.summary !== "string") {
     throw new Error("AI analysis returned an invalid summary");
   }
   const summary = value.summary.trim().slice(0, 500);
   if (!summary) throw new Error("AI analysis returned an empty summary");
-  if (/\b(buy|sell|short|long|purchase|recommend(?:ation)?|invest|profit|guarantee|risk[- ]free|can't lose|cannot lose|will rise|will fall|will increase|will decrease)\b/i.test(summary)) {
+  if (/\b(buy|sell|short|long|purchase|recommend(?:ation)?|invest|profit|guarantee|risk[- ]free|can\'t lose|cannot lose|will rise|will fall|will increase|will decrease)\b/i.test(summary)) {
     throw new Error("AI analysis returned prohibited trading language");
   }
+  // Allow numbers that appear in the input venue data (dollar prices, gaps)
+  const inputNumbers = input ? input.venues.flatMap((v) => [
+    v.referencePerShare, v.executablePerShare, v.referenceGap, v.quoteAgeSeconds,
+    v.referencePerShare != null && v.executablePerShare != null ? v.executablePerShare - v.referencePerShare : null,
+  ]).filter((n): n is number => n != null).map(String) : [];
   const numericKey = (token: string) => {
     const percentage = token.endsWith("%");
     const value = Number(token.replace(/[%,+]/g, ""));
     return Number.isFinite(value) ? `${value}${percentage ? "%" : ""}` : null;
   };
-  const allowedNumbers = new Set(
-    (authoritativeText.match(/[+-]?\d[\d,]*(?:\.\d+)?%?/g) ?? [])
-      .map(numericKey)
-      .filter((value): value is string => value !== null)
-  );
+  const allowedNumbers = new Set([
+    ...(authoritativeText.match(/[+-]?\d[\d,]*(?:\.\d+)?%?/g) ?? []).map(numericKey).filter((v): v is string => v !== null),
+    ...inputNumbers.map(numericKey).filter((v): v is string => v !== null),
+  ]);
   const introducedNumber = (summary.match(/[+-]?\d[\d,]*(?:\.\d+)?%?/g) ?? [])
     .some((token) => {
       const key = numericKey(token);

@@ -41,22 +41,41 @@ function modelConfig() {
   return { apiKey: configuredKey, baseUrl, model, provider: looksLikeGroq ? "groq" : "openai" };
 }
 
-function analysisMessages(deterministicRead: ReturnType<typeof buildRulesAnalysis>) {
+function analysisMessages(deterministicRead: ReturnType<typeof buildRulesAnalysis>, input: MarketAnalysisInput) {
   return [
     {
       role: "system",
-      content: `You are WOLV, a sharp on-chain market analyst for tokenized stocks on BNB Chain. Your job is to turn a structured market-data assessment into a 2-3 sentence plain-English explanation that a trader can act on.
+      content: `You are WOLV, a sharp on-chain market analyst for tokenized stocks on BNB Chain. Turn the structured market data into a 2-3 sentence plain-English explanation a trader can act on immediately.
 
 Rules:
-- Explain WHAT the data shows and WHY it matters for this specific asset right now
-- If there is a session mismatch, explain which venue is open vs closed and what that means for the spread
-- If quotes are fresh and comparable, explain what the cross-venue spread means in practical terms
-- If data is stale or missing, explain the risk of acting on incomplete data
-- Use the asset ticker naturally in the explanation
-- Never recommend buying or selling. Never guarantee profit. Never say "this is not financial advice" — that is assumed
-- Return ONLY a valid JSON object with one string field named summary. No markdown, no preamble, no trailing text.`,
+- Lead with the most important fact: the dollar gap if venues are aligned, or the session state if mismatched
+- For session mismatches: name which venue is open and which is closed, and explain the spread is a timing artifact
+- For aligned venues with a spread: state the dollar gap per share (executablePerShare minus referencePerShare), the percent spread, and whether execution costs are likely to absorb it
+- For tight spreads under 0.3%: say the spread is thin and execution costs likely absorb it
+- For spreads over 1%: say the gap is meaningful and worth requesting a live quote to verify
+- For stale or missing data: say what is missing and why acting on it is risky
+- Use the ticker name naturally, never say "this is not financial advice"
+- Return ONLY a valid JSON object with two string fields: summary (2-3 sentences) and nextStep (one specific action sentence). No markdown, no preamble.`,
     },
-    { role: "user", content: JSON.stringify({ deterministicAssessment: deterministicRead }) },
+    { role: "user", content: JSON.stringify({
+      deterministicAssessment: deterministicRead,
+      venues: input.venues.map((v) => ({
+        platform: v.platform,
+        status: v.status,
+        referencePerShare: v.referencePerShare,
+        executablePerShare: v.executablePerShare,
+        referenceGap: v.referenceGap,
+        quoteAgeSeconds: v.quoteAgeSeconds,
+        stale: v.stale,
+        quoteAvailable: v.quoteAvailable,
+        dollarGap: (v.referencePerShare != null && v.executablePerShare != null)
+          ? Number((v.executablePerShare - v.referencePerShare).toFixed(2))
+          : null,
+      })),
+      ticker: input.ticker,
+      spread: input.spread,
+      statusMismatch: input.statusMismatch,
+    }) },
   ];
 }
 
@@ -70,6 +89,7 @@ function parseModelContent(payload: unknown): string | null {
 
 async function requestModelSummary(
   config: { apiKey: string; baseUrl: string; model: string; provider: string },
+  input: MarketAnalysisInput,
   deterministicRead: ReturnType<typeof buildRulesAnalysis>,
   responseFormat?: { type: "json_object" }
 ): Promise<string> {
@@ -78,7 +98,7 @@ async function requestModelSummary(
     headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: config.model,
-      messages: analysisMessages(deterministicRead),
+      messages: analysisMessages(deterministicRead, input),
       ...(responseFormat ? { response_format: responseFormat } : {}),
       temperature: 0.2,
       max_tokens: 400,
@@ -95,7 +115,7 @@ async function requestModelSummary(
   }
   const content = parseModelContent(payload);
   if (!content) throw new Error("AI provider returned no message content");
-  return normalizeModelSummary(JSON.parse(content), JSON.stringify(deterministicRead));
+  return normalizeModelSummary(JSON.parse(content), JSON.stringify(deterministicRead), input);
 }
 
 async function modelAnalysis(deterministicRead: ReturnType<typeof buildRulesAnalysis>) {
@@ -104,14 +124,14 @@ async function modelAnalysis(deterministicRead: ReturnType<typeof buildRulesAnal
   try {
     // JSON mode is supported by Groq's OpenAI-compatible endpoint and avoids
     // the stricter json_schema compatibility gap on gpt-oss models.
-    return await requestModelSummary(config, deterministicRead, { type: "json_object" });
+    return await requestModelSummary(config, input, deterministicRead, { type: "json_object" });
   } catch (firstError) {
     const message = firstError instanceof Error ? firstError.message : "";
     if (!/AI provider HTTP 400:/i.test(message) || !/response[_ ]format|json[_ ]object/i.test(message)) {
       throw firstError;
     }
     console.warn("WOLV AI JSON mode failed; retrying without response_format:", firstError);
-    return requestModelSummary(config, deterministicRead);
+    return requestModelSummary(config, input, deterministicRead);
   }
 }
 
