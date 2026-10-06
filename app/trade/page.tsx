@@ -5,7 +5,6 @@ import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
 import GlobalNav from "@/components/GlobalNav";
-import WolvTerminal from "@/components/WolvTerminal";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { parseRwaAssetRecords, parseRwaPlatformRecords, type RwaAssetRecord } from "@/lib/spotAssets";
 
@@ -78,11 +77,6 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
       </div>
 
       <CategoryTabs active={tabId} basePath="/trade" />
-
-      <section aria-labelledby="glass-terminal-title" className="px-4 pt-4 sm:px-6">
-        <h2 id="glass-terminal-title" className="sr-only">Glassmorphic WOLV market terminal</h2>
-        <WolvTerminal />
-      </section>
 
       {platformResponse.err && (
         <div role="status" className="mx-4 sm:mx-6 mb-3 text-xs text-yellow-500 bg-yellow-900/10 border border-yellow-800/40 rounded-xl p-3">
