@@ -152,7 +152,7 @@ export async function getRWAPrice(contractAddresses: string[], chainId = "56") {
   return get("/api/v1/dex/market/rwa/price", {
     binanceChainId: chainId,
     tokenContractAddresses: contractAddresses.join(","),
-  });
+  }, true);
 }
 
 // RWA — search by keyword
@@ -199,7 +199,7 @@ export async function getCandles(
     tokenContractAddress: contractAddress,
     bar,
     limit,
-  });
+  }, true);
 }
 
 // Aggregated quote (read-only): price to buy `toToken` with USDT on BSC
