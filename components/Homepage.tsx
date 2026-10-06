@@ -7,6 +7,54 @@ import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import MarketAnalysis from "@/components/MarketAnalysis";
 import AIInsightStrip from "@/components/AIInsightStrip";
 
+
+function ParticleCanvas() {
+  return (
+    <canvas
+      className="wolv-particle-canvas"
+      ref={(canvas) => {
+        if (!canvas || canvas.dataset.init) return;
+        canvas.dataset.init = "1";
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        const W = canvas.width = canvas.offsetWidth || 800;
+        const H = canvas.height = canvas.offsetHeight || 600;
+        const pts = Array.from({ length: 55 }, () => ({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35,
+          r: Math.random() * 1.5 + 0.4,
+        }));
+        function draw() {
+          ctx!.clearRect(0, 0, W, H);
+          for (const p of pts) {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0 || p.x > W) p.vx *= -1;
+            if (p.y < 0 || p.y > H) p.vy *= -1;
+            ctx!.beginPath();
+            ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx!.fillStyle = "rgba(240,185,11,0.7)";
+            ctx!.fill();
+          }
+          for (let i = 0; i < pts.length; i++)
+            for (let j = i + 1; j < pts.length; j++) {
+              const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+              const d = Math.sqrt(dx*dx + dy*dy);
+              if (d < 120) {
+                ctx!.beginPath();
+                ctx!.moveTo(pts[i].x, pts[i].y);
+                ctx!.lineTo(pts[j].x, pts[j].y);
+                ctx!.strokeStyle = "rgba(240,185,11," + (0.12 * (1 - d/120)) + ")";
+                ctx!.lineWidth = 0.5;
+                ctx!.stroke();
+              }
+            }
+          requestAnimationFrame(draw);
+        }
+        draw();
+      }}
+    />
+  );
+}
 type HomepageProps = {
   rows: OpportunityRow[];
   assetCount: number;
@@ -116,7 +164,7 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
   const marketStatus = featuredVenue ? marketLabel(featuredVenue.token) : "unavailable";
 
   return (
-    <section aria-label="Live opportunity preview" className="relative overflow-hidden rounded-2xl border border-[#f0b90b]/25 bg-[#0b1017]/95 p-4 shadow-[0_22px_70px_rgba(0,0,0,.45)] sm:p-5">
+    <section aria-label="Live opportunity preview" className="wolv-glass wolv-glass-hover relative overflow-hidden rounded-2xl p-4 shadow-[0_22px_70px_rgba(0,0,0,.45)] sm:p-5">
       <div className="pointer-events-none absolute inset-0 opacity-30">
         <div className="wolv-grid absolute inset-0" />
         <div className="absolute -right-24 -top-24 size-64 rounded-full bg-[#f0b90b]/10 blur-3xl" />
@@ -242,7 +290,7 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
   const signal = signalFor(row);
 
   return (
-    <article className="group min-w-0 rounded-xl border border-white/[0.09] bg-[#0b1017]/90 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#f0b90b]/30 hover:shadow-[0_16px_42px_rgba(0,0,0,.25)]">
+    <article className="wolv-glass wolv-glass-hover group min-w-0 rounded-xl p-4 transition duration-200 hover:-translate-y-0.5">
       <div className="flex min-w-0 items-center gap-3">
         <Logo venue={representative} ticker={row.ticker} size={38} />
         <div className="min-w-0 flex-1">
@@ -301,7 +349,7 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
   const unreliableCount = row.venues.filter((venue) => venue.unreliable).length;
 
   return (
-    <section id="intelligence" className="scroll-mt-24 overflow-hidden rounded-2xl border border-[#f0b90b]/15 bg-gradient-to-br from-[#111722] via-[#0b1017] to-[#090d13] p-5 sm:p-7">
+    <section id="intelligence" className="wolv-glass wolv-glass-hover scroll-mt-24 overflow-hidden rounded-2xl p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionHeading eyebrow="WOLV market intelligence" title="Context before execution" />
         <span className="rounded-full border border-sky-300/15 bg-sky-300/[0.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-sky-200">AI-assisted · rules-grounded</span>
@@ -356,6 +404,9 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
 
       <section className="relative mx-auto grid max-w-7xl gap-8 px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-14 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
         <div className="wolv-grid pointer-events-none absolute inset-0 opacity-40" />
+        <ParticleCanvas />
+        <div className="wolv-hero-glow wolv-orb-a" style={{width:"520px",height:"520px",top:"-160px",left:"-80px",background:"radial-gradient(circle,rgba(240,185,11,0.13),transparent 70%)"}} />
+        <div className="wolv-hero-glow wolv-orb-b" style={{width:"400px",height:"400px",top:"60px",right:"-100px",background:"radial-gradient(circle,rgba(51,65,120,0.18),transparent 70%)"}} />
         <div className="relative home-reveal">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#f0b90b]/20 bg-[#f0b90b]/[0.05] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.17em] text-[#f4c834]">
             <span className="wolv-pulse size-1.5 rounded-full bg-[#f0b90b]" />
