@@ -148,7 +148,7 @@ async function run() {
     { path: "/", expected: /TOKENIZED STOCKS|Find the price/ },
     { path: "/gap", expected: /Cross-venue price discovery|Listed vs Executable Price/ },
     { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
-    { path: "/trade", expected: /Select an Asset to Trade/ },
+    { path: "/trade", expected: /Terminal|Markets Directory/ },
     { path: "/wallet", expected: /Wallet Address|Connect your wallet|Checking wallet connection/ },
   ];
 
@@ -176,6 +176,27 @@ async function run() {
         stockPath = await evaluate(`Array.from(document.querySelectorAll('a[href^="/stock/"]')).map((link) => link.getAttribute("href")).find(Boolean) ?? null`);
       }
       console.log(`PASS ${width}px ${route.path} · ${layout.scrollWidth}/${layout.clientWidth}px`);
+
+      if (route.path === "/trade") {
+        for (const tab of [
+          { label: "Markets Directory", viewTitle: "Markets Directory" },
+          { label: "AI Live Lens", viewTitle: "AI Live Lens" },
+          { label: "Terminal", viewTitle: null },
+        ]) {
+          await evaluate(`(() => {
+            const target = Array.from(document.querySelectorAll('[role="tab"]')).find((button) => button.textContent.includes(${JSON.stringify(tab.label)}));
+            target?.click();
+          })()`);
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          const viewState = await evaluate(`(() => ({
+            selected: document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim() ?? "",
+            headings: Array.from(document.querySelectorAll('main h1')).map((heading) => heading.textContent.trim())
+          }))()`);
+          assert.equal(viewState.selected, tab.label, `/trade did not select ${tab.label} at ${width}px`);
+          if (tab.viewTitle) assert.deepEqual(viewState.headings, [tab.viewTitle], `/trade stacked another view while showing ${tab.label} at ${width}px`);
+          console.log(`PASS ${width}px /trade tab ${tab.label} · selected view only`);
+        }
+      }
     }
 
     if (stockPath) {
