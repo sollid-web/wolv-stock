@@ -8,7 +8,7 @@ WOLV currently lists Ondo and bStocks assets. It is spot-only, does not execute 
 
 | Route | Purpose |
 |---|---|
-| `/` | Data-led homepage with live quote comparison, freshness/session context, transparent rule-based intelligence, and entry points to opportunities and trading |
+| `/` | Data-led homepage with live quote comparison, freshness/session context, click-to-open WOLV AI market analysis, and entry points to opportunities and trading |
 | `/gap` | Full reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
 | `/markets` | Focused searchable BSC spot-eligible tokenized-stock directory |
 | `/stock/:address` | Asset details, issuer/reference information, real chart data when available, executable quote, and trade entry point |
@@ -25,6 +25,7 @@ The product uses live Binance Web3 API data. If an upstream feed is unavailable,
 - **Transaction API:** Binance-signed BSC preflight simulation before wallet prompts. A successful simulation is not an approval, broadcast, or receipt.
 - **Wallet execution:** approval and direct SWAP transactions are sent through the connected wallet's normal confirmation flow; receipt status is read from BSC. RFQ execution uses wallet typed-data signing and Binance order status polling.
 - **Wallet API:** `/api/wallet/portfolio` and `/wallet` provide a read-only BSC holdings/portfolio view. The page does not sign or execute transactions.
+- **WOLV market explanation:** Analysis is user-triggered rather than requested on every homepage visit. The browser submits only a ticker; `/api/analyze` resolves supported spot assets from Binance RWA data and obtains its own executable quotes before deriving status, freshness, normalization, reliability, and spread. Browser-supplied prices and signal flags are ignored. Deterministic rules authoritatively provide the headline, reasons, tone, and next step; an optional OpenAI-compatible model receives only that deterministic assessment and may paraphrase its summary. Model output cannot replace the numeric findings, and obvious buy/sell/guaranteed-profit language is rejected. The source badge distinguishes configured AI explanation, rules-only operation, and provider failure. The bounded request body, provider timeout, same-snapshot in-flight coalescing, and 60-second per-process explanation cache reduce accidental duplicate work. The cache is process-local, not a distributed rate limiter; a multi-instance deployment still needs a shared rate-limit/cache service for a global cost ceiling. The model is never given wallet addresses or portfolio holdings.
 
 Binance API credentials are server-only. Never expose `BINANCE_API_KEY` or `BINANCE_SECRET_KEY` through a `NEXT_PUBLIC_` variable or commit them. Quote binding, freshness, minimum-order, spot eligibility, router/spender checks, simulation, wallet confirmation, and transaction-status safeguards must remain intact.
 
@@ -40,6 +41,10 @@ Create `.env.local` with server-only Binance credentials. A WalletConnect projec
 BINANCE_API_KEY=your_web3_api_key
 BINANCE_SECRET_KEY=your_web3_api_secret
 NEXT_PUBLIC_WALLET_PROJECT_ID=your_walletconnect_project_id
+# Optional server-side AI explanation layer
+WOLV_AI_API_KEY=your_openai_compatible_key
+WOLV_AI_BASE_URL=https://api.openai.com/v1
+WOLV_AI_MODEL=gpt-5-mini
 ```
 
 Install and run:

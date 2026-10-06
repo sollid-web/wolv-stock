@@ -77,7 +77,6 @@ export default function WalletPage() {
               open={!isCorrectNetwork}
               isSwitching={isSwitchingNetwork}
               onSwitch={handleNetworkSwitch}
-              onClose={() => undefined}
             />
 
             <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-6">

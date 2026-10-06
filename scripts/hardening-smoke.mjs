@@ -20,11 +20,11 @@ for (const path of ["/", "/gap", "/trade", "/wallet"]) {
 }
 
 const home = await request("/");
-assert.match(home.text, /WOLV Spot Lens/);
+assert.match(home.text, /<title>WOLV — Tokenized Stocks, On-Chain Execution<\/title>/);
 assert.match(home.text, /TOKENIZED STOCKS/);
 assert.match(home.text, /ON-CHAIN EXECUTION/);
 assert.match(home.text, /Execution opportunities/);
-assert.match(home.text, /No AI model is currently connected/);
+assert.match(home.text, /WOLV market intelligence/);
 assert.doesNotMatch(home.text, /WOLV Stock Terminal/);
 
 await expectStatus("quote missing parameters", "/api/quote", 400);
@@ -38,6 +38,21 @@ await expectStatus("broadcast invalid payload", "/api/transaction/broadcast", 40
   method: "POST",
   headers: { "content-type": "application/json" },
   body: "{}",
+});
+await expectStatus("analysis invalid payload", "/api/analyze", 400, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: "{}",
+});
+await expectStatus("analysis invalid ticker", "/api/analyze", 400, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ ticker: "NVDA; buy now", spread: 900 }),
+});
+await expectStatus("analysis oversized payload", "/api/analyze", 413, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ ticker: "NVDA", extra: "x".repeat(4096) }),
 });
 
 console.log(`Hardening smoke checks passed for ${baseUrl}`);

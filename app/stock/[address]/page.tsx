@@ -27,9 +27,6 @@ const big = (value: unknown) => {
   return "$" + n.toLocaleString();
 };
 const label = (k: string) => k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
-const tone = (g: number | null) =>
-  g == null ? "text-[#64748b]" : Math.abs(g) < 0.25 ? "text-green-400" : Math.abs(g) < 1 ? "text-yellow-400" : "text-red-400";
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -91,10 +88,10 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     : null;
   const status = marketLabel(token);
   const statusTone = status === "open" || status === "trading"
-    ? "bg-green-900/30 text-green-400 border-green-800"
+    ? "wolv-status-open bg-emerald-400/[0.08] text-emerald-300 border-emerald-300/25"
     : status === "closed"
-      ? "bg-yellow-900/20 text-yellow-400 border-yellow-800"
-      : "bg-slate-900/30 text-slate-400 border-slate-700";
+      ? "wolv-status-warn bg-amber-400/[0.08] text-amber-300 border-amber-300/25"
+      : "wolv-status-muted bg-slate-400/[0.06] text-slate-300 border-slate-300/15";
   // Binance Market API candle arrays are [open, high, low, close, volume, timestamp, tradeCount].
   // Anchor validation uses the per-token listed price, not the per-share reference price.
   const chartPoints = normalizeCandles(candles, listed);
@@ -157,7 +154,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
         <MarketChart points={chartPoints} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
 
-        <div className="wolv-float bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+        <div className="wolv-glass wolv-float rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>
           <div className="mb-1 break-words text-3xl font-black text-white sm:text-4xl">
             {money(listed)}
@@ -167,7 +164,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           </div>
         </div>
 
-        <div className="rounded-xl p-5 border border-[#1b1b35] bg-[#0e0e1c]">
+        <div className="wolv-glass rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Executable vs reference (per share)</div>
           {q.ok && perShare != null ? (
             <>
@@ -182,7 +179,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Gap</div>
-                  <div className={`font-black text-lg ${tone(gap)}`}>
+                  <div className="font-black text-lg text-[#f0b90b]">
                     {gap == null ? "—" : (gap > 0 ? "+" : "") + gap.toFixed(3) + "%"}
                   </div>
                 </div>
@@ -202,7 +199,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           )}
         </div>
 
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+        <div className="wolv-glass rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Market Data</div>
           <div className="space-y-3">
             {stats.map(([l, v]) => (
@@ -214,7 +211,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           </div>
         </div>
 
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+        <div className="wolv-glass rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Company</div>
           {profRows.length === 0 ? (
             <div className="text-xs text-[#64748b]">No company details returned for this token.</div>
@@ -233,7 +230,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           )}
         </div>
 
-        <div className="bg-[#0e0e1c] border border-[#1b1b35] rounded-xl p-5">
+        <div className="wolv-glass rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Protections &amp; Reports</div>
           <p className="text-xs text-[#94a3b8] leading-relaxed mb-3">
             Investor protection and reporting information supplied through the RWA profile.

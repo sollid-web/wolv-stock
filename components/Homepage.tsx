@@ -4,12 +4,13 @@ import type { OpportunityRow, VenueResult } from "@/lib/opportunityMath";
 import { marketLabel, MAX_RELIABLE_GAP_PERCENT, signedPercent } from "@/lib/opportunityMath";
 import { quoteAgeSeconds } from "@/lib/quotes";
 import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
+import MarketAnalysis from "@/components/MarketAnalysis";
+import AIInsightStrip from "@/components/AIInsightStrip";
 
 type HomepageProps = {
   rows: OpportunityRow[];
   assetCount: number;
   feedUnavailable: boolean;
-  feedError: string | null;
 };
 
 function price(value: number | null): string {
@@ -91,6 +92,9 @@ function Navigation() {
           <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-full border border-sky-300/20 bg-sky-300/[0.05] px-2.5 py-2 text-[9px] font-bold text-sky-200 sm:flex">
+            <span className="size-1.5 rounded-full bg-sky-300" /> AI market read
+          </span>
           <span className="hidden items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-[10px] font-semibold text-slate-300 sm:flex">
             <span className="size-1.5 rounded-full bg-[#f0b90b]" />
             BNB Chain · Mainnet
@@ -269,9 +273,7 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
       </div>
       {row.statusMismatch && <p className="mt-3 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-2 text-[10px] leading-4 text-amber-200">Market sessions differ; spread may not represent a tradable opportunity.</p>}
       <div className="mt-4 flex gap-2">
-        <Link href={`/stock/${representative.token.tokenContractAddress}`} className="flex-1 rounded-lg border border-white/[0.1] px-3 py-2.5 text-center text-[10px] font-bold text-slate-200 transition hover:border-white/20 hover:bg-white/[0.04]">
-          Analyze
-        </Link>
+        <MarketAnalysis row={row} />
         {bestTrade ? (
           <Link href={`/trade/${bestTrade.token.tokenContractAddress}`} className="flex-1 rounded-lg bg-[#f0b90b] px-3 py-2.5 text-center text-[10px] font-black text-[#111] transition hover:bg-[#ffd44d]">
             Trade <span aria-hidden="true">→</span>
@@ -302,10 +304,10 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
     <section id="intelligence" className="scroll-mt-24 overflow-hidden rounded-2xl border border-[#f0b90b]/15 bg-gradient-to-br from-[#111722] via-[#0b1017] to-[#090d13] p-5 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionHeading eyebrow="WOLV market intelligence" title="Context before execution" />
-        <span className="rounded-full border border-sky-300/15 bg-sky-300/[0.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-sky-200">Transparent · rules-based</span>
+        <span className="rounded-full border border-sky-300/15 bg-sky-300/[0.04] px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-sky-200">AI-assisted · rules-grounded</span>
       </div>
       <p className="mt-3 max-w-3xl text-xs leading-5 text-slate-400">
-        This explanation is derived from the displayed quote, reference gap, freshness, and market status. No AI model is currently connected; WOLV does not trade autonomously.
+        Click <span className="font-bold text-sky-200">Analyse</span> on any opportunity to open a lively plain-English read. WOLV grounds the explanation in the displayed quote, reference gap, freshness, and market status; it never trades autonomously.
       </p>
       <div className="mt-5 grid gap-3 md:grid-cols-[0.8fr_1.2fr]">
         <div className="rounded-xl border border-white/[0.07] bg-black/20 p-4">
@@ -344,7 +346,7 @@ function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) 
   );
 }
 
-export default function Homepage({ rows, assetCount, feedUnavailable, feedError }: HomepageProps) {
+export default function Homepage({ rows, assetCount, feedUnavailable }: HomepageProps) {
   const featured = rows[0];
   const spreadCount = rows.filter((row) => row.crossVenueSpread != null).length;
 
@@ -390,7 +392,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, feedError 
         <div role="alert" className="mx-auto mb-5 max-w-7xl px-4 sm:px-6">
           <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3 text-xs leading-5 text-amber-100">
             Live market data is unavailable. WOLV is not substituting sample prices or inferred opportunities.
-            {feedError && <span className="mt-1 block break-all text-[10px] text-amber-100/60">{feedError}</span>}
+            Retry when the upstream market feed is available.
           </div>
         </div>
       )}
@@ -398,6 +400,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, feedError 
       <Ticker rows={rows} />
 
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:space-y-16 sm:px-6 sm:py-14">
+        <AIInsightStrip row={featured} />
         <section id="opportunities" className="scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
