@@ -546,7 +546,11 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       setTransactionStatus(null);
 
       try {
-        setSwapSimulation(await simulateTransaction(address, tx.to, tx.data, tx.value ?? "0"));
+        // Reuse the preflight from the quote step if it passed; re-running it
+        // here only burns seconds of the ~30s quote window before the wallet opens.
+        if (swapSimulation?.status.toUpperCase() !== "SUCCESS") {
+          setSwapSimulation(await simulateTransaction(address, tx.to, tx.data, tx.value ?? "0"));
+        }
         setExecutionPhase("signing");
         const transactionHash = await sendTransaction({
           to: tx.to,
@@ -572,6 +576,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         });
       } catch (error: unknown) {
         setSubmitError(errorMessage(error, "Failed to submit swap transaction"));
+        setExecutionPhase("idle");
       } finally {
         setIsSubmitting(false);
       }
@@ -637,6 +642,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
 
     } catch (error: unknown) {
       setSubmitError(errorMessage(error, "Failed to submit order"));
+      setExecutionPhase("idle");
       console.error("Order submission error:", error);
     } finally {
       setIsSubmitting(false);
@@ -771,8 +777,15 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   // the button impossible to enable whenever typedDataToSign was still
   // null - i.e. exactly the case the button is rendered for.
   const requiresTypedDataSignature = !!typedDataToSign;
-  const executionPending = !!transactionStatus &&
-    !["confirmed", "failed"].includes(transactionStatus.status.toLowerCase());
+  // True while a wallet prompt or transaction is in flight. Quote controls are
+  // locked during this time so an expiring quote can never be refreshed (which
+  // wipes swap state) underneath an open wallet prompt.
+  const executionPending =
+    (!!transactionStatus &&
+      !["confirmed", "failed"].includes(transactionStatus.status.toLowerCase())) ||
+    isSubmitting ||
+    isApproving ||
+    executionPhase !== "idle";
   const quoteAgeSeconds = quoteData?.quoteFetchedAt
     ? Math.max(0, Math.floor((quoteNow - quoteData.quoteFetchedAt) / 1000))
     : null;
@@ -1011,8 +1024,12 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           )}
           {quoteAgeSeconds !== null && (
             <div role="status" style={{ fontSize: "0.75rem", color: quoteIsFresh ? "#9ca3af" : "#fbbf24", marginTop: "0.25rem" }}>
-              {quoteIsFresh ? `Price locked for about ${Math.max(0, Math.ceil((QUOTE_TTL_MS - quoteAgeSeconds * 1000) / 1000))} more seconds.` : "This price has expired. Get a fresh quote before continuing."}
-              {!quoteIsFresh && (
+              {quoteIsFresh
+                ? `Price locked for about ${Math.max(0, Math.ceil((QUOTE_TTL_MS - quoteAgeSeconds * 1000) / 1000))} more seconds.`
+                : executionPending
+                  ? "The quote window has passed. If your wallet prompt is still open, review it carefully - the swap may fail on-chain."
+                  : "This price has expired. Get a fresh quote before continuing."}
+              {!quoteIsFresh && !executionPending && (
                 <button type="button" onClick={fetchQuote} disabled={isLoading} style={{ display: "block", marginTop: "0.5rem", backgroundColor: "#d9a80a", color: "#111827", border: "none", borderRadius: "0.25rem", padding: "0.5rem 0.75rem", fontWeight: 700, cursor: isLoading ? "not-allowed" : "pointer" }}>
                   {isLoading ? "Getting fresh price…" : "Get fresh quote"}
                 </button>
