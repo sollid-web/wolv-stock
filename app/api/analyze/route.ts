@@ -118,7 +118,7 @@ async function requestModelSummary(
   return normalizeModelSummary(JSON.parse(content), JSON.stringify(deterministicRead), input);
 }
 
-async function modelAnalysis(deterministicRead: ReturnType<typeof buildRulesAnalysis>) {
+async function modelAnalysis(input: MarketAnalysisInput, deterministicRead: ReturnType<typeof buildRulesAnalysis>) {
   const config = modelConfig();
   if (!config) return null;
   try {
@@ -164,7 +164,7 @@ async function cachedModelAnalysis(input: MarketAnalysisInput, deterministicRead
   const inFlight = modelSummaryInFlight.get(key);
   if (inFlight) return inFlight;
 
-  const pending = modelAnalysis(deterministicRead)
+  const pending = modelAnalysis(input, deterministicRead)
     .then((summary) => {
       if (!summary) return null;
       modelSummaryCache.set(key, { summary, expiresAt: Date.now() + MODEL_CACHE_TTL_MS });
