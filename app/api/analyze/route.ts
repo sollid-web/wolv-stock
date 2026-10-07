@@ -115,7 +115,12 @@ async function requestModelSummary(
   }
   const content = parseModelContent(payload);
   if (!content) throw new Error("AI provider returned no message content");
-  return normalizeModelSummary(JSON.parse(content), JSON.stringify(deterministicRead), input);
+  const parsed = JSON.parse(content);
+  const summary = normalizeModelSummary(parsed, JSON.stringify(deterministicRead), input);
+  const aiNextStep = typeof parsed.nextStep === "string" && parsed.nextStep.trim().length > 0
+    ? parsed.nextStep.trim().slice(0, 200)
+    : null;
+  return JSON.stringify({ summary, aiNextStep });
 }
 
 async function modelAnalysis(input: MarketAnalysisInput, deterministicRead: ReturnType<typeof buildRulesAnalysis>) {
@@ -225,10 +230,14 @@ export async function POST(request: Request) {
       const generatedSummary = await cachedModelAnalysis(input, fallback);
       return NextResponse.json({
         ...fallback,
-        ...(generatedSummary ? {
-          source: "WOLV AI paraphrase · rules verified",
-          summary: generatedSummary,
-        } : { source: "WOLV rules · model not configured" }),
+        ...(generatedSummary ? (() => {
+          const parsed = JSON.parse(generatedSummary);
+          return {
+            source: "WOLV AI paraphrase · rules verified",
+            summary: parsed.summary ?? generatedSummary,
+            nextStep: parsed.aiNextStep ?? fallback.nextStep,
+          };
+        })() : { source: "WOLV rules · model not configured" }),
         checkedAt,
         dataSources: ["Binance RWA reference data", "Binance executable quote"],
         observations: input.venues.map((venue) => ({
