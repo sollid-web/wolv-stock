@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getRWATokenList } from "@/lib/binance";
 import GlobalNav from "@/components/GlobalNav";
+import BrandMark from "@/components/BrandMark";
 import OpportunityCard from "@/components/OpportunityCard";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
@@ -48,14 +49,18 @@ export default async function OpportunityMonitor({
     );
 
   return (
-    <main className="min-h-screen bg-[#07070f] pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <nav className="sticky top-0 z-10 border-b border-[#1b1b35] bg-[#0e0e1c] px-4 py-4 sm:px-6">
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+      <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <BrandMark compact />
+            <div className="hidden h-7 w-px bg-white/10 sm:block" />
           <div className="min-w-0">
             <h1 className="break-words text-base font-black sm:text-lg">Listed vs Executable Price</h1>
             <p className="break-words text-xs text-[#64748b]">
               Reference price vs executable route · {QUOTE_AMOUNT_USDT} USDT quote size · BSC spot
             </p>
+          </div>
           </div>
           <Link href="/markets" className="shrink-0 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-[#d9a80a]/40 hover:text-[#d9a80a]">
             Browse markets
@@ -67,7 +72,7 @@ export default async function OpportunityMonitor({
         <div className="mb-5 max-w-4xl text-xs leading-relaxed text-[#94a3b8]">
           WOLV compares Binance RWA reference data with the current executable spot quote, normalized per share. A displayed difference is not guaranteed profit; fees, gas, liquidity, slippage, quote age, and market sessions still matter.
         </div>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-[#64748b]">
+        <div className="mb-4 grid grid-cols-1 items-start gap-1 text-xs font-bold uppercase tracking-[0.12em] text-[#64748b] sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
           <span>
             {feedUnavailable
               ? "Live comparison unavailable"
