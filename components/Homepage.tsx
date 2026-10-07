@@ -98,7 +98,7 @@ function Navigation() {
             <span className="size-1.5 rounded-full bg-[#d9a80a]" />
             BNB Chain · Mainnet
           </span>
-          <Link href="/wallet" className="wolv-glass-control rounded-lg bg-[#d9a80a]/90 px-3 py-2 text-[11px] font-black text-[#111] hover:bg-[#f2c94c] sm:px-4">
+          <Link href="/wallet" className="wolv-connect-button rounded-lg px-3 py-2 text-[11px] font-black sm:px-4">
             Connect wallet
           </Link>
         </div>

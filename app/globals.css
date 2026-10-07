@@ -80,6 +80,26 @@ button, a {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 14px 40px rgba(0,0,0,.16);
 }
 
+.wolv-connect-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  border: 1px solid rgba(242, 201, 76, .9);
+  background: linear-gradient(135deg, #e2b31b, #c59608);
+  color: #090b10;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 22px rgba(217,168,10,.18);
+  text-shadow: 0 1px 0 rgba(255,255,255,.12);
+}
+
+.wolv-connect-button:hover {
+  background: linear-gradient(135deg, #f2c94c, #d9a80a);
+  color: #050711;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 10px 28px rgba(217,168,10,.28);
+}
+
+.wolv-connect-button:disabled { opacity: .62; filter: saturate(.7); }
+
 .wolv-glass-control {
   border: 1px solid rgba(255,255,255,.12);
   background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.035));

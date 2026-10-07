@@ -38,7 +38,7 @@ function AppKitConnectButton() {
         type="button"
         onClick={() => void handleOpen()}
         disabled={isOpening || modalOpen || Boolean(connectingWallet)}
-        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#d9a80a] px-5 text-sm font-bold text-black transition-colors hover:bg-[#f2c94c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
+        className="wolv-connect-button inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
       >
         {isOpening || modalOpen || connectingWallet ? "Wallet connection pending..." : "Connect wallet"}
         <span aria-hidden="true">→</span>
