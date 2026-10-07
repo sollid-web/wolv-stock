@@ -16,8 +16,8 @@ export default function CategoryTabs({ active, basePath = "/" }: { active: numbe
   const activeMore = MORE_TABS.find((t) => t.id === active);
 
   return (
-    <nav aria-label="Sector categories" className="px-4 sm:px-6 pb-3 flex items-center gap-2">
-      <div className="flex gap-2 overflow-x-auto flex-1 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label="Sector categories" className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 pb-3 sm:px-8">
+      <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap md:overflow-visible">
         <Link href={basePath} scroll={false} prefetch={false} aria-current={active == null ? "page" : undefined} className={chip(active == null)}>
           All
         </Link>

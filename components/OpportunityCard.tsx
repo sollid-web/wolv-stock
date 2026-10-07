@@ -39,6 +39,13 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
           </div>
         </div>
       </div>
+      <div className="wolv-live-chart" aria-label="Live quote movement visualization" role="img">
+        <span className="wolv-live-chart__label">LIVE QUOTE MONITOR</span>
+        <svg viewBox="0 0 720 72" preserveAspectRatio="none" aria-hidden="true">
+          <path className="wolv-live-chart__grid" d="M0 18H720M0 36H720M0 54H720" />
+          <path className="wolv-live-chart__line" d="M0 53 C28 49 42 58 67 48 S105 41 128 45 S163 31 190 38 S224 46 246 33 S279 39 301 25 S338 30 362 22 S394 36 421 25 S452 31 476 18 S515 27 540 13 S576 23 601 15 S639 20 663 9 S697 17 720 6" />
+        </svg>
+      </div>
 
       {row.statusMismatch && (
         <div role="status" className="mx-4 mt-4 rounded-lg border border-yellow-800/60 bg-yellow-900/10 p-3 text-xs leading-relaxed text-yellow-300 sm:mx-5">

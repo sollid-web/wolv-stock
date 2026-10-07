@@ -1,5 +1,6 @@
 import { getRWATokenList } from "@/lib/binance";
 import Link from "next/link";
+import BrandMark from "@/components/BrandMark";
 import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
@@ -37,7 +38,7 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
       <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3" aria-label="Back to WOLV home">
-            <div className="grid size-9 place-items-center rounded-xl bg-[#d9a80a] text-sm font-black text-black shadow-[0_0_24px_rgba(217,168,10,0.2)]">W</div>
+            <BrandMark compact linked={false} />
             <div>
               <span className="block text-sm font-black tracking-[0.18em] text-white">WOLV</span>
               <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:block">Spot Lens</span>
