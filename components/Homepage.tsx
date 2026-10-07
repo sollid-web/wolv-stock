@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import BrandMark from "@/components/BrandMark";
 import type { OpportunityRow, VenueResult } from "@/lib/opportunityMath";
 import { marketLabel, MAX_RELIABLE_GAP_PERCENT, signedPercent } from "@/lib/opportunityMath";
 import { quoteAgeSeconds } from "@/lib/quotes";
@@ -82,10 +83,7 @@ function Navigation() {
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.09] bg-[#070711]/70 backdrop-blur-2xl">
       <nav aria-label="Main navigation" className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="WOLV home">
-          <span className="grid size-9 place-items-center rounded-full border border-[#d9a80a]/80 bg-[#d9a80a]/12 text-sm font-black text-[#f2c94c] shadow-[0_0_22px_rgba(217,168,10,.14)] ring-1 ring-white/10">W</span>
-          <span className="text-sm font-black tracking-[0.2em] text-white">WOLV</span>
-        </Link>
+<BrandMark />
         <div className="hidden items-center gap-7 md:flex">
           <Link href="/markets" className="text-xs font-semibold text-slate-400 transition hover:text-white">Markets</Link>
           <a href="#opportunities" className="text-xs font-semibold text-slate-400 transition hover:text-white">Opportunities</a>

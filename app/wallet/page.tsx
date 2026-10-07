@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BrandMark from "@/components/BrandMark";
 import WalletSelector from "@/components/WalletSelector";
 import NetworkSwitchModal from "@/components/NetworkSwitchModal";
 import { useWallet } from "@/hooks/useWallet";
@@ -40,7 +41,7 @@ export default function WalletPage() {
   return (
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
       <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
-        <Link href="/" className="text-[#64748b] text-xl">←</Link>
+        <div className="flex items-center gap-3"><Link href="/" className="text-[#64748b] text-xl">←</Link><BrandMark compact /></div>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[#d9a80a] flex items-center justify-center font-black text-black text-sm">W</div>
           <span className="font-bold text-lg tracking-wide">WOLV Spot Lens</span>
