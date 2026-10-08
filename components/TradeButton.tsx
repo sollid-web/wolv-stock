@@ -1017,6 +1017,11 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
             {displayTokenAmount(quoteData.fromTokenAmount)} USDT → approximately {displayTokenAmount(quoteData.toTokenAmount)} {token.symbol}
           </div>
+          {process.env.NEXT_PUBLIC_WOLV_REFERRER && (
+            <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+              WOLV fee: 0.10% of the USDT input
+            </div>
+          )}
           {quoteData.priceImpactPercent !== undefined && (
             <div style={{ fontSize: "0.75rem", color: "#fbbf24", marginTop: "0.25rem" }}>
               Price Impact: {quoteData.priceImpactPercent}%

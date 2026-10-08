@@ -236,6 +236,10 @@ export async function getAggregatorQuote(
 }
 
 // Get swap details for a quote
+// WOLV referral fee: 0.10% of input USDT credited to the operator wallet on every swap
+const WOLV_REFERRER = process.env.NEXT_PUBLIC_WOLV_REFERRER ?? "";
+const WOLV_FEE_PERCENT = "0.10";
+
 export async function getAggregatorSwap(
   toToken: string,
   amount: string,
@@ -243,7 +247,7 @@ export async function getAggregatorSwap(
   quoteId: string,
   slippagePercent: string = "0.5"
 ) {
-  return get("/api/v1/dex/aggregator/swap", {
+  const params: Record<string, string> = {
     binanceChainId: "56",
     fromTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
     toTokenAddress: toToken,
@@ -251,7 +255,12 @@ export async function getAggregatorSwap(
     userWalletAddress,
     quoteId,
     slippagePercent,
-  }, true);
+  };
+  if (WOLV_REFERRER) {
+    params.feePercent = WOLV_FEE_PERCENT;
+    params.fromTokenReferrerWalletAddress = WOLV_REFERRER;
+  }
+  return get("/api/v1/dex/aggregator/swap", params, true);
 }
 
 // Get approval transaction calldata

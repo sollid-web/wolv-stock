@@ -86,3 +86,16 @@ The main-track project is centered on tokenized stocks on BSC and spot-only trad
 - [Developer Experience report draft](./DEVEX_REPORT_2026_SESSION_DRAFT.md) — builder review and firsthand rewrite required; do not submit this draft as-is.
 
 The Developer Experience Report requires specific, honest builder observations and is worth 25% of judging. No AI-generated report can substitute for the builder's own account of onboarding, documentation, support, API behavior, and what they would change. The official overview calls a demo video of four minutes or less strongly recommended but optional; confirm the active submission form and keep any submitted video within that limit.
+
+## 10. Live data collection
+
+A Node.js logger (`scripts/logger.mjs`) ran continuously on a mobile device (Android/Termux) capturing 5-minute snapshots of reference price, executable price, session status, router, and price impact for 8 cross-listed tickers (SPY, QQQ, MU, META, NVDA, SNDK, TSLA, GOOGL) across both Ondo and bstock platforms.
+
+Collection period: Sep 24 – Oct 11, 2026  
+Snapshot interval: 5 minutes  
+Fields per row: ts, tk, plat, listUsd, ref, mult, mkt, open, reason, execUsd, vendor, mode, impact, routes, execPerShare  
+Data file: data/snapshots.jsonl  
+
+\`\`\`
+wc -l data/snapshots.jsonl
+\`\`\`
