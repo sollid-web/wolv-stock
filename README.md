@@ -15,6 +15,7 @@ WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-g
 - **Hackathon:** [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
 - **Demo video:** [Watch the WOLV walkthrough on YouTube](https://youtu.be/E6QEMJIIAfg?si=Jw3AtuueLI4-Aj2Z)
 - **Developer Experience Report:** [DevReport.MD](./DevReport.MD)
+- **License:** [MIT](./LICENSE)
 
 ## Why WOLV exists
 
@@ -260,3 +261,7 @@ Eligibility, restricted-region rules, and submission requirements are the partic
 Tokenized stocks are blockchain-based products whose availability, pricing, redemption rights, restrictions, and risks depend on their respective issuers and platforms. Reference prices do not guarantee executable prices. Liquidity, slippage, trading restrictions, gas, network conditions, market hours, and quote changes may affect execution.
 
 WOLV is a software interface, not a guarantee of liquidity, price parity, investment returns, legal eligibility, or transaction success. This project is provided for demonstration and informational purposes. Users are responsible for independently evaluating tokenized-stock products, wallet prompts, transaction details, and applicable restrictions.
+
+## License
+
+The application source is released under the [MIT License](./LICENSE). The disclaimer above remains applicable to the project and its use with tokenized-stock products.
