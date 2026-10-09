@@ -1,64 +1,221 @@
 # WOLV Spot Lens
 
-**See the price. Trust the route.** WOLV compares issuer/listed reference data with executable spot quotes for tokenized equities on BNB Smart Chain (BSC), normalizes prices per underlying share, and explains quote freshness and market status before a user chooses whether to trade.
+**See the price. Trust the route.**
 
-WOLV currently lists Ondo and bStocks assets. It is spot-only, does not execute perps or autonomous trades, and is not investment advice. A displayed spread is not guaranteed profit and does not account for fees, gas, liquidity, slippage, quote age, or execution changes.
+WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-gap monitoring, and user-authorized spot-trading terminal. It compares issuer/listed reference data with executable quotes, normalizes prices per underlying share, explains quote freshness and market status, and lets a user decide whether to continue into a protected wallet flow.
+
+> A displayed spread is not guaranteed profit. It may reflect fees, gas, liquidity, slippage, quote age, market-session differences, or execution changes.
+
+[![Live application](https://img.shields.io/badge/Live%20application-wolv--stock.vercel.app-FFC700?style=flat&labelColor=0A0D14)](https://wolv-stock.vercel.app)
+[![BNB Smart Chain](https://img.shields.io/badge/Network-BNB%20Smart%20Chain-F3BA2F?style=flat&labelColor=0A0D14)](https://www.bnbchain.org/en)
+[![Main track](https://img.shields.io/badge/Track-Tokenized%20Stocks-FFC700?style=flat&labelColor=0A0D14)](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
+
+- **Live application:** [wolv-stock.vercel.app](https://wolv-stock.vercel.app)
+- **Repository:** [github.com/sollid-web/wolv-stock](https://github.com/sollid-web/wolv-stock)
+- **Hackathon:** [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
+- **Developer Experience Report:** [DevReport.MD](./DevReport.MD)
+
+## Why WOLV exists
+
+Tokenized-stock users often see a reference price without knowing whether that price is executable for their trade size, through a particular venue, at the current moment. WOLV makes that distinction visible:
+
+- **Reference price:** issuer/listed or underlying-share reference data.
+- **Executable price:** what the selected route currently quotes for the requested trade size.
+- **Gap:** a normalized comparison, not a promise of arbitrage.
+- **Context:** quote age, venue, execution mode, price impact, market status, token/share ratio, and reliability checks.
+
+The product is designed for Web2 users who need a clear explanation before they encounter wallet approval and transaction confirmation.
+
+## Current live deployment
+
+The following screenshots were captured from the live application on **9 October 2026** after verifying the current upstream commit and successful Vercel deployment:
+
+- Repository commit: [`d41731d`](https://github.com/sollid-web/wolv-stock/commit/d41731d73fdf9d8c7815b8dbbc9527bfc66a534a)
+- Vercel deployment: [completed successfully](https://vercel.com/ozoani/wolv-stock/2hLzFWePkuFrpHWvMiAXBWTUZKba)
+
+### Homepage and WOLV AI entry point
+
+![Current WOLV Spot Lens homepage showing the executable-price monitor, market-status context, and WOLV AI entry point](./docs/screenshots/wolv-live-home.webp)
+
+### Cross-venue gap monitor
+
+![Current WOLV gap monitor showing normalized executable prices, venue status, and session-mismatch warnings](./docs/screenshots/wolv-live-gap.webp)
+
+### User-controlled trade route
+
+![Current WOLV trade route showing the BSC Smart Router, spot-only guard, venue comparison, and wallet connection step](./docs/screenshots/wolv-live-trade.webp)
+
+## What is implemented
+
+### Market discovery and analysis
+
+- Browse spot-eligible tokenized equities on BSC.
+- Explore asset details, issuer information, market status, and reference data.
+- Compare supported representations across venues such as **Ondo** and **bStocks**, where available.
+- Use the `/gap` monitor to compare reference-backed executable quotes across venues.
+- Exclude stale, malformed, missing-reference, and extreme outlier comparisons from reliable rankings.
+- Surface market-session mismatches instead of presenting them as clean trading opportunities.
+- Open WOLV AI market analysis for a grounded, plain-English explanation of the displayed data.
+
+### Protected spot trading
+
+- Request a fresh quote for a supported asset and trade amount.
+- Enforce the Binance minimum order requirement at the application boundary.
+- Validate spot eligibility, addresses, amounts, chain, quote freshness, and quote binding.
+- Prepare swap or RFQ flows according to the returned execution mode.
+- Simulate supported transactions before wallet approval.
+- Refresh swap calldata immediately before signing.
+- Ask the connected wallet to approve and broadcast; WOLV does not custody private keys.
+- Show wallet-prompt, submitted, pending, confirmed, failed, and user-rejected states.
+- Read the BSC receipt and expose transaction evidence for verification.
+
+### Read-only portfolio view
+
+`/wallet` provides a read-only holdings and portfolio surface for the connected address. It does not sign, approve, or execute transactions.
 
 ## Product routes
 
 | Route | Purpose |
 |---|---|
-| `/` | Data-led homepage with live quote comparison, freshness/session context, click-to-open WOLV AI market analysis, and entry points to opportunities and trading |
-| `/gap` | Full reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
-| `/markets` | Focused searchable BSC spot-eligible tokenized-stock directory |
-| `/stock/:address` | Asset details, issuer/reference information, real chart data when available, executable quote, and trade entry point |
+| `/` | Data-led homepage with executable-price comparison, freshness/session context, WOLV AI entry points, and opportunity discovery |
+| `/gap` | Reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
+| `/markets` | Searchable BSC spot-eligible tokenized-stock directory |
+| `/stock/:address` | Asset detail, issuer/reference information, chart data when available, executable quote, and trade entry |
 | `/trade` | Spot-eligible asset selection |
-| `/trade/:address` | Wallet-connected quote, real simulation, approval, and user-confirmed trade flow |
-| `/wallet` | Read-only BSC holdings and portfolio overview for the connected address |
+| `/trade/:address` | Quote, simulation, approval, and user-confirmed spot-trade flow |
+| `/wallet` | Read-only BSC holdings and portfolio overview |
 
-The product uses live Binance Web3 API data. If an upstream feed is unavailable, malformed, or empty for an unfiltered market list, WOLV must show an unavailable state; it must not substitute sample prices or imply a verified opportunity. A valid category-filter response with no matching assets remains a normal “no matches” state.
+If an upstream feed is unavailable, malformed, or empty when an unfiltered market list is expected, WOLV shows an explicit unavailable state. It does not substitute sample prices or imply a verified opportunity.
 
-## Current integrations and safety boundaries
+## Trading flow
 
-- **RWA Data API:** token and platform lists, token metadata, issuer profile, market-status fields, and reference-price fields.
-- **Trading API:** aggregator spot quotes, swap details, approval data, and RFQ order submission/status where returned by the API.
-- **Transaction API:** Binance-signed BSC preflight simulation before wallet prompts. A successful simulation is not an approval, broadcast, or receipt.
-- **Wallet execution:** approval and direct SWAP transactions are sent through the connected wallet's normal confirmation flow; receipt status is read from BSC. RFQ execution uses wallet typed-data signing and Binance order status polling.
-- **Wallet API:** `/api/wallet/portfolio` and `/wallet` provide a read-only BSC holdings/portfolio view. The page does not sign or execute transactions.
-- **WOLV market explanation:** Analysis is user-triggered rather than requested on every homepage visit. The browser submits only a ticker; `/api/analyze` resolves supported spot assets from Binance RWA data and obtains its own executable quotes before deriving status, freshness, normalization, reliability, and spread. Browser-supplied prices and signal flags are ignored. Deterministic rules authoritatively provide the headline, reasons, tone, and next step; an optional OpenAI-compatible model receives only that deterministic assessment and may paraphrase its summary. Model output cannot replace the numeric findings, and obvious buy/sell/guaranteed-profit language is rejected. The source badge distinguishes configured AI explanation, rules-only operation, and provider failure. The bounded request body, provider timeout, same-snapshot in-flight coalescing, and 60-second per-process explanation cache reduce accidental duplicate work. The cache is process-local, not a distributed rate limiter; a multi-instance deployment still needs a shared rate-limit/cache service for a global cost ceiling. The model is never given wallet addresses or portfolio holdings.
+```text
+Select asset
+   ↓
+Request fresh quote
+   ↓
+Validate spot eligibility, amount, freshness, and quote binding
+   ↓
+Prepare swap/RFQ transaction
+   ↓
+Simulate where supported
+   ↓
+Refresh calldata immediately before signing
+   ↓
+User reviews and confirms in their wallet
+   ↓
+Wallet broadcasts on BSC
+   ↓
+WOLV reads receipt/status and links to on-chain evidence
+```
 
-Binance API credentials are server-only. Never expose `BINANCE_API_KEY` or `BINANCE_SECRET_KEY` through a `NEXT_PUBLIC_` variable or commit them. Quote binding, freshness, minimum-order, spot eligibility, router/spender checks, simulation, wallet confirmation, and transaction-status safeguards must remain intact.
+A successful simulation is **not** an approval, broadcast, or confirmed transaction. A quote ID is also not automatically an order ID; direct on-chain swaps and off-chain RFQ order workflows have different status semantics.
 
-**Known operational limitation:** the outbound Binance request queue is process-local; it is not a shared rate limiter across serverless instances. Static official router/spender allowlisting, RFQ signer recovery/replay protection, and refreshed swap calldata immediately before signing remain separate hardening topics documented in [TRADING_ARCHITECTURE.md](./TRADING_ARCHITECTURE.md). Do not represent them as resolved.
+## Architecture and safety boundaries
 
-## Local setup
+- **RWA Data API:** token/platform lists, metadata, issuer profiles, reference prices, and market-status fields.
+- **Trading API:** aggregator quotes, swap details, approval data, and RFQ order submission/status where returned.
+- **Transaction API:** Binance-signed BSC simulation before wallet prompts.
+- **Wallet execution:** approval and direct SWAP transactions use the connected wallet’s normal confirmation flow; RFQ execution uses wallet typed-data signing and Binance order status polling.
+- **Wallet API:** read-only BSC balances and portfolio overview.
+- **Server-only credentials:** `BINANCE_API_KEY` and `BINANCE_SECRET_KEY` are read by server-side code and must never be exposed through `NEXT_PUBLIC_` variables.
+- **Quote protection:** freshness checks, minimum-order validation, quote binding, address validation, spot filtering, and simulation gates remain part of the trade boundary.
 
-Requirements: a Node.js release supported by Next.js 16 and pnpm.
+### Important limitations
 
-Create `.env.local` with server-only Binance credentials. A WalletConnect project ID is optional when testing only an injected wallet:
+The following are not represented as fully solved:
+
+- The outbound Binance request queue is process-local, not a distributed rate limiter.
+- Static official router/spender allowlisting remains a separate hardening topic and must be verified against current official contract data before public mainnet use.
+- WOLV does not independently recover the signer for Binance-supplied RFQ typed data.
+- Agentic Wallet, Wallet Skills, and BNB Agent Studio are not integrated into the current main-track product.
+- The app does not geofence or determine legal eligibility; users and participants must review current official terms and applicable laws.
+
+## Verified execution evidence
+
+The final developer report records three BSC execution examples and their limitations:
+
+| Evidence | Transaction | What it demonstrates |
+|---|---|---|
+| Sunday off-hours trade | [`0x5f9955…c68855`](https://bscscan.com/tx/0x5f995506ecf2b4f5e407414bcf379f4f34bf538040e0e3e9ca92040b80c68855) | Successful `NVDAon` execution on October 4, 2026 at 22:52:59 UTC; BscScan displayed an internal execution-reverted warning despite overall success |
+| Weekday demo trade | [`0x3bd762…60367`](https://bscscan.com/tx/0x3bd762832f273a1553341f935c02533e1aca0107730cac62af2e66ec94860367) | Successful `NVDAB` execution shown in the demo evidence |
+| Earlier NVDAB trade | [`0x93d347…638e9`](https://bscscan.com/tx/0x93d34764fd6d7b3be7662e283b5357e4ab086e2b286596f97989b49d0e8638e9) | Successful execution and evidence that raw BEP-20 and UI transfer amount fields can differ |
+
+These records demonstrate actual execution evidence, not guaranteed liquidity or continuous availability for every tokenized stock.
+
+## Demonstration
+
+The final report documents the recorded walkthrough:
+
+[Watch the WOLV demonstration](https://youtu.be/E6QEMJIIAfg?si=Jw3AtuueLI4-Aj2Z)
+
+The walkthrough covers:
+
+1. Tokenized-stock discovery through `/markets`.
+2. NVIDIA selection and reference-price-gap presentation.
+3. Visible handling of an execution-reverted error.
+4. Retrieval of a fresh executable quote.
+5. MetaMask confirmation and user-authorized BSC execution.
+6. Transaction confirmation and independent BscScan verification.
+
+For submission, the transaction hash displayed in the recording should be included alongside the relevant explorer link so judges can independently inspect status, transfers, contracts, and amounts.
+
+## Technology stack
+
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Wagmi / Viem
+- Recharts and Lightweight Charts where used by the current UI
+- Binance Web3 RWA, Trading, Transaction, Wallet, and Portfolio APIs
+- BNB Smart Chain
+- Vercel
+
+## Local development
+
+### Requirements
+
+- Node.js supported by Next.js 16
+- pnpm
+- Binance Web3 API credentials for live server routes
+- An injected EVM wallet or WalletConnect project ID for wallet testing
+
+### Configure environment variables
+
+Create `.env.local` with server-only credentials:
 
 ```dotenv
 BINANCE_API_KEY=your_web3_api_key
 BINANCE_SECRET_KEY=your_web3_api_secret
+
+# Optional when using WalletConnect; injected wallets can be tested without it
 NEXT_PUBLIC_WALLET_PROJECT_ID=your_walletconnect_project_id
-# Optional server-side AI explanation layer
+
+# Optional server-side WOLV AI explanation layer
 WOLV_AI_API_KEY=your_openai_compatible_key
 WOLV_AI_BASE_URL=https://api.openai.com/v1
 WOLV_AI_MODEL=gpt-5-mini
 ```
 
-Install and run:
+Never commit `.env.local`, private keys, wallet seed phrases, or API secrets.
 
-```sh
+### Install and run
+
+```bash
+git clone https://github.com/sollid-web/wolv-stock.git
+cd wolv-stock
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-The repository's dev/build scripts use webpack. Production build needs network access for `next/font/google`; WalletConnect features require a valid project ID.
+Open [http://localhost:3000](http://localhost:3000).
+
+The project’s development and build scripts use the Webpack path. Production builds may need network access for `next/font/google`.
 
 ## Checks
 
-```sh
+```bash
 pnpm test:logic
 pnpm test:hardening
 pnpm exec tsc --noEmit
@@ -66,36 +223,38 @@ pnpm lint
 pnpm build
 ```
 
-For a production-route viewport pass, build and start the app, then in another terminal:
+For a production-route responsive pass:
 
-```sh
+```bash
+pnpm build
 pnpm start
-# separate terminal
+# in another terminal
 pnpm test:responsive
 ```
 
-The responsive runner requires Chromium (`CHROME_BIN` can point to a non-standard install) and checks `/`, `/gap`, `/markets`, `/trade`, and `/wallet` at 320px, 390px, 768px, and 1440px. Set `TEST_TOKEN_ADDRESS` to exercise `/stock/:address` and `/trade/:address` too; that makes 28 route/viewport cases. Use a current supported asset address for live-data detail states. With unavailable local API credentials, the detail routes should render their explicit feed-unavailable state. These automated checks do not connect a wallet, sign, or broadcast a transaction.
+The responsive runner checks `/`, `/gap`, `/markets`, `/trade`, and `/wallet` at mobile, tablet, and desktop widths. Set `TEST_TOKEN_ADDRESS` to include `/stock/:address` and `/trade/:address` detail cases. These checks do not connect a wallet, sign, or broadcast a transaction.
 
-## Hackathon preparation
+## Developer documentation
 
-The main-track project is centered on tokenized stocks on BSC and spot-only trading. Eligibility is the participant's responsibility; the app does not geofence or determine legal eligibility. Re-check the [official hackathon rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks) and current Binance prohibited-region terms.
+- [Developer Experience Report](./DevReport.MD) — final builder report covering onboarding, authentication, API pitfalls, wallet behavior, tokenized-stock findings, evidence, and platform recommendations.
+- [Trading Architecture](./TRADING_ARCHITECTURE.md) — current request flow, signing boundaries, route behavior, and remaining hardening topics.
+- [WOLV Spot Lens handoff](./WOLV-SPOT-LENS-HANDOFF.md) — project context and continuation notes, when present locally.
 
-- [Submission brief and judge journey](./HACKATHON_SUBMISSION_BRIEF.md)
-- [Repository readiness audit](./HACKATHON_SUBMISSION_AUDIT.md)
-- [Current trading architecture](./TRADING_ARCHITECTURE.md)
-- [Developer Experience report draft](./DEVEX_REPORT_2026_SESSION_DRAFT.md) — builder review and firsthand rewrite required; do not submit this draft as-is.
+## BNB Chain hackathon scope
 
-The Developer Experience Report requires specific, honest builder observations and is worth 25% of judging. No AI-generated report can substitute for the builder's own account of onboarding, documentation, support, API behavior, and what they would change. The official overview calls a demo video of four minutes or less strongly recommended but optional; confirm the active submission form and keep any submitted video within that limit.
+WOLV is focused on the main tokenized-stocks track:
 
-## 10. Live data collection
+- BNB Smart Chain mainnet
+- Spot tokenized-equity discovery and trading
+- User-authorized, non-custodial wallet execution
+- Clear distinction between reference prices and executable quotes
+- No perpetuals
+- No autonomous trade execution
 
-A Node.js logger (`scripts/logger.mjs`) ran continuously on a mobile device (Android/Termux) capturing 5-minute snapshots of reference price, executable price, session status, router, and price impact for 8 cross-listed tickers (SPY, QQQ, MU, META, NVDA, SNDK, TSLA, GOOGL) across both Ondo and bstock platforms.
+Eligibility, restricted-region rules, and submission requirements are the participant’s responsibility. Review the [official hackathon rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks) and current Binance terms before submission.
 
-Collection period: Sep 24 – Oct 11, 2026  
-Snapshot interval: 5 minutes  
-Fields per row: ts, tk, plat, listUsd, ref, mult, mkt, open, reason, execUsd, vendor, mode, impact, routes, execPerShare  
-Data file: data/snapshots.jsonl  
+## Risks and disclaimer
 
-\`\`\`
-wc -l data/snapshots.jsonl
-\`\`\`
+Tokenized stocks are blockchain-based products whose availability, pricing, redemption rights, restrictions, and risks depend on their respective issuers and platforms. Reference prices do not guarantee executable prices. Liquidity, slippage, trading restrictions, gas, network conditions, market hours, and quote changes may affect execution.
+
+WOLV is a software interface, not a guarantee of liquidity, price parity, investment returns, legal eligibility, or transaction success. This project is provided for demonstration and informational purposes. Users are responsible for independently evaluating tokenized-stock products, wallet prompts, transaction details, and applicable restrictions.
