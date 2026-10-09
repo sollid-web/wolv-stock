@@ -2,12 +2,12 @@ WOLV Stock Terminal — Developer Experience Report
 
 BNB Chain Hackathon: Tokenized Stocks Edition
 
-Builder: WolvCapital
+Builder: Solo builder 
 Live application: https://wolv-stock.vercel.app
 Repository: https://github.com/sollid-web/wolv-stock
 Build environment: Android → Termux → proot-distro Ubuntu → Next.js 16 / TypeScript / Tailwind / pnpm / Vercel
 
----
+I am a solo builder 
 
 1. Onboarding
 
