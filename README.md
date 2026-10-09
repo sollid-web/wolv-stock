@@ -133,9 +133,9 @@ The following are not represented as fully solved:
 - Agentic Wallet, Wallet Skills, and BNB Agent Studio are not integrated into the current main-track product.
 - The app does not geofence or determine legal eligibility; users and participants must review current official terms and applicable laws.
 
-## Verified execution evidence
+## Verified BNB Smart Chain mainnet execution evidence
 
-The final developer report records three BSC execution examples and their limitations:
+The final developer report records three **actual BNB Smart Chain mainnet transactions** and their limitations. Each BscScan link below points to a mainnet transaction record, not a testnet or simulated result:
 
 | Evidence | Transaction | What it demonstrates |
 |---|---|---|
@@ -143,7 +143,7 @@ The final developer report records three BSC execution examples and their limita
 | Weekday demo trade | [`0x3bd762…60367`](https://bscscan.com/tx/0x3bd762832f273a1553341f935c02533e1aca0107730cac62af2e66ec94860367) | Successful `NVDAB` execution shown in the demo evidence |
 | Earlier NVDAB trade | [`0x93d347…638e9`](https://bscscan.com/tx/0x93d34764fd6d7b3be7662e283b5357e4ab086e2b286596f97989b49d0e8638e9) | Successful execution and evidence that raw BEP-20 and UI transfer amount fields can differ |
 
-These records demonstrate actual execution evidence, not guaranteed liquidity or continuous availability for every tokenized stock.
+These BNB Smart Chain mainnet records demonstrate actual execution evidence, not guaranteed liquidity or continuous availability for every tokenized stock. A simulation or quote alone is not counted as execution evidence.
 
 ## Demonstration
 
