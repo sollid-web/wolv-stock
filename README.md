@@ -13,6 +13,7 @@ WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-g
 - **Live application:** [wolv-stock.vercel.app](https://wolv-stock.vercel.app)
 - **Repository:** [github.com/sollid-web/wolv-stock](https://github.com/sollid-web/wolv-stock)
 - **Hackathon:** [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
+- **Demo video:** [Watch the WOLV walkthrough on YouTube](https://youtu.be/E6QEMJIIAfg?si=Jw3AtuueLI4-Aj2Z)
 - **Developer Experience Report:** [DevReport.MD](./DevReport.MD)
 
 ## Why WOLV exists
@@ -64,7 +65,7 @@ The following screenshots were captured from the live application on **9 October
 - Validate spot eligibility, addresses, amounts, chain, quote freshness, and quote binding.
 - Prepare swap or RFQ flows according to the returned execution mode.
 - Simulate supported transactions before wallet approval.
-- Refresh swap calldata immediately before signing.
+- Revalidate the prepared transaction and run the applicable preflight before wallet approval/signing; the current normal `SWAP` path reuses the prepared calldata from `/api/swap` rather than fetching a new payload immediately before signing.
 - Ask the connected wallet to approve and broadcast; WOLV does not custody private keys.
 - Show wallet-prompt, submitted, pending, confirmed, failed, and user-rejected states.
 - Read the BSC receipt and expose transaction evidence for verification.
@@ -127,6 +128,7 @@ The following are not represented as fully solved:
 
 - The outbound Binance request queue is process-local, not a distributed rate limiter.
 - Static official router/spender allowlisting remains a separate hardening topic and must be verified against current official contract data before public mainnet use.
+- Immediate pre-signing swap-calldata refresh remains a separate hardening item for the normal `SWAP` path.
 - WOLV does not independently recover the signer for Binance-supplied RFQ typed data.
 - Agentic Wallet, Wallet Skills, and BNB Agent Studio are not integrated into the current main-track product.
 - The app does not geofence or determine legal eligibility; users and participants must review current official terms and applicable laws.
