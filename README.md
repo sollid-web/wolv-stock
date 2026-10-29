@@ -1,4 +1,4 @@
-# WOLV Spot Lens
+l# WOLV Spot Lens
 
 **See the price. Trust the route.**
 
@@ -12,7 +12,6 @@ WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-g
 
 - **Live application:** [wolv-stock.vercel.app](https://wolv-stock.vercel.app)
 - **Repository:** [github.com/sollid-web/wolv-stock](https://github.com/sollid-web/wolv-stock)
-- **Hackathon:** [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
 - **Demo video:** [Watch the WOLV walkthrough on YouTube](https://youtu.be/E6QEMJIIAfg?si=Jw3AtuueLI4-Aj2Z)
 - **Developer Experience Report:** [DevReport.MD](./DevReport.MD)
 - **License:** [MIT](./LICENSE)
