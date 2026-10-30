@@ -4,7 +4,6 @@ import { getRWATokenList } from "@/lib/binance";
 import Homepage from "@/components/Homepage";
 import GlobalNav from "@/components/GlobalNav";
 import BrandMark from "@/components/BrandMark";
-import AgentDashboard from "@/components/AgentDashboard";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
 import { getOpportunityRows } from "@/lib/opportunityMonitor";
