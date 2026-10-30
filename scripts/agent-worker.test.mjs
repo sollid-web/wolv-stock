@@ -69,6 +69,8 @@ test("passes preflight then publishes a bounded intent and capacity telemetry", 
   assert.ok(telemetry[0].priceImpactBps > 0);
   assert.equal(intents.length, 1);
   assert.equal(intents[0].amountOutMin > 0n, true);
+  assert.equal(intents[0].slippageBps, strategy.slippageBps);
+  assert.equal(intents[0].maxPriceImpactBps, strategy.maxPriceImpactBps);
   assert.equal(worker.hasPendingIntent, true);
 });
 

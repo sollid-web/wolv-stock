@@ -43,6 +43,9 @@ export type AgentCycleReason =
     | "VALIDATOR_PASS"
     | "RPC_FAILURE"
     | "WORKER_PANIC_STOP"
+    | "BUNDLER_MEMPOOL_REJECTED"
+    | "ONCHAIN_EXECUTION_REVERTED"
+    | "USEROP_RECEIPT_TIMEOUT"
 
 export type AgentCycleTelemetry = {
     type: "agent_evaluation"
@@ -67,6 +70,8 @@ export type AgentExecutionIntent = {
     amountBnb: bigint
     amountOutMin: bigint
     priceImpactBps: number
+    slippageBps: number
+    maxPriceImpactBps: number
     sourcePriceMicros: bigint
     createdAt: string
 }
@@ -362,6 +367,8 @@ export class AgentWorker {
                 amountBnb: strategy.amountBnb,
                 amountOutMin: quote.amountOutMin,
                 priceImpactBps: quote.priceImpactBps,
+                slippageBps: strategy.slippageBps,
+                maxPriceImpactBps: strategy.maxPriceImpactBps,
                 sourcePriceMicros: market.priceMicros,
                 createdAt: this.timestamp()
             }
@@ -443,6 +450,33 @@ export class AgentWorker {
         })).catch(error => {
             console.error("Failed to deliver agent panic-stop alert", error)
         })
+    }
+
+    reportExecutionFailure(
+        strategyId: string,
+        reasonCode: Extract<
+            AgentCycleReason,
+            "BUNDLER_MEMPOOL_REJECTED" | "ONCHAIN_EXECUTION_REVERTED" | "USEROP_RECEIPT_TIMEOUT" | "RPC_FAILURE"
+        >,
+        detail: string
+    ) {
+        const strategy = this.dependencies.strategies.find(item => item.id === strategyId)
+        if (!strategy) {
+            throw new Error(`Unknown agent strategy ${strategyId}`)
+        }
+        if (this.halted) return
+        this.record({
+            type: "agent_evaluation",
+            strategyId,
+            account: strategy.account,
+            targetToken: strategy.targetToken,
+            timestamp: this.timestamp(),
+            attemptedTradeBnb: strategy.amountBnb.toString(),
+            slippageBps: strategy.slippageBps,
+            reasonCode,
+            detail
+        })
+        this.countFailure(strategy, `${reasonCode}: ${detail}`)
     }
 
     private dropIntent() {
