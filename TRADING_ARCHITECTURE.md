@@ -2,7 +2,7 @@
 
 ## Product Scope
 
-The main-track product is a BSC spot cross-venue monitor for tokenized equities. It compares Binance RWA issuer/reference fields with current aggregator quotes for Ondo and bStocks, then offers a user-approved spot trade. It does not run perps or autonomous execution.
+The main-track product is a BSC spot cross-venue monitor for tokenized equities. It compares Binance RWA issuer/reference fields with current aggregator quotes for Ondo and bStocks, then offers a user-approved spot trade. The `/agent` surface adds local strategy drafts and mock trigger evaluation; it does not run perps or autonomous execution.
 
 ## Implemented Request Flow
 
@@ -13,6 +13,15 @@ The main-track product is a BSC spot cross-venue monitor for tokenized equities.
 5. For `RFQ` responses, the browser signs the returned EIP-712 data and posts the signature, vendor, quote ID, idempotency UUID, and selected target address to `/api/order/submit`. The server rechecks spot eligibility before Binance receives the order submission. Status is polled through `/api/order/[orderId]`.
 6. Approval and order-status requests use no-store fetches. BSC approval and swap status are polled through `/api/transaction-status`, backed by Binance Wallet API transaction details. Catalog requests use a 60-second cache. Outbound Binance requests are serialized at a 250 ms minimum interval per server process.
 7. `/api/wallet/portfolio` retrieves read-only BSC token balances and portfolio overview data for the connected address; `/wallet` renders loading, empty, error, holdings, and portfolio-statistic states. This path does not sign or execute transactions.
+
+## Agent Terminal Boundary
+
+- `/agent` accepts constrained strategy text or structured parameters through `/api/agent/execute`. The endpoint validates a draft or evaluates explicitly supplied mock prices; it does not persist rules, poll markets, schedule jobs, sign transactions, or broadcast swaps.
+- The endpoint reports that `AltanaWalletProvider` and `TWAKProvider` are available from the installed BNB Agent SDK, but it does not instantiate either provider. Both require separate custody/session setup and would bypass the user's wallet confirmation if used to broadcast from this route.
+- ERC-8004 registration and ERC-8183 job creation are not performed. The telemetry intentionally reports no registration ID, job ID, or transaction hashes.
+- x402 settlement is disabled because no ERC-8183 commerce job is created in wallet-confirmation mode.
+- `BNB_AGENT_KEY` is intentionally not read. A shared server key would let public callers spend from one wallet; future live execution requires authenticated per-user delegated sessions, least-privilege call/spend caps, durable trigger storage, and a monitored worker.
+- `NEXT_PUBLIC_BSC_RPC_URL` configures the existing wagmi BSC transport; it is a public RPC URL, not a credential.
 
 ## Credential And Signing Boundaries
 
@@ -29,7 +38,7 @@ The hackathon and Binance Web3 developer product have restricted-region and sanc
 
 ## Explicitly Not Integrated
 
-- Agentic Wallet/Wallet Skills and BNB Agent Studio.
+- Autonomous agent execution, Altana/TWAK session configuration, ERC-8004 registration, ERC-8183 commerce settlement, and x402 payment flows. The BNB Agent SDK and the Binance agentic-wallet skill are installed, but are not active signing integrations.
 - Distributed per-client API rate limiting. The current Binance request queue is process-local and is not sufficient by itself for a horizontally scaled public deployment.
 - Automated local EIP-712 signer recovery and persistent replay tracking. Binance remains the external order-submission boundary.
 

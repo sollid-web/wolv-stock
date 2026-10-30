@@ -5,6 +5,7 @@ import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { bsc } from "@reown/appkit/networks";
 
 export const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLET_PROJECT_ID;
+const bscRpcUrl = process.env.NEXT_PUBLIC_BSC_RPC_URL || "https://bsc-dataseed.binance.org/";
 export const appKitNetworks = [bsc] as const;
 
 if (!walletConnectProjectId) {
@@ -19,7 +20,7 @@ export const wagmiAdapter = walletConnectProjectId
       projectId: walletConnectProjectId,
       ssr: true,
       transports: {
-        [bsc.id]: http("https://bsc-dataseed.binance.org/"),
+        [bsc.id]: http(bscRpcUrl),
       },
     })
   : null;
@@ -28,7 +29,7 @@ export const wagmiConfig = wagmiAdapter?.wagmiConfig ?? createConfig({
   chains: [wagmiBsc],
   connectors: [injected()],
   transports: {
-    [wagmiBsc.id]: http("https://bsc-dataseed.binance.org/"),
+    [wagmiBsc.id]: http(bscRpcUrl),
   },
   ssr: true,
 });

@@ -98,8 +98,9 @@ export function buildRulesAnalysis(input: MarketAnalysisInput) {
   } else if (fresh.length >= 2 && input.spread != null) {
     const spreadAbs = Math.abs(input.spread);
     const spreadDir = input.spread >= 0 ? "above" : "below";
-    reasons.push(`${fresh.length} fresh venue quotes are comparable after per-share normalization. ${input.ticker} is quoted ${spreadAbs.toFixed(3)}% ${spreadDir} reference price on the more expensive venue.`);
-    reasons.push(`This ${spreadAbs.toFixed(3)}% spread is pre-fees. BSC gas, DEX slippage, and the quote-size effect (${100} USDT) all reduce the net difference. Request a live quote on the trade screen to see the exact execution price.`);
+    const signedSpread = `${input.spread >= 0 ? "+" : ""}${input.spread.toFixed(3)}%`;
+    reasons.push(`${fresh.length} fresh venue quotes are comparable after per-share normalization. ${input.ticker} is quoted ${signedSpread} ${spreadDir} reference price on the more expensive venue.`);
+    reasons.push(`This ${signedSpread} spread is pre-fees. BSC gas, DEX slippage, and the quote-size effect (${100} USDT) all reduce the net difference. Request a live quote on the trade screen to see the exact execution price.`);
     verdict = spreadAbs < 0.5 ? "Tight spread — verify execution costs" : spreadAbs < 2 ? "Visible spread — check execution costs before acting" : "Wide spread — review carefully";
     tone = spreadAbs < 0.5 ? "neutral" : "positive";
   } else {

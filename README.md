@@ -74,11 +74,20 @@ The following screenshots were captured from the live application on **9 October
 
 `/wallet` provides a read-only holdings and portfolio surface for the connected address. It does not sign, approve, or execute transactions.
 
+### Agent strategy preview
+
+`/agent` accepts a constrained natural-language buy rule or structured buy/sell parameters and can evaluate a local mock price trigger. Drafts are not persisted or scheduled. A matched mock rule only links back to the existing trade terminal; quotes, simulation, and explicit wallet confirmation are still required. The ZeroDev integration includes an in-memory session signer, a seven-day permission window, public bundler configuration, and a WBNB-to-configured-token route builder. That builder reads PancakeSwap V2 reserves, calculates fee-adjusted output and a slippage minimum, and rejects quotes above its configured price-impact ceiling. This spot-impact check is not a historical volatility oracle. The on-chain hook binds the target token during installation and enforces the route, recipient, minimum output, selector, and volume caps. A guardian-controlled pause and immediate account revocation are also implemented.
+
+The standalone [`AgentWorker`](./services/agentWorker.ts) evaluates configured price thresholds on an interval, reads the validator’s effective (unexpired) rolling volume and pause/revocation state, and emits structured pass/fail telemetry. It creates a bounded execution intent only after all preflight checks pass, prevents duplicate pending intents, and panic-stops with a high-priority alert after repeated policy/RPC failures. It does not construct or submit UserOperations; a production scheduler, durable strategy store, alert sink, and separately reviewed execution adapter are not configured. Mock integration tests cover the worker.
+
+The validator emits attempt/success events for executions that reach successful transaction completion. Logs in a reverted transaction are rolled back, so rejected-policy events must be submitted separately by the guardian using `recordPolicyViolation`; the TypeScript execution helper also records structured local attempt, submit, success, and rejection records. The guardian is the validator deployer (`msg.sender`) and can pause all accounts or immediately revoke an installed account. The worker is not connected to `/agent`; session keys are not persisted, and no UserOperation has been submitted. ERC-8004 registration, ERC-8183 jobs, x402 settlement, and unattended trigger execution remain unavailable.
+
 ## Product routes
 
 | Route | Purpose |
 |---|---|
 | `/` | Data-led homepage with executable-price comparison, freshness/session context, WOLV AI entry points, and opportunity discovery |
+| `/agent` | Local strategy drafts, mock trigger evaluation, and agent capability telemetry; no automated execution |
 | `/gap` | Reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
 | `/markets` | Searchable BSC spot-eligible tokenized-stock directory |
 | `/stock/:address` | Asset detail, issuer/reference information, chart data when available, executable quote, and trade entry |
@@ -130,7 +139,8 @@ The following are not represented as fully solved:
 - Static official router/spender allowlisting remains a separate hardening topic and must be verified against current official contract data before public mainnet use.
 - Immediate pre-signing swap-calldata refresh remains a separate hardening item for the normal `SWAP` path.
 - WOLV does not independently recover the signer for Binance-supplied RFQ typed data.
-- Agentic Wallet, Wallet Skills, and BNB Agent Studio are not integrated into the current main-track product.
+- The BNB Agent SDK and Binance agentic-wallet skill are installed for integration work, but the live Altana/TWAK session providers, ERC-8004 registration, ERC-8183 job lifecycle, and x402 settlement are not enabled. The `/agent` route only validates local drafts and mock trigger evaluations.
+- `BNB_AGENT_KEY` is intentionally unused. Do not configure a server-wide private key; live agent execution needs per-user session authorization, bounded permissions, and a durable worker.
 - The app does not geofence or determine legal eligibility; users and participants must review current official terms and applicable laws.
 
 ## Verified BNB Smart Chain mainnet execution evidence
@@ -191,6 +201,9 @@ Create `.env.local` with server-only credentials:
 BINANCE_API_KEY=your_web3_api_key
 BINANCE_SECRET_KEY=your_web3_api_secret
 
+# Public BSC JSON-RPC endpoint (optional; defaults to the BSC public RPC)
+NEXT_PUBLIC_BSC_RPC_URL=https://bsc-dataseed.binance.org/
+
 # Optional when using WalletConnect; injected wallets can be tested without it
 NEXT_PUBLIC_WALLET_PROJECT_ID=your_walletconnect_project_id
 
@@ -201,6 +214,13 @@ WOLV_AI_MODEL=gpt-5-mini
 ```
 
 Never commit `.env.local`, private keys, wallet seed phrases, or API secrets.
+`BNB_AGENT_KEY` is not read by this wallet-confirmation build and must not be used as a shared server trading key. See [.env.example](./.env.example) for the complete variable template.
+
+The Binance agentic-wallet skill is available at `.agents/skills/binance-agentic-wallet`; it was added with:
+
+```bash
+npx skills add binance/binance-skills-hub/skills/binance-web3/binance-agentic-wallet
+```
 
 ### Install and run
 
@@ -251,7 +271,7 @@ WOLV is focused on the main tokenized-stocks track:
 - User-authorized, non-custodial wallet execution
 - Clear distinction between reference prices and executable quotes
 - No perpetuals
-- No autonomous trade execution
+- Agent strategy previews only; no autonomous trade execution
 
 Eligibility, restricted-region rules, and submission requirements are the participant’s responsibility. Review the [official hackathon rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks) and current Binance terms before submission.
 
