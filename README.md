@@ -6,7 +6,7 @@ WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-g
 
 > A displayed spread is not guaranteed profit. It may reflect fees, gas, liquidity, slippage, quote age, market-session differences, or execution changes.
 
-[![Live application](https://img.shields.io/badge/Live%20application-wolv--stock.vercel.app-FFC700?style=flat&labelColor=0A0D14)](https://wolv-stock.vercel.app)
+[![Live application](https://img.shields.io/badge/Live%20application-wolv--stock.vercel.app-FFC700?style=flat&labelColor=0A0D14)](https://wolv.space)
 [![BNB Smart Chain](https://img.shields.io/badge/Network-BNB%20Smart%20Chain-F3BA2F?style=flat&labelColor=0A0D14)](https://www.bnbchain.org/en)
 [![Main track](https://img.shields.io/badge/Track-Tokenized%20Stocks-FFC700?style=flat&labelColor=0A0D14)](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
 
