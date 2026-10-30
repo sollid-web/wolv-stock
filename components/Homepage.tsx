@@ -7,6 +7,7 @@ import { quoteAgeSeconds } from "@/lib/quotes";
 import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import MarketAnalysis from "@/components/MarketAnalysis";
 import AIInsightStrip from "@/components/AIInsightStrip";
+import AgentDashboard from '@/components/AgentDashboard'; // Adjust path if it's in a subfolder
 
 import ParticleCanvas from "@/components/ParticleCanvas";
 type HomepageProps = {
@@ -426,6 +427,10 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
               {feedUnavailable ? "Opportunity cards will return when the validated live asset feed is available." : "No cross-listed comparisons are available in this snapshot."}
             </div>
           )}
+        </section>
+
+        <section className="scroll-mt-24">
+          <AgentDashboard />
         </section>
 
         <Intelligence row={featured} feedUnavailable={feedUnavailable} />
