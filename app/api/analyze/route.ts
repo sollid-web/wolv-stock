@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 const MAX_REQUEST_BYTES = 2_048;
 const MODEL_CACHE_TTL_MS = 60_000;
 const MODEL_CACHE_MAX_ENTRIES = 64;
+const MODEL_RESPONSE_BUDGET_MS = 1_200;
 
 const modelSummaryCache = new Map<string, { summary: string; expiresAt: number }>();
 const modelSummaryInFlight = new Map<string, Promise<string | null>>();
@@ -50,7 +51,7 @@ function analysisMessages(deterministicRead: ReturnType<typeof buildRulesAnalysi
 Rules:
 - Lead with the most important fact: the dollar gap if venues are aligned, or the session state if mismatched
 - For session mismatches: name which venue is open and which is closed, and explain the spread is a timing artifact
-- For aligned venues with a spread: state the dollar gap per share (executablePerShare minus referencePerShare), the percent spread, and whether execution costs are likely to absorb it
+- For aligned venues with a spread: state the dollar gap per share (indicative estimate minus referencePerShare), the percent spread, and whether execution costs are likely to absorb it
 - For tight spreads under 0.3%: say the spread is thin and execution costs likely absorb it
 - For spreads over 1%: say the gap is meaningful and worth requesting a live quote to verify
 - For stale or missing data: say what is missing and why acting on it is risky
@@ -91,7 +92,8 @@ async function requestModelSummary(
   config: { apiKey: string; baseUrl: string; model: string; provider: string },
   input: MarketAnalysisInput,
   deterministicRead: ReturnType<typeof buildRulesAnalysis>,
-  responseFormat?: { type: "json_object" }
+  responseFormat?: { type: "json_object" },
+  timeoutMs = MODEL_RESPONSE_BUDGET_MS
 ): Promise<string> {
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -103,7 +105,7 @@ async function requestModelSummary(
       temperature: 0.2,
       max_tokens: 400,
     }),
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const responseText = await response.text();
   if (!response.ok) throw new Error(`AI provider HTTP ${response.status}: ${responseText.slice(0, 240)}`);
@@ -126,6 +128,7 @@ async function requestModelSummary(
 async function modelAnalysis(input: MarketAnalysisInput, deterministicRead: ReturnType<typeof buildRulesAnalysis>) {
   const config = modelConfig();
   if (!config) return null;
+  const startedAt = Date.now();
   try {
     // JSON mode is supported by Groq's OpenAI-compatible endpoint and avoids
     // the stricter json_schema compatibility gap on gpt-oss models.
@@ -136,7 +139,8 @@ async function modelAnalysis(input: MarketAnalysisInput, deterministicRead: Retu
       throw firstError;
     }
     console.warn("WOLV AI JSON mode failed; retrying without response_format:", firstError);
-    return requestModelSummary(config, input, deterministicRead);
+    const remainingBudget = Math.max(100, MODEL_RESPONSE_BUDGET_MS - (Date.now() - startedAt));
+    return requestModelSummary(config, input, deterministicRead, undefined, remainingBudget);
   }
 }
 
@@ -239,7 +243,7 @@ export async function POST(request: Request) {
           };
         })() : { source: "WOLV rules · model not configured" }),
         checkedAt,
-        dataSources: ["Binance RWA reference data", "Binance executable quote"],
+        dataSources: ["Binance RWA reference data", "Binance indicative server-side estimate"],
         observations: input.venues.map((venue) => ({
           platform: venue.platform,
           status: venue.status,
@@ -261,7 +265,7 @@ export async function POST(request: Request) {
         ...fallback,
         source: "WOLV rules · AI unavailable",
         checkedAt,
-        dataSources: ["Binance RWA reference data", "Binance executable quote"],
+        dataSources: ["Binance RWA reference data", "Binance indicative server-side estimate"],
         observations: input.venues.map((venue) => ({
           platform: venue.platform,
           status: venue.status,

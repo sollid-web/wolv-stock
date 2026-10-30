@@ -11,9 +11,9 @@ export default function OpportunitySpotlight({ row, feedUnavailable = false }: {
         <div className="min-w-0">
           <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#d9a80a]">
             {!feedUnavailable && <span className="wolv-pulse size-1.5 rounded-full bg-[#d9a80a]" />}
-            {feedUnavailable ? "Executable-price monitor" : "Live executable-price monitor"}
+            {feedUnavailable ? "Indicative quote monitor" : "Live indicative quote monitor"}
           </div>
-          <h2 id="opportunity-spotlight-title" className="mt-2 text-lg font-black leading-tight text-white sm:text-xl">Reference price ≠ executable price</h2>
+          <h2 id="opportunity-spotlight-title" className="mt-2 text-lg font-black leading-tight text-white sm:text-xl">Reference price ≠ wallet-bound execution price</h2>
           <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-400">
             {QUOTE_AMOUNT_USDT} USDT spot-buy quotes, normalized to the underlying share. Fresh, reference-backed venues inform the spread; stale, outlier, or incomplete comparisons are labelled and excluded.
           </p>
@@ -27,7 +27,7 @@ export default function OpportunitySpotlight({ row, feedUnavailable = false }: {
         {feedUnavailable ? (
           <div role="status" className="rounded-xl border border-yellow-800/50 bg-yellow-900/[0.06] p-4 text-xs leading-relaxed text-yellow-200">
             <div className="font-bold">Live RWA data feed unavailable</div>
-            <div className="mt-1 text-yellow-100/70">No reference-backed executable comparison is shown until the feed returns. WOLV does not infer a price or spread from missing data.</div>
+            <div className="mt-1 text-yellow-100/70">No reference-backed indicative comparison is shown until the feed returns. WOLV does not infer a price or spread from missing data.</div>
           </div>
         ) : row ? (
           <OpportunityCard row={row} />

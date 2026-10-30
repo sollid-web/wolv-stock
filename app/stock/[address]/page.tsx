@@ -8,6 +8,7 @@ import { isRwaToken } from "@/lib/rwaTypes";
 import AssetFeedUnavailable from "@/components/AssetFeedUnavailable";
 import { marketLabel, normalizePerSharePrice, positiveNumberValue } from "@/lib/opportunityMath";
 import { normalizeCandles } from "@/lib/candles";
+import { validateQuote } from "@/lib/quoteValidation";
 import GlobalNav from "@/components/GlobalNav";
 import MarketChart from "@/components/MarketChart";
 
@@ -82,7 +83,10 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const mult = positiveNumberValue(token.tokenToShareRatio);
   const listed = positiveNumberValue(token.tokenPrice);
   const refShare = normalizePerSharePrice(token.referencePrice, token.tokenToShareRatio);
-  const perShare = q.ok ? normalizePerSharePrice(q.usd, token.tokenToShareRatio) : null;
+  const quoteCheck = q.ok
+    ? validateQuote({ usd: q.usd, referencePrice: token.referencePrice, tokenToShareRatio: token.tokenToShareRatio })
+    : null;
+  const perShare = q.ok && quoteCheck?.ok ? normalizePerSharePrice(q.usd, token.tokenToShareRatio) : null;
   const gap = perShare != null && refShare != null
     ? (perShare / refShare - 1) * 100
     : null;
@@ -146,7 +150,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
             <div>
               <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#d9a80a]">Live asset signal</div>
               <div className="text-4xl font-black tracking-tight sm:text-6xl">{token.underlyingTicker}</div>
-              <div className="mt-2 max-w-md text-sm leading-6 text-slate-400">Reference data, executable pricing, and market state in one clear view.</div>
+              <div className="mt-2 max-w-md text-sm leading-6 text-slate-400">Reference data, indicative pricing, and market state in one clear view.</div>
             </div>
             <div className="hidden text-right sm:block"><div className="text-2xl font-black text-emerald-400">24/7</div><div className="text-[10px] uppercase tracking-wider text-slate-500">on-chain venue</div></div>
           </div>
@@ -165,12 +169,12 @@ export default async function StockPage({ params }: { params: Promise<{ address:
         </div>
 
         <div className="wolv-glass rounded-xl p-5">
-          <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Executable vs reference (per share)</div>
+          <div className="text-xs text-[#64748b] mb-3 uppercase tracking-wider">Indicative estimate vs reference (per share)</div>
           {q.ok && perShare != null ? (
             <>
               <div className="mb-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
                 <div>
-                  <div className="text-xs text-[#64748b] mb-1">Executable</div>
+                  <div className="text-xs text-[#64748b] mb-1">Indicative estimate</div>
                   <div className="font-bold text-sm">${perShare!.toFixed(3)}</div>
                 </div>
                 <div>
@@ -185,14 +189,18 @@ export default async function StockPage({ params }: { params: Promise<{ address:
                 </div>
               </div>
               <div className="text-xs text-[#64748b] leading-relaxed">
-                What 100 USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult!.toFixed(4)} shares per token.
+                What 100 USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult!.toFixed(4)} shares per token. This is a server-side estimate using a placeholder wallet, not a wallet-bound executable quote.
                 Reference price is a per-share value derived from the on-chain token price according to Binance&apos;s RWA data;
-                it is not an independent stock-market quote. Executable price reflects what the aggregator currently quotes for the token.
+                it is not an independent stock-market quote. The indicative estimate reflects what the aggregator returns for the placeholder-wallet request.
               </div>
             </>
+          ) : q.ok && quoteCheck && !quoteCheck.ok ? (
+            <div role="status" className="text-xs leading-relaxed text-yellow-500">
+              Indicative quote rejected: {quoteCheck.reason}. No normalized price or route is inferred.
+            </div>
           ) : q.ok ? (
             <div role="status" className="text-xs leading-relaxed text-yellow-500">
-              Per-share comparison unavailable: the live response is missing a valid token-to-share ratio or executable/reference price. No normalized price or gap is inferred.
+              Per-share comparison unavailable: the live response is missing a valid token-to-share ratio or indicative/reference price. No normalized price or gap is inferred.
             </div>
           ) : (
             <div className="text-xs text-yellow-500">Quote unavailable: {q.err}</div>

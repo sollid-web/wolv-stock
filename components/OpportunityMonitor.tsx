@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { getRWATokenList } from "@/lib/binance";
 import GlobalNav from "@/components/GlobalNav";
 import BrandMark from "@/components/BrandMark";
@@ -15,11 +16,74 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function OpportunityMonitor({
-  searchParams,
-}: {
-  searchParams: Promise<{ n?: string }>;
-}) {
+type SearchParams = Promise<{ n?: string }>;
+
+function MonitorFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
+      <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <BrandMark compact />
+            <div className="hidden h-7 w-px bg-white/10 sm:block" />
+            <div className="min-w-0">
+              <h1 className="break-words text-base font-black sm:text-lg">Listed vs Indicative Estimate</h1>
+              <p className="break-words text-xs text-[#64748b]">
+                Reference price vs indicative server-side estimate · {QUOTE_AMOUNT_USDT} USDT quote size · BSC spot
+              </p>
+            </div>
+          </div>
+          <Link href="/markets" className="shrink-0 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-[#d9a80a]/40 hover:text-[#d9a80a]">
+            Browse markets
+          </Link>
+        </div>
+      </nav>
+      {children}
+      <GlobalNav />
+    </main>
+  );
+}
+
+function MonitorLoading() {
+  return (
+    <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6" aria-busy="true" aria-live="polite">
+      <div className="mb-5 max-w-4xl text-xs leading-relaxed text-[#94a3b8]">
+        WOLV compares Binance RWA reference data with an indicative server-side spot estimate, normalized per share. It is not wallet-bound or executable; request a fresh quote on the trade screen before signing.
+      </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs font-bold uppercase tracking-[0.12em] text-[#64748b]">
+        <span>Loading comparison data</span>
+        <span className="inline-flex items-center gap-2 normal-case tracking-normal text-[#94a3b8]">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-[#d9a80a]" />
+          Checking the current asset feed and quotes…
+        </span>
+      </div>
+      <div className="space-y-4">
+        {["loading-a", "loading-b", "loading-c"].map((key) => (
+          <div key={key} className="animate-pulse rounded-2xl border border-white/[0.09] bg-[#0e0e1c] p-5" aria-hidden="true">
+            <div className="h-5 w-32 rounded bg-white/[0.08]" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="h-12 rounded bg-white/[0.06]" />
+              <div className="h-12 rounded bg-white/[0.06]" />
+              <div className="h-12 rounded bg-white/[0.06]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export default function OpportunityMonitor({ searchParams }: { searchParams: SearchParams }) {
+  return (
+    <MonitorFrame>
+      <Suspense fallback={<MonitorLoading />}>
+        <OpportunityMonitorData searchParams={searchParams} />
+      </Suspense>
+    </MonitorFrame>
+  );
+}
+
+async function OpportunityMonitorData({ searchParams }: { searchParams: SearchParams }) {
   const { n } = await searchParams;
   const limit = Math.min(40, Math.max(1, Number.parseInt(n ?? "8", 10) || 8));
 
@@ -49,88 +113,67 @@ export default async function OpportunityMonitor({
     );
 
   return (
-    <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-4">
-            <BrandMark compact />
-            <div className="hidden h-7 w-px bg-white/10 sm:block" />
-          <div className="min-w-0">
-            <h1 className="break-words text-base font-black sm:text-lg">Listed vs Executable Price</h1>
-            <p className="break-words text-xs text-[#64748b]">
-              Reference price vs executable route · {QUOTE_AMOUNT_USDT} USDT quote size · BSC spot
-            </p>
-          </div>
-          </div>
-          <Link href="/markets" className="shrink-0 rounded-full border border-white/10 px-3 py-2 text-xs font-bold text-slate-300 transition hover:border-[#d9a80a]/40 hover:text-[#d9a80a]">
-            Browse markets
-          </Link>
-        </div>
-      </nav>
+    <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
+      <div className="mb-5 max-w-4xl text-xs leading-relaxed text-[#94a3b8]">
+        WOLV compares Binance RWA reference data with an indicative server-side spot estimate, normalized per share. It is not wallet-bound or executable; request a fresh quote on the trade screen before signing. A displayed difference is not guaranteed profit; fees, gas, liquidity, slippage, quote age, and market sessions still matter.
+      </div>
+      <div className="mb-4 grid grid-cols-1 items-start gap-1 text-xs font-bold uppercase tracking-[0.12em] text-[#64748b] sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
+        <span>
+          {feedUnavailable
+            ? "Live comparison unavailable"
+            : `Showing ${rows.length} of ${pairs.length} cross-listed tickers`}
+        </span>
+        <span>{feedUnavailable ? "No price or opportunity inferred" : `${tokens.length} eligible BSC asset records`}</span>
+      </div>
 
-      <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
-        <div className="mb-5 max-w-4xl text-xs leading-relaxed text-[#94a3b8]">
-          WOLV compares Binance RWA reference data with the current executable spot quote, normalized per share. A displayed difference is not guaranteed profit; fees, gas, liquidity, slippage, quote age, and market sessions still matter.
+      {feedUnavailable ? (
+        <div role="alert" className="mb-6 rounded-xl border border-yellow-800/50 bg-yellow-900/10 p-4 text-sm leading-relaxed text-yellow-200">
+          <div className="font-bold">Live RWA data feed unavailable</div>
+          <p className="mt-1 text-xs text-yellow-100/80">
+            WOLV could not validate the asset list. It has not substituted zero prices or inferred a comparison. Try again when the upstream feed is available.
+          </p>
         </div>
-        <div className="mb-4 grid grid-cols-1 items-start gap-1 text-xs font-bold uppercase tracking-[0.12em] text-[#64748b] sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
-          <span>
-            {feedUnavailable
-              ? "Live comparison unavailable"
-              : `Showing ${rows.length} of ${pairs.length} cross-listed tickers`}
-          </span>
-          <span>{feedUnavailable ? "No price or opportunity inferred" : `${tokens.length} eligible BSC asset records`}</span>
+      ) : rows.length > 0 ? (
+        <div className="mb-8 space-y-4">
+          {rows.map((row) => <OpportunityCard key={row.ticker} row={row} />)}
         </div>
+      ) : (
+        <div role="status" className="mb-8 rounded-xl border border-white/[0.08] bg-white/[0.03] p-6 text-center text-sm text-slate-300">
+          No cross-listed tickers are available for a reliable comparison right now.
+        </div>
+      )}
 
-        {feedUnavailable ? (
-          <div role="alert" className="mb-6 rounded-xl border border-yellow-800/50 bg-yellow-900/10 p-4 text-sm leading-relaxed text-yellow-200">
-            <div className="font-bold">Live RWA data feed unavailable</div>
-            <p className="mt-1 text-xs text-yellow-100/80">
-              WOLV could not validate the asset list. It has not substituted zero prices or inferred a comparison. Try again when the upstream feed is available.
-            </p>
+      {!feedUnavailable && (
+        <>
+          <div className="mb-3 text-xs font-bold uppercase tracking-wider text-[#64748b]">
+            Unusual share multipliers ({unusual.length})
           </div>
-        ) : rows.length > 0 ? (
-          <div className="mb-8 space-y-4">
-            {rows.map((row) => <OpportunityCard key={row.ticker} row={row} />)}
-          </div>
-        ) : (
-          <div role="status" className="mb-8 rounded-xl border border-white/[0.08] bg-white/[0.03] p-6 text-center text-sm text-slate-300">
-            No cross-listed tickers are available for a reliable comparison right now.
-          </div>
-        )}
-
-        {!feedUnavailable && (
-          <>
-            <div className="mb-3 text-xs font-bold uppercase tracking-wider text-[#64748b]">
-              Unusual share multipliers ({unusual.length})
+          {unusual.length > 0 ? (
+            <div className="mb-8 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {unusual.map((token) => (
+                <Link
+                  key={token.tokenContractAddress}
+                  href={`/stock/${token.tokenContractAddress}`}
+                  className="min-w-0 rounded-lg border border-[#1b1b35] bg-[#0e0e1c] p-3 text-xs"
+                >
+                  <div className="break-words font-bold">
+                    {token.underlyingTicker} <span className="font-normal capitalize text-[#64748b]">{token.platformId}</span>
+                  </div>
+                  <div className="break-words font-black text-[#d9a80a]">
+                    {positiveNumberValue(token.tokenToShareRatio)?.toFixed(3)}× shares/token
+                  </div>
+                </Link>
+              ))}
             </div>
-            {unusual.length > 0 ? (
-              <div className="mb-8 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {unusual.map((token) => (
-                  <Link
-                    key={token.tokenContractAddress}
-                    href={`/stock/${token.tokenContractAddress}`}
-                    className="min-w-0 rounded-lg border border-[#1b1b35] bg-[#0e0e1c] p-3 text-xs"
-                  >
-                    <div className="break-words font-bold">
-                      {token.underlyingTicker} <span className="font-normal capitalize text-[#64748b]">{token.platformId}</span>
-                    </div>
-                    <div className="break-words font-black text-[#d9a80a]">
-                      {positiveNumberValue(token.tokenToShareRatio)?.toFixed(3)}× shares/token
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="mb-8 text-xs text-slate-500">No unusual share multipliers were identified in the current asset list.</p>
-            )}
-          </>
-        )}
+          ) : (
+            <p className="mb-8 text-xs text-slate-500">No unusual share multipliers were identified in the current asset list.</p>
+          )}
+        </>
+      )}
 
-        <p className="mb-6 max-w-4xl text-[11px] leading-relaxed text-slate-500">
-          Quotes more than {MAX_RELIABLE_GAP_PERCENT}% from their reference, stale quotes, and incomplete comparisons are excluded from spread ranking. This monitor is informational; check the current quote, simulation, network, approvals, and wallet prompt before any trade.
-        </p>
-      </section>
-      <GlobalNav />
-    </main>
+      <p className="mb-6 max-w-4xl text-[11px] leading-relaxed text-slate-500">
+        Quotes more than {MAX_RELIABLE_GAP_PERCENT}% from their reference, stale quotes, and incomplete comparisons are excluded from spread ranking. This monitor is informational; check the current quote, simulation, network, approvals, and wallet prompt before any trade.
+      </p>
+    </section>
   );
 }

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { getAggregatorQuote } from "@/lib/binance";
+import { getAggregatorQuote, getRWATokenList } from "@/lib/binance";
 import { EVM_ADDRESS_PATTERN, isPositiveUint256, MINIMUM_ORDER_USDT, MINIMUM_ORDER_WEI } from "@/lib/apiValidation";
-import { isSpotRwaTokenAddress } from "@/lib/spotAssets";
+import { isSpotRwaTokenAddress, parseRwaAssetRecords } from "@/lib/spotAssets";
 import { createQuoteBinding } from "@/lib/quoteBinding";
+import { validateQuote } from "@/lib/quoteValidation";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,28 @@ export async function GET(request: Request) {
         { error: "No quote returned from aggregator" },
         { status: 502 }
       );
+    }
+    const quoteValidation = validateQuote({
+      fromTokenAmount: quote.fromTokenAmount,
+      toTokenAmount: quote.toTokenAmount,
+      tokenUnitPrice: quote.fromToken?.tokenUnitPrice ?? 1,
+      expectedFromTokenAmount: amount,
+    });
+    if (!quoteValidation.ok) {
+      return NextResponse.json({ error: `Quote rejected: ${quoteValidation.reason}` }, { status: 502 });
+    }
+    const asset = parseRwaAssetRecords(await getRWATokenList())
+      .find((candidate) => candidate.tokenContractAddress.toLowerCase() === toToken.toLowerCase());
+    if (!asset) {
+      return NextResponse.json({ error: "Quote rejected: asset reference data is unavailable" }, { status: 502 });
+    }
+    const referenceValidation = validateQuote({
+      usd: quoteValidation.usd,
+      referencePrice: asset.referencePrice,
+      tokenToShareRatio: asset.tokenToShareRatio,
+    });
+    if (!referenceValidation.ok) {
+      return NextResponse.json({ error: `Quote rejected: ${referenceValidation.reason}` }, { status: 502 });
     }
     const rawQuoteId = typeof quote.quoteId === "string"
       ? quote.quoteId

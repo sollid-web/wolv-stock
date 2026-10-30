@@ -33,14 +33,14 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
           <h2 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">{row.ticker}</h2>
         </div>
         <div className="min-w-[8rem] text-left sm:text-right">
-          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Executable spread · per share</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Indicative spread · per share</div>
           <div className={`mt-1 text-lg font-black ${row.crossVenueSpread == null ? "text-slate-400" : "text-[#d9a80a]"}`}>
             {row.crossVenueSpread == null ? "Unavailable" : signedPercent(row.crossVenueSpread)}
           </div>
         </div>
       </div>
-      <div className="wolv-live-chart" aria-label="Live quote movement visualization" role="img">
-        <span className="wolv-live-chart__label">LIVE QUOTE MONITOR</span>
+      <div className="wolv-live-chart" aria-label="Indicative quote range visualization" role="img">
+        <span className="wolv-live-chart__label">INDICATIVE QUOTE RANGE</span>
         <svg viewBox="0 0 720 72" preserveAspectRatio="none" aria-hidden="true">
           <path className="wolv-live-chart__grid" d="M0 18H720M0 36H720M0 54H720" />
           <path className="wolv-live-chart__line" d="M0 53 C28 49 42 58 67 48 S105 41 128 45 S163 31 190 38 S224 46 246 33 S279 39 301 25 S338 30 362 22 S394 36 421 25 S452 31 476 18 S515 27 540 13 S576 23 601 15 S639 20 663 9 S697 17 720 6" />
@@ -61,7 +61,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
           </div>
           <div
             role="img"
-            aria-label={`Usable executable prices range from ${price(minPrice)} to ${price(maxPrice)} per share across ${reliableVenues.length} venues`}
+            aria-label={`Usable indicative prices range from ${price(minPrice)} to ${price(maxPrice)} per share across ${reliableVenues.length} venues`}
             className="relative mt-3 h-3 rounded-full bg-white/[0.08]"
           >
             {reliableVenues.map((venue, index) => {
@@ -109,7 +109,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
                     <span className={`text-lg font-black ${venue.unreliable ? "text-yellow-300" : "text-white"}`}>
                       {venue.unreliable ? "Unreliable quote" : price(venue.executablePerShare)}
                     </span>
-                    {!venue.unreliable && <span className="text-[10px] text-slate-500">executable / share</span>}
+                    {!venue.unreliable && <span className="text-[10px] text-slate-500">indicative estimate / share</span>}
                   </div>
                   <div className="mt-1 break-words text-[11px] text-slate-400">
                     Reference {price(venue.referencePerShare)} · {venue.multiplier == null ? "share ratio unavailable" : `${venue.multiplier.toFixed(4)} shares/token`}

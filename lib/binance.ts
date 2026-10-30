@@ -17,6 +17,7 @@ async function rateLimit() {
 const API_KEY = process.env.BINANCE_API_KEY!;
 const SECRET_KEY = process.env.BINANCE_SECRET_KEY!;
 const BASE_URL = "https://web3.binance.com/build";
+const UPSTREAM_TIMEOUT_MS = 10_000;
 
 function makeHeaders(method: string, path: string, body = "") {
   const timestamp = new Date().toISOString();
@@ -41,6 +42,7 @@ async function get(path: string, params: Record<string, string> = {}, noStore = 
   await rateLimit();
   const res = await fetch(`${BASE_URL}${fullPath}`, {
     headers,
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     ...(noStore ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
   });
   const json = await res.json();
@@ -61,6 +63,7 @@ async function post(path: string, payload: unknown) {
     method: "POST",
     headers,
     body,
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     cache: "no-store",
   });
   const json = await res.json();

@@ -11,7 +11,7 @@ export default function Loading() {
         <div className="h-64 rounded-xl border border-[#1b1b35] bg-[#0e0e1c]" />
         <div className="flex items-center gap-3 text-xs text-[#64748b]" role="status" aria-live="polite">
           <span className="h-2 w-2 rounded-full bg-[#d9a80a]" />
-          Loading WOLV data…
+          Preparing the WOLV market view…
         </div>
       </div>
     </main>

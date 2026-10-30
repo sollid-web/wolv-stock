@@ -1,9 +1,11 @@
 import { getRWAQuote } from "@/lib/binance";
 import { OPPORTUNITY_QUOTE_TTL_MS } from "@/lib/opportunityMath";
+import { validateQuote } from "@/lib/quoteValidation";
 
 export type QuoteSuccess = {
   ok: true;
   usd: number;
+  walletBound?: boolean;
   mode: string;
   vendor: string;
   impact: number | null;
@@ -75,11 +77,17 @@ export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
         throw new Error(message);
       }
 
-      const unitPrice = asFiniteNumber(best.fromToken?.tokenUnitPrice) ?? 1;
+      const validation = validateQuote({
+        fromTokenAmount: String(usdt) + "0".repeat(18),
+        toTokenAmount: best.toTokenAmount,
+        tokenUnitPrice: best.fromToken?.tokenUnitPrice ?? 1,
+      });
+      if (!validation.ok) throw new Error(validation.reason);
       const impact = asFiniteNumber(best.priceImpactPercent);
       const quote: QuoteSuccess = {
         ok: true,
-        usd: (usdt * unitPrice) / (output / 1e18),
+        usd: validation.usd,
+        walletBound: false,
         mode: best.executionMode ?? "unknown",
         vendor: best.vendorName ?? "unknown",
         impact,

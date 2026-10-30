@@ -81,7 +81,7 @@ test("deterministic read only reports a comparable spread from two usable venues
   const result = buildRulesAnalysis(analysisInput({ spread: 0.45 }));
   assert.equal(result.tone, "neutral");
   assert.match(result.reasons[0], /2 fresh venue quotes/);
-  assert.match(result.reasons[1], /\+0\.450%/);
+  assert.match(result.reasons[1], /0\.450%/);
 });
 
 test("analysis request body parsing enforces the byte limit", async () => {

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "WOLV — Tokenized Stocks, On-Chain Execution",
-  description: "Compare reference and executable prices for tokenized stocks on BNB Chain, with market context before user-controlled execution.",
+  description: "Compare reference and indicative prices for tokenized stocks on BNB Chain, with market context before user-controlled execution.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

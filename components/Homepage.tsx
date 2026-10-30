@@ -143,15 +143,15 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
         <div role="status" className="relative mt-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-4 text-sm text-amber-100">
           <div className="font-bold">No live opportunity preview</div>
           <p className="mt-1 text-xs leading-5 text-amber-100/70">
-            {feedUnavailable ? "WOLV could not validate the current asset feed. No prices or signals are inferred." : "No cross-listed executable quote is available in this snapshot."}
+            {feedUnavailable ? "WOLV could not validate the current asset feed. No prices or signals are inferred." : "No reliable cross-listed indicative estimate is available in this snapshot."}
           </p>
         </div>
       ) : (
         <>
           <div className="relative mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Reference / share" value={price(featuredVenue.referencePerShare)} />
-            <Metric label="Executable / share" value={price(featuredVenue.executablePerShare)} accent />
-            <Metric label="Normalized price" value={price(featuredVenue.executablePerShare)} />
+            <Metric label="Indicative estimate / share" value={price(featuredVenue.executablePerShare)} accent />
+            <Metric label="Indicative normalized price" value={price(featuredVenue.executablePerShare)} />
             <Metric label="Reference gap" value={featuredVenue.referenceGap == null ? "Unavailable" : signedPercent(featuredVenue.referenceGap)} accent />
           </div>
           <div className="relative mt-3 grid grid-cols-3 gap-2">
@@ -225,7 +225,7 @@ function Ticker({ rows }: { rows: OpportunityRow[] }) {
     );
   });
   return (
-    <div role="region" aria-label="Fresh executable quotes compared with reference prices" className="overflow-hidden border-y border-white/[0.07] bg-[#090d13] py-3">
+    <div role="region" aria-label="Fresh indicative estimates compared with reference prices" className="overflow-hidden border-y border-white/[0.07] bg-[#090d13] py-3">
       <div className="market-ticker-track flex w-max items-center">
         <div className="flex items-center">{items}</div>
         <div className="flex items-center" aria-hidden="true">{items}</div>
@@ -256,7 +256,7 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Metric label="Reference / share" value={price(representative.referencePerShare)} />
-        <Metric label="Executable / share" value={price(representative.executablePerShare)} accent />
+        <Metric label="Indicative estimate / share" value={price(representative.executablePerShare)} accent />
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.07] pt-3 text-[10px]">
         <span className="text-slate-500">Cross-venue spread</span>
@@ -316,7 +316,7 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Metric label="Reference / share" value={price(venues[0]?.referencePerShare ?? null)} />
-          <Metric label="Executable / share" value={price(venues[0]?.executablePerShare ?? null)} accent />
+          <Metric label="Indicative estimate / share" value={price(venues[0]?.executablePerShare ?? null)} accent />
           <Metric label="Cross-venue spread" value={row.crossVenueSpread == null ? "Unavailable" : signedPercent(row.crossVenueSpread)} />
           <Metric label="Fresh quotes" value={`${venues.filter((venue) => !venue.stale).length} / ${row.venues.length}`} />
         </div>
@@ -369,7 +369,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
           </h1>
           <p className="mt-5 text-base font-semibold text-slate-200 sm:text-lg">Find the price. See the execution.</p>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-            WOLV compares issuer reference data with executable BSC spot quotes, normalizes prices per share, and surfaces quote freshness and market status before you decide whether to trade.
+            WOLV compares issuer reference data with indicative BSC spot estimates, normalizes prices per share, and surfaces quote freshness and market status before you decide whether to trade.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d9a80a] px-5 text-xs font-black text-[#101010] shadow-[0_8px_24px_rgba(217,168,10,.16)] transition hover:-translate-y-0.5 hover:bg-[#f2c94c]">
@@ -438,7 +438,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               { number: "01", title: "Discover", text: "Scan eligible tokenized stocks and supported BSC venues." },
-              { number: "02", title: "Compare", text: "Review reference and executable prices normalized per share." },
+              { number: "02", title: "Compare", text: "Review reference and indicative prices normalized per share." },
               { number: "03", title: "Analyze", text: "Read transparent checks for quote freshness, market session, and outliers." },
               { number: "04", title: "Execute", text: "Open a fresh quote, inspect preflight, and approve in your wallet." },
             ].map((step, index) => (

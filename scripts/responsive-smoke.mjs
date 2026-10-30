@@ -146,7 +146,7 @@ async function run() {
     : null;
   const fixedRoutes = [
     { path: "/", expected: /TOKENIZED STOCKS|Find the price/ },
-    { path: "/gap", expected: /Cross-venue price discovery|Listed vs Executable Price/ },
+    { path: "/gap", expected: /Cross-venue price discovery|Listed vs Indicative Estimate/ },
     { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
     { path: "/trade", expected: /Select an Asset to Trade/ },
     { path: "/wallet", expected: /Wallet Address|Connect your wallet|Checking wallet connection/ },

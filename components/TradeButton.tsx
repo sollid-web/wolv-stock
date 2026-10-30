@@ -16,6 +16,7 @@ import {
   TRADE_QUOTE_TTL_MS as QUOTE_TTL_MS,
   walletConnectionView,
 } from "@/lib/tradeReadiness";
+import { validateQuote } from "@/lib/quoteValidation";
 
 type TokenInfo = {
   address: string;
@@ -28,6 +29,7 @@ type QuoteData = {
   quoteBinding: string;
   fromTokenAmount: string;
   toTokenAmount: string;
+  fromToken?: { tokenUnitPrice?: string | number };
   priceImpactPercent?: number | string;
   quoteFetchedAt?: number;
   executionMode: string;
@@ -251,6 +253,16 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       }
       if (typeof quoteResult?.quoteBinding !== "string" || !quoteResult.quoteBinding) {
         throw new Error("Quote failed — no server quote binding returned. Refresh and retry.");
+      }
+
+      const quoteValidation = validateQuote({
+        fromTokenAmount: quoteResult.fromTokenAmount,
+        toTokenAmount: quoteResult.toTokenAmount,
+        tokenUnitPrice: quoteResult.fromToken?.tokenUnitPrice ?? 1,
+        expectedFromTokenAmount: amountInWei,
+      });
+      if (!quoteValidation.ok) {
+        throw new Error(`Quote rejected before approval: ${quoteValidation.reason}`);
       }
 
       const quoteFetchedAt = typeof quoteResult?.quoteFetchedAt === "number" ? quoteResult.quoteFetchedAt : 0;
