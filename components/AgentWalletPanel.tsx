@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 type BawChain = { binanceChainId: string; name: string; simpleName: string };
 type BawAddress = { binanceChainId: string; chainName: string; address: string };
@@ -13,16 +13,12 @@ type BawBalance = {
   valueUsd: string;
 };
 type BawSafeSettings = {
-  maxSigninDuration: string;
-  inactiveSignoutDuration: string;
   dailyLimit: number;
   quotaUsed: number;
   quotaLeft: number;
   abnormalTxnHandling: string;
   tradeAllTokens: boolean;
   predictionEnabled: boolean;
-  devMode: { enabled: boolean; expiresAt: number | null; balanceExceeded: boolean };
-  sessionExpireTime: string;
 };
 type BawWalletSnapshot = {
   connected: boolean;
@@ -44,15 +40,26 @@ function formatUsd(value: string): string {
 }
 
 export default function AgentWalletPanel() {
+  const [accessToken, setAccessToken] = useState("");
   const [snapshot, setSnapshot] = useState<BawWalletSnapshot | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
+    if (!accessToken) {
+      setSnapshot(null);
+      setError("Enter the server-configured operator access token to load wallet data.");
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/agent/wallet", { cache: "no-store" });
+      const response = await fetch("/api/agent/wallet", {
+        cache: "no-store",
+        credentials: "omit",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(
@@ -61,15 +68,12 @@ export default function AgentWalletPanel() {
       }
       setSnapshot(data as BawWalletSnapshot);
     } catch (cause) {
+      setSnapshot(null);
       setError(cause instanceof Error ? cause.message : "Wallet status could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  }, [accessToken]);
 
   const settings = snapshot?.settings ?? null;
 
@@ -84,19 +88,65 @@ export default function AgentWalletPanel() {
             from this page.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="min-h-9 shrink-0 rounded-lg border border-[#FFC700]/35 px-3 text-[10px] font-bold text-[#FFC700] transition hover:bg-[#FFC700]/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Checking…" : "Refresh"}
-        </button>
       </div>
+
+      <form
+        className="mt-4 flex flex-col gap-2 sm:flex-row"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void load();
+        }}
+      >
+        <label className="sr-only" htmlFor="baw-operator-token">Operator access token</label>
+        <input
+          id="baw-operator-token"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={accessToken}
+          onChange={(event) => {
+            setAccessToken(event.target.value);
+            setSnapshot(null);
+            setError("");
+          }}
+          placeholder="Server-configured operator access token"
+          className="w-full min-h-10 rounded-lg border border-white/[0.1] bg-black/20 px-3 text-xs text-white placeholder:text-slate-500"
+        />
+        <button
+          type="submit"
+          disabled={loading || !accessToken}
+          className="min-h-10 shrink-0 rounded-lg border border-[#FFC700]/35 px-3 text-[10px] font-bold text-[#FFC700] transition hover:bg-[#FFC700]/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "Checking…" : snapshot ? "Refresh" : "Load wallet"}
+        </button>
+        {accessToken && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              setAccessToken("");
+              setSnapshot(null);
+              setError("");
+            }}
+            className="min-h-10 shrink-0 rounded-lg border border-white/[0.1] px-3 text-[10px] font-bold text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Forget
+          </button>
+        )}
+      </form>
+      <p className="mt-2 text-[10px] leading-5 text-slate-400">
+        The token is held in memory only and is sent only to this read-only wallet endpoint.
+      </p>
 
       {error && <p role="alert" className="mt-4 rounded-lg border border-rose-400/20 bg-rose-400/[0.06] p-3 text-xs text-rose-200">{error}</p>}
 
-      {!error && (
+      {!snapshot && !error && (
+        <p role="status" className="mt-4 text-xs text-slate-400">
+          Wallet status has not been loaded.
+        </p>
+      )}
+
+      {snapshot && !error && (
         <dl className="mt-4 space-y-3 text-xs">
           <div className="flex items-start justify-between gap-3 border-b border-white/[0.06] pb-3">
             <dt className="text-slate-400">CLI session</dt>
@@ -158,9 +208,8 @@ export default function AgentWalletPanel() {
                     <ul className="mt-2 space-y-1.5 text-slate-300">
                       <li className="flex justify-between gap-3"><span>Daily limit</span><span className="font-semibold text-slate-200">{formatUsd(String(settings.dailyLimit))} · used {formatUsd(String(settings.quotaUsed))}</span></li>
                       <li className="flex justify-between gap-3"><span>Abnormal transaction handling</span><span className="font-semibold text-slate-200">{settings.abnormalTxnHandling}</span></li>
-                      <li className="flex justify-between gap-3"><span>Sign-in duration / inactivity sign-out</span><span className="font-semibold text-slate-200">{settings.maxSigninDuration} / {settings.inactiveSignoutDuration}</span></li>
-                      <li className="flex justify-between gap-3"><span>Session expires</span><span className="font-semibold text-slate-200">{settings.sessionExpireTime}</span></li>
                       <li className="flex justify-between gap-3"><span>Trade all tokens</span><span className="font-semibold text-slate-200">{settings.tradeAllTokens ? "yes" : "no"}</span></li>
+                      <li className="flex justify-between gap-3"><span>Prediction markets enabled</span><span className="font-semibold text-slate-200">{settings.predictionEnabled ? "yes" : "no"}</span></li>
                     </ul>
                   </dd>
                 </div>

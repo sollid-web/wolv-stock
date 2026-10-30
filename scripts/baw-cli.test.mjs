@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
     createBawRunner,
@@ -39,14 +42,12 @@ const ADDRESSES = {
     addresses: [
         { binanceChainId: "56", chainName: "BSC", address: "0x1234567890abcdef1234567890abcdef12345678" },
         { binanceChainId: "CT_501", chainName: "Solana", address: "EhFh6YfvcCMuFjRbnxT3pFvixWJF9YVXTscMJLCwTbA" },
-        { binanceChainId: "56", chainName: "BSC", address: "not an address" },
     ],
 };
 
 const BALANCES = [
     { symbol: "USDT", address: "0x55d398326f9eF775485cA35bE4551F3f38b12345", binanceChainId: "56", balance: "1000.50", price: "1.0", value: "1000.50" },
     { symbol: "GHOST", address: "0xabc0000000000000000000000000000000000123", binanceChainId: "56", balance: "0", price: "0", value: "0" },
-    { symbol: "BAD", address: "0xabc0000000000000000000000000000000000123", binanceChainId: "56", balance: "NaN", price: "1", value: "1" },
 ];
 
 const SETTINGS = {
@@ -55,7 +56,7 @@ const SETTINGS = {
     dailyLimit: 50000,
     quotaUsed: 0,
     quotaLeft: 50000,
-    abnormalTxnHandling: "AUTO_REJECT",
+    abnormalTxnHandling: "AutoReject",
     tradeAllTokens: false,
     predictionEnabled: false,
     devMode: { enabled: false, expiresAt: null, balanceExceeded: false },
@@ -71,6 +72,14 @@ function connectedRunner(overrides = {}) {
         "wallet settings": SETTINGS,
         ...overrides,
     });
+}
+
+async function createStubBinary(t, source) {
+      const directory = await mkdtemp(join(tmpdir(), "wolv-baw-stub-"));
+      t.after(() => rm(directory, { recursive: true, force: true }));
+      const binary = join(directory, "baw-stub");
+      await writeFile(binary, `#!/usr/bin/env node\n${source}`, { mode: 0o700 });
+      return { binary, directory };
 }
 
 test("readWalletSnapshot short-circuits to connected=false without further commands when unconnected", async () => {
@@ -135,24 +144,31 @@ test("unavailable CLI maps to BAW_UNAVAILABLE and the snapshot is not returned",
     await assert.rejects(readWalletSnapshot({ runner, now: () => 0 }), /BAW_UNAVAILABLE/);
 });
 
-test("parseAddresses drops entries with malformed addresses", () => {
+test("parseAddresses rejects malformed addresses", () => {
     const parsed = parseAddresses(ADDRESSES);
     assert.equal(parsed.length, 2);
     assert.equal(parseAddresses({ addresses: [] }).length, 0);
+    assert.throws(() => parseAddresses({
+        addresses: [...ADDRESSES.addresses, { binanceChainId: "56", chainName: "BSC", address: "not an address" }],
+    }), /INVALID_OUTPUT/);
     assert.throws(() => parseAddresses({}), /INVALID_OUTPUT/);
     assert.throws(() => parseAddresses([]), /INVALID_OUTPUT/);
 });
 
-test("parseBalances keeps decimal strings and drops non-numeric values", () => {
+test("parseBalances keeps decimal strings and rejects non-numeric values", () => {
     const parsed = parseBalances(BALANCES);
     assert.equal(parsed.length, 2);
+    assert.throws(() => parseBalances([
+        ...BALANCES,
+        { symbol: "BAD", address: "0xabc0000000000000000000000000000000000123", binanceChainId: "56", balance: "NaN", price: "1", value: "1" },
+    ]), /INVALID_OUTPUT/);
     assert.throws(() => parseBalances("no"), /INVALID_OUTPUT/);
 });
 
 test("parseChains requires name, simpleName, and binanceChainId", () => {
     const parsed = parseChains(CHAINS);
     assert.equal(parsed.length, 2);
-    assert.equal(parseChains([{ binanceChainId: "56", name: "BNB Smart Chain", simpleName: "" }]).length, 0);
+    assert.throws(() => parseChains([{ binanceChainId: "56", name: "BNB Smart Chain", simpleName: "" }]), /INVALID_OUTPUT/);
     assert.throws(() => parseChains(null), /INVALID_OUTPUT/);
 });
 
@@ -167,14 +183,14 @@ test("parseWalletStatus accepts only documented states", () => {
 test("parseSettings returns only the whitelisted subset and rejects malformed records", () => {
     const parsed = parseSettings(SETTINGS);
     assert.deepEqual(Object.keys(parsed).sort(), [
-        "abnormalTxnHandling", "dailyLimit", "devMode", "inactiveSignoutDuration",
-        "maxSigninDuration", "predictionEnabled", "quotaLeft", "quotaUsed",
-        "sessionExpireTime", "tradeAllTokens",
+        "abnormalTxnHandling", "dailyLimit", "predictionEnabled", "quotaLeft",
+        "quotaUsed", "tradeAllTokens",
     ]);
-    assert.deepEqual(parsed.devMode, { enabled: false, expiresAt: null, balanceExceeded: false });
-    assert.equal(parseSettings({ ...SETTINGS, devMode: { enabled: false, expiresAt: 123, balanceExceeded: false } }).devMode.expiresAt, 123);
-    assert.throws(() => parseSettings({ ...SETTINGS, devMode: { enabled: "yes", expiresAt: null, balanceExceeded: false } }), /INVALID_OUTPUT/);
-    assert.throws(() => parseSettings({ ...SETTINGS, sessionExpireTime: "" }), /INVALID_OUTPUT/);
+    assert.equal("sessionExpireTime" in parsed, false);
+    assert.equal("devMode" in parsed, false);
+    assert.throws(() => parseSettings({ ...SETTINGS, dailyLimit: "not-a-number" }), /INVALID_OUTPUT/);
+    assert.throws(() => parseSettings({ ...SETTINGS, tradeAllTokens: "false" }), /INVALID_OUTPUT/);
+    assert.throws(() => parseSettings({ ...SETTINGS, abnormalTxnHandling: "AUTO_REJECT" }), /INVALID_OUTPUT/);
 });
 
 test("createBawRunner rejects non-positive timeouts and uses BAW_BIN override", () => {
@@ -182,4 +198,45 @@ test("createBawRunner rejects non-positive timeouts and uses BAW_BIN override", 
     assert.throws(() => createBawRunner({}, -5), /timeoutMs/);
     const runner = createBawRunner({ BAW_BIN: "/usr/local/bin/baw" });
     assert.equal(typeof runner, "function");
+});
+
+test("createBawRunner executes the offline CLI stub and blocks every non-allowlisted command", async (t) => {
+    const marker = join(tmpdir(), `wolv-baw-calls-${process.pid}-${Date.now()}`);
+    const responses = {
+        status: jsonPayload({ status: "CONNECTED" }),
+        chains: jsonPayload(CHAINS),
+        address: jsonPayload(ADDRESSES),
+        balance: jsonPayload(BALANCES),
+        settings: jsonPayload(SETTINGS),
+    };
+    const { binary } = await createStubBinary(t, `
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(marker)}, args.join(" ") + "\\n");
+const responses = ${JSON.stringify(responses)};
+process.stdout.write(responses[args[1]]);
+`);
+    t.after(() => rm(marker, { force: true }));
+
+    const runner = createBawRunner({ BAW_BIN: binary }, 2_000);
+    const snapshot = await readWalletSnapshot({ runner, now: () => 1_000 });
+    assert.equal(snapshot.connected, true);
+    assert.equal(snapshot.addresses.length, 2);
+    assert.equal(snapshot.balances.length, 2);
+    assert.deepEqual(
+        (await readFile(marker, "utf8")).trim().split("\n"),
+        ["wallet status --json", "wallet chains --json", "wallet address --json", "wallet balance --json", "wallet settings --json"],
+    );
+
+    await assert.rejects(
+        runner(["wallet", "send", "--recipient", "0x0000000000000000000000000000000000000000", "--json"]),
+        /BAW_COMMAND_NOT_ALLOWED/,
+    );
+    assert.equal((await readFile(marker, "utf8")).trim().split("\n").length, 5);
+});
+
+test("createBawRunner times out an offline CLI stub", async (t) => {
+    const { binary } = await createStubBinary(t, "setInterval(() => {}, 1_000);\n");
+    const runner = createBawRunner({ BAW_BIN: binary }, 50);
+    await assert.rejects(runner(["wallet", "status", "--json"]), /BAW_TIMEOUT/);
 });

@@ -3,10 +3,8 @@ import { execFile } from "node:child_process"
 const DEFAULT_TIMEOUT_MS = 20_000
 const MAX_OUTPUT_BYTES = 1_000_000
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/
-const DECIMAL_AMOUNT_PATTERN = /^\d+(?:\.\d+)?$/
-const ADDRESS_PATTERN = /^[A-Za-z0-9]{20,64}$/
+const SOLANA_ADDRESS_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const DECIMAL_PATTERN = /^\d+(?:\.\d+)?$/
-const ID_PATTERN = /^[A-Za-z0-9._:-]{1,32}$/
 
 type BawCommand =
     | "wallet status"
@@ -27,6 +25,7 @@ export type BawCliErrorCode =
     | "BAW_UNAVAILABLE"
     | "BAW_TIMEOUT"
     | "BAW_COMMAND_FAILED"
+    | "BAW_COMMAND_NOT_ALLOWED"
     | "INVALID_OUTPUT"
 
 export class BawCliError extends Error {
@@ -65,20 +64,12 @@ export type BawBalance = {
 }
 
 export type BawSafeSettings = {
-    maxSigninDuration: string
-    inactiveSignoutDuration: string
     dailyLimit: number
     quotaUsed: number
     quotaLeft: number
     abnormalTxnHandling: string
     tradeAllTokens: boolean
     predictionEnabled: boolean
-    devMode: {
-        enabled: boolean
-        expiresAt: number | null
-        balanceExceeded: boolean
-    }
-    sessionExpireTime: string
 }
 
 export type BawWalletSnapshot = {
@@ -100,6 +91,15 @@ export function createBawRunner(
         throw new Error("timeoutMs must be a positive safe integer")
     }
     return args => new Promise((resolve, reject) => {
+        const command = (Object.entries(COMMAND_ARGS) as [BawCommand, readonly string[]][])
+            .find(([, allowedArgs]) =>
+                allowedArgs.length === args.length
+                && allowedArgs.every((allowedArg, index) => allowedArg === args[index])
+            )?.[0]
+        if (!command) {
+            return reject(new BawCliError("BAW_COMMAND_NOT_ALLOWED", "command"))
+        }
+
         execFile(
             binary,
             [...args],
@@ -107,14 +107,15 @@ export function createBawRunner(
             (error, stdout) => {
                 if (error) {
                     const code = (error as NodeJS.ErrnoException).code
-                    if (code === "ENOENT") return reject(new BawCliError("BAW_UNAVAILABLE", args[1] ?? "cli"))
+                    const section = command.split(" ")[1]
+                    if (code === "ENOENT") return reject(new BawCliError("BAW_UNAVAILABLE", section))
                     if ((error as { killed?: boolean }).killed || code === "ETIMEDOUT") {
-                        return reject(new BawCliError("BAW_TIMEOUT", args[1] ?? "cli"))
+                        return reject(new BawCliError("BAW_TIMEOUT", section))
                     }
-                    return reject(new BawCliError("BAW_COMMAND_FAILED", args[1] ?? "cli"))
+                    return reject(new BawCliError("BAW_COMMAND_FAILED", section))
                 }
                 if (typeof stdout !== "string" || stdout.length > MAX_OUTPUT_BYTES) {
-                    return reject(new BawCliError("INVALID_OUTPUT", args[1] ?? "cli"))
+                    return reject(new BawCliError("INVALID_OUTPUT", command.split(" ")[1]))
                 }
                 resolve({ stdout })
             }
@@ -218,13 +219,15 @@ export function parseWalletStatus(data: unknown): "CONNECTED" | "UNCONNECTED" | 
 
 export function parseChains(data: unknown): BawChain[] {
     if (!Array.isArray(data)) throw new BawCliError("INVALID_OUTPUT", "chains")
-    return data.flatMap(value => {
-        if (!isRecord(value)) return []
+    return data.map(value => {
+        if (!isRecord(value)) throw new BawCliError("INVALID_OUTPUT", "chains")
         const binanceChainId = boundedString(value.binanceChainId, 16)
         const name = boundedString(value.name, 64)
         const simpleName = boundedString(value.simpleName, 64)
-        if (!binanceChainId || !name || !simpleName) return []
-        return [{ binanceChainId, name, simpleName }]
+        if (!binanceChainId || !/^(?:\d{1,16}|CT_501)$/.test(binanceChainId) || !name || !simpleName) {
+            throw new BawCliError("INVALID_OUTPUT", "chains")
+        }
+        return { binanceChainId, name, simpleName }
     })
 }
 
@@ -232,67 +235,63 @@ export function parseAddresses(data: unknown): BawAddress[] {
     if (!isRecord(data) || !Array.isArray(data.addresses)) {
         throw new BawCliError("INVALID_OUTPUT", "addresses")
     }
-    return data.addresses.flatMap(value => {
-        if (!isRecord(value)) return []
+    return data.addresses.map(value => {
+        if (!isRecord(value)) throw new BawCliError("INVALID_OUTPUT", "addresses")
         const binanceChainId = boundedString(value.binanceChainId, 16)
         const chainName = boundedString(value.chainName, 64)
         const address = boundedString(value.address, 64)
-        if (!binanceChainId || !chainName || !address || !ADDRESS_PATTERN.test(address)) return []
-        return [{ binanceChainId, chainName, address }]
+        if (!binanceChainId || !chainName || !address || !isWalletAddress(binanceChainId, address)) {
+            throw new BawCliError("INVALID_OUTPUT", "addresses")
+        }
+        return { binanceChainId, chainName, address }
     })
 }
 
 export function parseBalances(data: unknown): BawBalance[] {
     if (!Array.isArray(data)) throw new BawCliError("INVALID_OUTPUT", "balances")
-    return data.flatMap(value => {
-        if (!isRecord(value)) return []
+    return data.map(value => {
+        if (!isRecord(value)) throw new BawCliError("INVALID_OUTPUT", "balances")
         const symbol = boundedString(value.symbol, 32)
         const contractAddress = boundedString(value.address, 64)
         const binanceChainId = boundedString(value.binanceChainId, 16)
         const balance = decimalString(value.balance)
         const priceUsd = decimalString(value.price)
         const valueUsd = decimalString(value.value)
-        if (!symbol || !contractAddress || !binanceChainId || balance === null
-            || priceUsd === null || valueUsd === null) return []
-        return [{ symbol, contractAddress, binanceChainId, balance, priceUsd, valueUsd }]
+        if (!symbol || !/^[A-Za-z0-9._-]{1,32}$/.test(symbol)
+            || !contractAddress || !binanceChainId
+            || !isWalletAddress(binanceChainId, contractAddress) || balance === null
+            || priceUsd === null || valueUsd === null) {
+            throw new BawCliError("INVALID_OUTPUT", "balances")
+        }
+        return { symbol, contractAddress, binanceChainId, balance, priceUsd, valueUsd }
     })
 }
 
 export function parseSettings(data: unknown): BawSafeSettings {
     if (!isRecord(data)) throw new BawCliError("INVALID_OUTPUT", "settings")
-    const maxSigninDuration = boundedString(data.maxSigninDuration, 32)
-    const inactiveSignoutDuration = boundedString(data.inactiveSignoutDuration, 32)
     const abnormalTxnHandling = boundedString(data.abnormalTxnHandling, 32)
-    const sessionExpireTime = boundedString(data.sessionExpireTime, 64)
-    const devMode = isRecord(data.devMode) ? data.devMode : null
-    const expiresAt = devMode?.expiresAt
     if (
-        !maxSigninDuration || !inactiveSignoutDuration || !abnormalTxnHandling
-        || !sessionExpireTime || !devMode
-        || typeof devMode.enabled !== "boolean"
-        || typeof devMode.balanceExceeded !== "boolean"
-        || (expiresAt !== null && expiresAt !== undefined
-            && (typeof expiresAt !== "number" || !Number.isSafeInteger(expiresAt) || expiresAt <= 0))
+        (abnormalTxnHandling !== "AutoReject" && abnormalTxnHandling !== "NeedConfirmation")
+        || typeof data.tradeAllTokens !== "boolean"
+        || typeof data.predictionEnabled !== "boolean"
     ) {
         throw new BawCliError("INVALID_OUTPUT", "settings")
     }
 
     return {
-        maxSigninDuration,
-        inactiveSignoutDuration,
-        dailyLimit: finiteNumber(data.dailyLimit),
-        quotaUsed: finiteNumber(data.quotaUsed),
-        quotaLeft: finiteNumber(data.quotaLeft),
+        dailyLimit: requiredFiniteNumber(data.dailyLimit, "settings"),
+        quotaUsed: requiredFiniteNumber(data.quotaUsed, "settings"),
+        quotaLeft: requiredFiniteNumber(data.quotaLeft, "settings"),
         abnormalTxnHandling,
-        tradeAllTokens: data.tradeAllTokens === true,
-        predictionEnabled: data.predictionEnabled === true,
-        devMode: {
-            enabled: devMode.enabled,
-            expiresAt: typeof expiresAt === "number" ? expiresAt : null,
-            balanceExceeded: devMode.balanceExceeded
-        },
-        sessionExpireTime
+        tradeAllTokens: data.tradeAllTokens,
+        predictionEnabled: data.predictionEnabled
     }
+}
+
+function isWalletAddress(binanceChainId: string, address: string): boolean {
+    if (binanceChainId === "CT_501") return SOLANA_ADDRESS_PATTERN.test(address)
+    if (/^\d+$/.test(binanceChainId)) return EVM_ADDRESS_PATTERN.test(address)
+    return false
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -301,6 +300,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function boundedString(value: unknown, maxLength: number): string | null {
     return typeof value === "string" && value.length > 0 && value.length <= maxLength
+        && !/[\u0000-\u001f\u007f]/.test(value)
         ? value
         : null
 }
@@ -312,11 +312,9 @@ function decimalString(value: unknown): string | null {
         : null
 }
 
-function finiteNumber(value: unknown): number {
-    const parsed = typeof value === "number" ? value : Number(value)
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
-}
-
-export function isBawSectionId(value: string): boolean {
-    return ID_PATTERN.test(value)
+function requiredFiniteNumber(value: unknown, section: string): number {
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new BawCliError("INVALID_OUTPUT", section)
+    }
+    return value
 }

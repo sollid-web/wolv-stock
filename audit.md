@@ -1,5 +1,7 @@
 # WOLV × Binance Agentic Wallet — Integration Audit
 
+> **Historical snapshot:** The preflight and wallet-state claims below describe an earlier runtime and are not evidence that the current workspace has an authenticated BAW session. See the Phase 1 status at the end of this audit for the current environment and implementation.
+
 **Preflight (all read-only):** skill v1.15.0 current · CLI v1.12.0 current · `baw wallet status` → `CONNECTED` · no files modified, no transactions executed · existing logic tests re-run clean (110 pass / 0 fail, `npm run test:logic`).
 
 ---
@@ -100,3 +102,12 @@ BAW execution service (persistent host, NOT Vercel)  ─────┘
 ## 8. Smallest safe next step
 
 **Phase 1 only**: add `services/bawCli.ts` (read-only commands: `wallet status`, `wallet address`, `wallet chains`, `wallet balance`, `wallet settings` via `execFile`, with output schemas and an offline-stub test) plus `GET /api/agent/wallet`, and a sanitized wallet panel on `/agent`. In the same change, stop `app/api/agent/status` from serving mock "live" logs (label or remove). No write commands, no swap code, no DB.
+
+## Phase 1 status — 2026-10-30
+
+- The skill is present, readable, linked through `.claude/skills`, and pinned in `skills-lock.json`; skill v1.15.0 and CLI v1.12.0 passed their version checks.
+- This workspace has Node.js/npm, but the global CLI install was denied by filesystem permissions. The CLI ran through `npx`; `baw wallet status` returned `UNCONNECTED`. The authenticated Termux session is not available here, and addresses, balances, and wallet settings were not queried.
+- Phase 1 wrapper, route, panel, and tests are present. The wallet route now requires a server-only `BAW_WALLET_API_TOKEN` (at least 32 characters) and the panel holds it only in memory. The CLI wrapper allows only five exact read commands and validates each output section before returning it; login-session fields and raw CLI output are excluded.
+- Homepage agent volume is now marked unavailable without a live activity source; the dashboard labels its capability snapshot and explicitly disclaims live trading activity.
+- No writes, signatures, swaps, transfers, database work, or changes to the ZeroDev signing architecture were made. This runtime does **not** confirm an operational BAW wallet.
+- `npm run test:logic` passed 125 tests (0 failed), compared with the older 110-test count above; Phase 1 adds offline executable-stub, timeout, allowlist, and access-token tests.

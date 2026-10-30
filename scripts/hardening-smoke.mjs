@@ -14,7 +14,7 @@ async function expectStatus(name, path, expected, options) {
   return text;
 }
 
-for (const path of ["/", "/gap", "/trade", "/wallet"]) {
+for (const path of ["/", "/gap", "/trade", "/wallet", "/agent"]) {
   const text = await expectStatus(`page ${path}`, path, 200);
   assert.ok(text.length > 500, `page ${path}: response is unexpectedly small`);
 }
@@ -26,6 +26,14 @@ assert.match(home.text, /ON-CHAIN EXECUTION/);
 assert.match(home.text, /Execution opportunities/);
 assert.match(home.text, /WOLV market intelligence/);
 assert.doesNotMatch(home.text, /WOLV Stock Terminal/);
+
+const walletStatus = await request("/api/agent/wallet");
+assert.ok(
+  walletStatus.response.status === 401 || walletStatus.response.status === 503,
+  `unauthenticated wallet request must be denied, got HTTP ${walletStatus.response.status}`,
+);
+assert.equal(walletStatus.response.headers.get("cache-control"), "no-store");
+assert.doesNotMatch(walletStatus.text, /"addresses"|"balances"|"settings"/);
 
 await expectStatus("quote missing parameters", "/api/quote", 400);
 const minimumQuoteError = await expectStatus("quote below minimum", "/api/quote?toToken=0x0000000000000000000000000000000000000001&amount=2000000000000000000&userWalletAddress=0x1111111111111111111111111111111111111111", 400);

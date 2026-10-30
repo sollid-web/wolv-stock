@@ -47,7 +47,7 @@ interface AgentStatusResponse {
     };
     recentTransactions: string[];
   };
-  volume: VolumeStats;
+  volume: VolumeStats | null;
   executionLogs: ExecutionLogEntry[];
   checkedAt: number;
   fallback?: boolean;
@@ -56,12 +56,14 @@ interface AgentStatusResponse {
 type AgentStatus =
   | "running"
   | "paused"
-  | "circuit_breaker";
+  | "circuit_breaker"
+  | "unavailable";
 
 function computeAgentStatus(
   telemetry: NonNullable<AgentStatusResponse["telemetry"]>,
-  volume: VolumeStats
+  volume: VolumeStats | null
 ): AgentStatus {
+  if (!volume) return "unavailable";
   // Circuit breaker active when rolling volume hits the 7-day cap
   if (volume.remaining <= 0 || volume.utilizationPercent >= 100) return "circuit_breaker";
   // Paused when agent identity or commerce is disabled/not registered
@@ -82,6 +84,8 @@ function statusLabel(status: AgentStatus): string {
       return "Paused";
     case "circuit_breaker":
       return "Circuit Breaker Active";
+    case "unavailable":
+      return "Unavailable";
     default:
       return "Unknown";
   }
@@ -145,13 +149,14 @@ export default function AgentDashboard() {
   }, []);
 
   const telemetry = data?.telemetry;
-  const volume = data?.volume;
+  const volume = data?.volume ?? null;
   const executionLogs = data?.executionLogs ?? [];
-  const agentStatus = (telemetry && volume ? computeAgentStatus(telemetry, volume) : null);
+  const agentStatus = telemetry ? computeAgentStatus(telemetry, volume) : null;
 
   const isRunning = agentStatus === "running";
   const isPaused = agentStatus === "paused";
   const isCircuitBreaker = agentStatus === "circuit_breaker";
+  const isUnavailable = !agentStatus || agentStatus === "unavailable";
   const sessionKey = telemetry?.sessionKey;
   const sessionExpiry = sessionKey?.expiresAt ? new Date(sessionKey.expiresAt).toLocaleDateString() : "—";
 
@@ -165,9 +170,12 @@ export default function AgentDashboard() {
         <div>
           <p className="mb-1 inline-flex items-center gap-2 rounded-full border border-[#FFC700]/25 bg-[#FFC700]/[0.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#FFC700]">
             <span className="size-1.5 rounded-full bg-[#FFC700]" />
-            Agent status · BNB Smart Chain
+            Agent capability snapshot · BNB Smart Chain
           </p>
           <h2 className="text-lg font-black tracking-tight text-white sm:text-xl">Autonomous agent guardrails</h2>
+          <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">
+            Capability/configuration status only. Live execution volume and transaction history are unavailable; this is not a live trading activity feed.
+          </p>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -177,15 +185,19 @@ export default function AgentDashboard() {
                 ? "bg-emerald-500/[0.08] border border-emerald-500/20 text-emerald-300 shadow-[0_0_12px_rgba(34,197,94,.12)]"
                 : isPaused
                 ? "bg-amber-500/[0.08] border border-amber-500/20 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,.12)]"
+                : isCircuitBreaker
+                ? "bg-rose-500/[0.08] border border-rose-500/20 text-rose-300 shadow-[0_0_12px_rgba(248,113,113,.12)]"
+                : isUnavailable
+                ? "border border-white/[0.1] bg-white/[0.03] text-slate-400"
                 : "bg-rose-500/[0.08] border border-rose-500/20 text-rose-300 shadow-[0_0_12px_rgba(248,113,113,.12)]"}
             `}
-            title={statusLabel(agentStatus ?? "paused")}
+            title={statusLabel(agentStatus ?? "unavailable")}
           >
             <span
               className="h-1.5 w-1.5 rounded-full bg-current animate-pulse"
               aria-hidden="true"
             />
-            {statusLabel(agentStatus ?? "paused")}
+            {statusLabel(agentStatus ?? "unavailable")}
           </span>
         </div>
       </header>
@@ -205,32 +217,40 @@ export default function AgentDashboard() {
               {volume ? formatBnb(volume.totalVolume7d) : "—"}
             </p>
           </div>
-          <div className="w-full bg-white/[0.05] rounded-full h-2 overflow-hidden border border-white/[0.08] mb-2">
-            <div
-              className="h-full bg-gradient-to-r from-[#FFC700] to-[#d9a80a] transition-all duration-500"
-              style={{ width: `${volumePercent}%` }}
-              role="progressbar"
-              aria-valuenow={volume ? Math.round(volume.utilizationPercent) : 0}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            />
-          </div>
-          <div className="flex justify-between text-[10px] text-slate-400">
-            <span>0 BNB used</span>
-            <span>{volume ? volume.totalVolume7d.toFixed(3) : "—"} / {volume ? volume.cap.toFixed(1) : "—"} BNB cap</span>
-            <span>{volume ? volume.remaining.toFixed(3) : "—"} remaining</span>
-          </div>
-          <p className="mt-2 text-xs text-slate-400">
-            Per-trade limit: {volume ? formatBnb(volume.perTradeLimit) : "—"} · Max executable this cycle:
-            {volume ? formatBnb(volume.maxPerTradeRemaining) : "—"}
-          </p>
+          {volume ? (
+            <>
+              <div className="w-full bg-white/[0.05] rounded-full h-2 overflow-hidden border border-white/[0.08] mb-2">
+                <div
+                  className="h-full bg-gradient-to-r from-[#FFC700] to-[#d9a80a] transition-all duration-500"
+                  style={{ width: `${volumePercent}%` }}
+                  role="progressbar"
+                  aria-valuenow={Math.round(volume.utilizationPercent)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>{volume.totalVolume7d.toFixed(3)} BNB used</span>
+                <span>{volume.totalVolume7d.toFixed(3)} / {volume.cap.toFixed(1)} BNB cap</span>
+                <span>{volume.remaining.toFixed(3)} remaining</span>
+              </div>
+              <p className="mt-2 text-xs text-slate-400">
+                Per-trade limit: {formatBnb(volume.perTradeLimit)} · Max executable this cycle:
+                {formatBnb(volume.maxPerTradeRemaining)}
+              </p>
+            </>
+          ) : (
+            <p className="text-xs leading-5 text-slate-400">
+              Unavailable — no live execution-volume source is configured.
+            </p>
+          )}
         </section>
 
         {/* Agent Status */}
         <section className="wolv-glass-control rounded-xl p-4 flex flex-col justify-between">
           <div>
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Agent status</p>
-            <p className="text-sm font-bold text-white">{statusLabel(agentStatus ?? "paused")}</p>
+            <p className="text-sm font-bold text-white">{statusLabel(agentStatus ?? "unavailable")}</p>
             <p className="mt-1 text-xs text-slate-400">{telemetry?.executionMode ?? "—"}</p>
           </div>
           <div className="mt-4 rounded-lg border border-white/[0.06] bg-black/30 p-3">
@@ -288,14 +308,14 @@ export default function AgentDashboard() {
         <div className="flex items-center justify-between border-b border-white/[0.06] pb-3 mb-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Execution log</p>
-            <span className="text-xs font-bold text-slate-400">No executions recorded</span>
+            <span className="text-xs font-bold text-slate-400">Live history unavailable</span>
           </div>
           <span className="text-[10px] text-slate-500">{data?.checkedAt ? new Date(data.checkedAt).toLocaleTimeString() : "—"}</span>
         </div>
         <div className="max-h-48 overflow-y-auto pr-2 space-y-2 sm:max-h-52 md:max-h-60">
           {executionLogs.length === 0 ? (
             <p className="py-4 text-center text-xs text-slate-500">
-              No agent activity. Execution is kill-switched off and no log store exists yet — entries will appear only after guarded execution is enabled.
+              No live execution history is available. This panel is not a live trading activity feed.
             </p>
           ) : (
             <ul>
