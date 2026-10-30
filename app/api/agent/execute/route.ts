@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { AltanaWalletProvider, TWAKProvider } from "@bnbagent/sdk/wallets";
 import { evaluateMockTrigger, parseAgentStrategy } from "../../../../lib/agentStrategies.ts";
+import { buildCapabilityTelemetry } from "../../../../lib/agentTelemetry.ts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -70,21 +70,7 @@ async function readBoundedJson(request: Request): Promise<BoundedJsonResult> {
 }
 
 export async function GET() {
-  return Response.json(
-    {
-      executionMode: "wallet-confirmation",
-      agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
-      commerce: { standard: "ERC-8183", jobId: null, status: "disabled" },
-      sessionKey: { status: "disabled", reason: "Agent signing is not enabled in wallet-confirmation mode." },
-      x402: { status: "disabled", reason: "No autonomous commerce job is created in wallet-confirmation mode." },
-      walletProviders: {
-        altana: { sdkAvailable: typeof AltanaWalletProvider === "function", configured: false },
-        twak: { sdkAvailable: typeof TWAKProvider === "function", configured: false },
-      },
-      recentTransactions: [],
-    },
-    { headers: responseHeaders }
-  );
+  return Response.json(buildCapabilityTelemetry(), { headers: responseHeaders });
 }
 
 export async function POST(request: Request) {

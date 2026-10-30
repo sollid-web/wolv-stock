@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import type { AgentStrategy } from "@/lib/agentStrategies";
+import AgentWalletPanel from "@/components/AgentWalletPanel";
 
 type AgentTelemetry = {
   executionMode: string;
@@ -165,6 +166,7 @@ export default function AgentTerminal() {
         </section>
 
         <aside className="space-y-5">
+          <AgentWalletPanel />
           <section className={panelClass} aria-labelledby="telemetry-heading">
             <h2 id="telemetry-heading" className="text-lg font-bold text-white">Agent telemetry</h2>
             {telemetryError && <p role="alert" className="mt-3 text-xs text-rose-200">{telemetryError}</p>}

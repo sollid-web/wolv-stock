@@ -288,17 +288,15 @@ export default function AgentDashboard() {
         <div className="flex items-center justify-between border-b border-white/[0.06] pb-3 mb-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Execution log</p>
-            <span className={`text-xs font-bold ${
-              data?.fallback ? "text-[#FFC700]" : "text-emerald-400"
-            }`}>
-              {data?.fallback ? "Live feed · cached state" : "Live feed"}
-            </span>
+            <span className="text-xs font-bold text-slate-400">No executions recorded</span>
           </div>
           <span className="text-[10px] text-slate-500">{data?.checkedAt ? new Date(data.checkedAt).toLocaleTimeString() : "—"}</span>
         </div>
         <div className="max-h-48 overflow-y-auto pr-2 space-y-2 sm:max-h-52 md:max-h-60">
           {executionLogs.length === 0 ? (
-            <p className="py-4 text-center text-xs text-slate-500">No recent agent activity.</p>
+            <p className="py-4 text-center text-xs text-slate-500">
+              No agent activity. Execution is kill-switched off and no log store exists yet — entries will appear only after guarded execution is enabled.
+            </p>
           ) : (
             <ul>
               {executionLogs.map((entry) => (
