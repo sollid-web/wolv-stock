@@ -39,26 +39,30 @@ function formatUsd(value: string): string {
   return `$${parsed.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function AgentWalletPanel() {
-  const [accessToken, setAccessToken] = useState("");
+type AgentWalletPanelProps = {
+  authenticated: boolean;
+  browserWalletAddress?: string;
+  onAuthenticate: () => Promise<boolean>;
+  onSignOut: () => Promise<void>;
+};
+
+export default function AgentWalletPanel({
+  authenticated,
+  browserWalletAddress,
+  onAuthenticate,
+  onSignOut,
+}: AgentWalletPanelProps) {
   const [snapshot, setSnapshot] = useState<BawWalletSnapshot | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!accessToken) {
-      setSnapshot(null);
-      setError("Enter the server-configured operator access token to load wallet data.");
-      return;
-    }
-
     setLoading(true);
     setError("");
     try {
       const response = await fetch("/api/agent/wallet", {
         cache: "no-store",
-        credentials: "omit",
-        headers: { Authorization: `Bearer ${accessToken}` },
+        credentials: "same-origin",
       });
       const data = await response.json();
       if (!response.ok) {
@@ -73,7 +77,7 @@ export default function AgentWalletPanel() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, []);
 
   const settings = snapshot?.settings ?? null;
 
@@ -90,52 +94,44 @@ export default function AgentWalletPanel() {
         </div>
       </div>
 
-      <form
-        className="mt-4 flex flex-col gap-2 sm:flex-row"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void load();
-        }}
-      >
-        <label className="sr-only" htmlFor="baw-operator-token">Operator access token</label>
-        <input
-          id="baw-operator-token"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          value={accessToken}
-          onChange={(event) => {
-            setAccessToken(event.target.value);
-            setSnapshot(null);
-            setError("");
-          }}
-          placeholder="Server-configured operator access token"
-          className="w-full min-h-10 rounded-lg border border-white/[0.1] bg-black/20 px-3 text-xs text-white placeholder:text-slate-500"
-        />
+      {browserWalletAddress && (
+        <p className="mt-3 break-all text-[10px] text-slate-400">
+          Browser authorization wallet: <span className="font-mono text-slate-300">{browserWalletAddress}</span>
+        </p>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
-          type="submit"
-          disabled={loading || !accessToken}
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            void (async () => {
+              if (!authenticated && !await onAuthenticate()) return;
+              await load();
+            })();
+          }}
           className="min-h-10 shrink-0 rounded-lg border border-[#FFC700]/35 px-3 text-[10px] font-bold text-[#FFC700] transition hover:bg-[#FFC700]/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Checking…" : snapshot ? "Refresh" : "Load wallet"}
+          {loading ? "Checking…" : !authenticated ? "Authorize with browser wallet" : snapshot ? "Refresh" : "Load wallet"}
         </button>
-        {accessToken && (
+        {authenticated && (
           <button
             type="button"
             disabled={loading}
             onClick={() => {
-              setAccessToken("");
+              void onSignOut();
               setSnapshot(null);
               setError("");
             }}
             className="min-h-10 shrink-0 rounded-lg border border-white/[0.1] px-3 text-[10px] font-bold text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Forget
+            Sign out
           </button>
         )}
-      </form>
+      </div>
       <p className="mt-2 text-[10px] leading-5 text-slate-400">
-        The token is held in memory only and is sent only to this read-only wallet endpoint.
+        Access uses a short-lived HttpOnly session authorized by your connected browser wallet. The server bearer
+        token and Binance credentials never enter browser code. This is a message signature, not a transaction signature.
+        This identity does not replace or represent the BAW operator wallet.
       </p>
 
       {error && <p role="alert" className="mt-4 rounded-lg border border-rose-400/20 bg-rose-400/[0.06] p-3 text-xs text-rose-200">{error}</p>}
@@ -231,8 +227,7 @@ export default function AgentWalletPanel() {
         </dl>
       )}
       <p className="mt-4 text-[10px] leading-5 text-slate-400">
-        Snapshot time: {snapshot?.fetchedAt ?? "—"}. No trading commands are issued by this panel;
-        balances and settings are read from the local CLI session only.
+        Snapshot time: {snapshot?.fetchedAt ?? "—"}. No transaction is submitted from this panel; balances and settings are read from the local CLI session only.
       </p>
     </section>
   );

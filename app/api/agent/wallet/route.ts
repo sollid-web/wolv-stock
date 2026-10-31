@@ -1,5 +1,5 @@
-import { BawCliError, readWalletSnapshot, type BawWalletSnapshot } from "@/services/bawCli"
-import { authorizeBawWalletRequest } from "@/services/bawWalletAuth"
+import { BawCliError, readWalletSnapshot, type BawWalletSnapshot } from "../../../../services/bawCli.ts"
+import { authorizeBawWalletRequest } from "../../../../services/bawWalletAuth.ts"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -26,7 +26,7 @@ function errorResponse(error: BawCliError): Response {
 }
 
 export async function GET(request: Request): Promise<Response> {
-    const authorization = authorizeBawWalletRequest(request, process.env.BAW_WALLET_API_TOKEN)
+    const authorization = await authorizeBawWalletRequest(request, process.env.BAW_WALLET_API_TOKEN)
     if (authorization === "not_configured") {
         return Response.json(
             { error: "BAW_ACCESS_NOT_CONFIGURED", message: "Operator wallet access is not configured on this host." },
@@ -37,6 +37,12 @@ export async function GET(request: Request): Promise<Response> {
         return Response.json(
             { error: "BAW_ACCESS_DENIED", message: "The operator access token is missing or invalid." },
             { status: 401, headers: { "Cache-Control": "no-store" } }
+        )
+    }
+    if (authorization === "storage_unavailable") {
+        return Response.json(
+            { error: "BAW_AUTH_STORAGE_UNAVAILABLE", message: "Browser-wallet authentication storage is unavailable." },
+            { status: 503, headers: responseHeaders }
         )
     }
 

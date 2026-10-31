@@ -1,13 +1,17 @@
 import crypto from "crypto";
-import { EVM_ADDRESS_PATTERN } from "@/lib/apiValidation";
+import { EVM_ADDRESS_PATTERN } from "./apiValidation.ts";
 
 const QUOTE_BINDING_TTL_MS = 30_000;
 
 type QuoteBindingPayload = {
   toToken: string;
+  fromToken?: string;
   amount: string;
   wallet: string;
   quoteId: string;
+  chainId?: string;
+  direction?: "BUY" | "SELL";
+  slippageBps?: number;
   approveTarget?: string;
   issuedAt: number;
 };
@@ -29,7 +33,8 @@ export function createQuoteBinding(input: Omit<QuoteBindingPayload, "issuedAt">,
 
 export function verifyQuoteBinding(
   binding: string,
-  expected: Omit<QuoteBindingPayload, "issuedAt">
+  expected: Omit<QuoteBindingPayload, "issuedAt">,
+  now = Date.now()
 ): { ok: true; issuedAt: number; approveTarget?: string } | { ok: false; reason: string } {
   try {
     if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(binding)) {
@@ -53,7 +58,7 @@ export function verifyQuoteBinding(
     ) {
       return { ok: false, reason: "Incomplete quote binding" };
     }
-    if (Date.now() - payload.issuedAt < 0 || Date.now() - payload.issuedAt >= QUOTE_BINDING_TTL_MS) {
+    if (now - payload.issuedAt < 0 || now - payload.issuedAt >= QUOTE_BINDING_TTL_MS) {
       return { ok: false, reason: "Quote binding expired" };
     }
     if (
@@ -63,6 +68,23 @@ export function verifyQuoteBinding(
       payload.quoteId !== expected.quoteId
     ) {
       return { ok: false, reason: "Quote binding does not match this trade" };
+    }
+    if (
+      payload.fromToken !== expected.fromToken ||
+      payload.chainId !== expected.chainId ||
+      payload.direction !== expected.direction ||
+      payload.slippageBps !== expected.slippageBps
+    ) {
+      return { ok: false, reason: "Quote binding does not match the quoted route" };
+    }
+    if (
+      (payload.fromToken !== undefined && !EVM_ADDRESS_PATTERN.test(payload.fromToken)) ||
+      (payload.chainId !== undefined && payload.chainId !== "56") ||
+      (payload.direction !== undefined && payload.direction !== "BUY" && payload.direction !== "SELL") ||
+      (payload.slippageBps !== undefined &&
+        (!Number.isSafeInteger(payload.slippageBps) || payload.slippageBps < 1 || payload.slippageBps > 500))
+    ) {
+      return { ok: false, reason: "Quote binding contains invalid route parameters" };
     }
     if (payload.approveTarget !== undefined && !EVM_ADDRESS_PATTERN.test(payload.approveTarget)) {
       return { ok: false, reason: "Quote binding contains an invalid spender" };
