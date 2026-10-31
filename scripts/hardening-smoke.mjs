@@ -35,6 +35,24 @@ assert.ok(
 assert.equal(walletStatus.response.headers.get("cache-control"), "no-store");
 assert.doesNotMatch(walletStatus.text, /"addresses"|"balances"|"settings"/);
 
+const agentQuote = await request("/api/agent/quote", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    direction: "BUY",
+    tokenAddress: "0x0000000000000000000000000000000000000001",
+    amount: "5",
+    chainId: "56",
+    slippageBps: 100,
+  }),
+});
+assert.ok(
+  agentQuote.response.status === 401 || agentQuote.response.status === 503,
+  `unauthenticated agent quote request must be denied, got HTTP ${agentQuote.response.status}`,
+);
+assert.equal(agentQuote.response.headers.get("cache-control"), "no-store");
+assert.match(agentQuote.text, /"status":"REJECTED"/);
+
 await expectStatus("quote missing parameters", "/api/quote", 400);
 const minimumQuoteError = await expectStatus("quote below minimum", "/api/quote?toToken=0x0000000000000000000000000000000000000001&amount=2000000000000000000&userWalletAddress=0x1111111111111111111111111111111111111111", 400);
 assert.match(minimumQuoteError, /minimum order amount is 5 USDT/i);

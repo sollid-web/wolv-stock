@@ -150,7 +150,7 @@ async function run() {
     { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
     { path: "/trade", expected: /Select an Asset to Trade/ },
     { path: "/wallet", expected: /Wallet Address|Connect your wallet|Checking wallet connection/ },
-    { path: "/agent", expected: /Strategy control/ },
+    { path: "/agent", expected: /(?=.*Strategy control)(?=.*Quote only — no transaction submitted)/s },
   ];
 
   for (const width of widths) {
