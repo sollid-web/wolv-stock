@@ -33,6 +33,7 @@ type QuoteRoute = {
 };
 
 const cache = new Map<string, Q>();
+const marketCache = new Map<string, Q>();
 export const QUOTE_TTL_MS = OPPORTUNITY_QUOTE_TTL_MS;
 let last = 0;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -136,4 +137,65 @@ export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
   }
 
   return { ok: false, err: "rate limited", ts: Date.now() };
+}
+
+// Public market-monitor price. This validates route identity and price math, but
+// deliberately does not apply wallet-execution authorization or reference-gap policies.
+export async function marketQuoteUsd(addr: string, usdt = 100): Promise<Q> {
+  const hit = marketCache.get(addr);
+  if (hit && isQuoteFresh(hit)) return hit;
+
+  const requestedAmount = String(usdt) + "0".repeat(18);
+  try {
+    const response: unknown = await getRWAQuote(addr, requestedAmount);
+    const routes = isRecord(response) && Array.isArray(response.data)
+      ? response.data.filter((route): route is QuoteRoute =>
+          isQuoteRoute(route) && isProviderIntegerAmount(route.toTokenAmount)
+        )
+      : [];
+    routes.sort((a, b) => Number(b.toTokenAmount ?? 0) - Number(a.toTokenAmount ?? 0));
+    const best = routes[0];
+    if (
+      !best ||
+      best.binanceChainId !== "56" ||
+      best.fromTokenAmount !== requestedAmount ||
+      !matchesTokenAddress(best.fromToken?.tokenContractAddress, BSC_USDT_ADDRESS) ||
+      !matchesTokenAddress(best.toToken?.tokenContractAddress, addr) ||
+      typeof best.fromToken?.decimal !== "string" ||
+      typeof best.toToken?.decimal !== "string"
+    ) {
+      const message = isRecord(response) && typeof response.msg === "string" ? response.msg : "no valid market route";
+      throw new Error(message);
+    }
+
+    const validation = validateQuote({
+      fromTokenAmount: best.fromTokenAmount,
+      toTokenAmount: best.toTokenAmount,
+      fromTokenDecimals: best.fromToken.decimal,
+      toTokenDecimals: best.toToken.decimal,
+      tokenUnitPrice: best.fromToken.tokenUnitPrice,
+      expectedFromTokenAmount: requestedAmount,
+    });
+    if (!validation.ok) throw new Error(validation.reason);
+
+    const quote: QuoteSuccess = {
+      ok: true,
+      usd: validation.usd,
+      walletBound: false,
+      mode: best.executionMode ?? "unknown",
+      vendor: best.vendorName ?? "unknown",
+      impact: asFiniteNumber(best.priceImpactPercent),
+      ts: Date.now(),
+    };
+    marketCache.set(addr, quote);
+    return quote;
+  } catch (error: unknown) {
+    const q: Q = {
+      ok: false,
+      err: error instanceof Error ? error.message.slice(0, 140) : String(error).slice(0, 140),
+      ts: Date.now(),
+    };
+    marketCache.set(addr, q);
+    return q;
+  }
 }

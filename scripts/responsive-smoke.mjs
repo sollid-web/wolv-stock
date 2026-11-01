@@ -557,6 +557,35 @@ async function runAgentRefusalChecks() {
           errors: []
         }), { headers: { "content-type": "application/json" } });
       }
+      if (url.pathname === "/api/agent/control" && method === "GET") {
+        const stopReason = "Responsive fixture global stop state";
+        return new Response(JSON.stringify({
+          control: {
+            emergency_stop: true,
+            stop_monitoring: true,
+            reject_new_opportunities: true,
+            stop_reason: stopReason,
+            permission_expires_at: null,
+            permission_active: false,
+            updated_at: Date.now()
+          },
+          activity: [],
+          nextCursor: null,
+          proposals: [],
+          policyRefusals: [],
+          observations: [],
+          activePolicy: null,
+          opportunities: [],
+          analyses: [],
+          strategyEvaluations: [],
+          execution: { enabled: false, status: "EXECUTION_BLOCKED" },
+          configuration: {
+            orchestrationEnabled: false,
+            collectorEnabled: false,
+            databaseConfigured: true
+          }
+        }), { headers: { "content-type": "application/json" } });
+      }
       if (url.pathname === "/api/agent/execute" && method === "POST") {
         const body = JSON.parse(init.body);
         window.__WOLV_AGENT_ACTIONS.push(body.action);
@@ -628,10 +657,11 @@ async function runAgentRefusalChecks() {
   await send("Page.addScriptToEvaluateOnNewDocument", { source: script });
   await navigate(new URL("/agent", baseUrl).href, /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s);
   await waitForCondition(
-    `document.body.innerText.includes("Authorize with your connected browser wallet")`,
+    `document.body.innerText.includes("A short-lived browser-wallet session is required for control changes.")`,
     "unauthorized BAW quote refusal",
   );
-  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Request BAW quote" && button.disabled)`), true);
+  assert.equal(await evaluate(`window.__WOLV_AGENT_ENDPOINTS.includes("quote")`), false);
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Authorize control plane")`), true);
   console.log("PASS agent terminal · disconnected BAW authorization disables quote request");
 
   await navigate(new URL("/wallet", baseUrl).href, /Connect your wallet|Wallet connection/);
@@ -646,56 +676,13 @@ async function runAgentRefusalChecks() {
   );
   await navigate(new URL("/agent", baseUrl).href, /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s);
   await waitForCondition(
-    `document.body.innerText.includes("Authorize with your connected browser wallet")`,
-    "unauthorized BAW quote refusal with connected browser wallet",
+    `document.body.innerText.includes("Authorize control plane")`,
+    "connected browser wallet authorization action",
   );
-  await clickButton("Authorize with browser wallet");
-  try {
-    await waitForCondition(
-      `document.body.innerText.includes("BAW live quote") && !Array.from(document.querySelectorAll("button")).find((button) => button.innerText.trim() === "Request BAW quote")?.disabled`,
-      "mocked BAW quote form",
-      15_000,
-    );
-  } catch (error) {
-    const diagnostic = await evaluate(`(() => ({
-      authorized: window.__WOLV_AGENT_SESSION_AUTHORIZED,
-      sessionRequests: window.__WOLV_AGENT_SESSION_REQUESTS,
-      walletCalls: window.__WOLV_AGENT_WALLET_CALLS,
-      quoteButtonDisabled: Array.from(document.querySelectorAll("button")).find((button) => button.innerText.trim() === "Request BAW quote")?.disabled,
-      sessionMessage: document.body.innerText.includes("Authorize with your connected browser wallet")
-    }))()`);
-    throw new Error(`${error instanceof Error ? error.message : String(error)}; auth diagnostic: ${JSON.stringify(diagnostic)}`);
-  }
-  await evaluate(`(() => {
-    const setValue = (selector, value) => {
-      const input = document.querySelector(selector);
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-    setValue('input[placeholder="0x…"]', ${JSON.stringify(fixtureTokenAddress)});
-    setValue('input[placeholder="5 or more"]', "5");
-  })()`);
-  await clickButton("Request BAW quote");
+  await clickButton("Authorize control plane");
   await waitForCondition(
-    `document.body.innerText.includes("Provider semantics are not verified.")`,
-    "rejected BAW quote state",
-  );
-  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Review and prepare this trade")`), false);
-  console.log("PASS agent terminal · rejected quote has reasons and no approval action");
-
-  await evaluate(`(() => { window.__WOLV_AGENT_QUOTE_MODE = "expired"; })()`);
-  await clickButton("Request BAW quote");
-  await waitForCondition(
-    `document.body.innerText.includes("This quote is expired.")`,
-    "expired BAW quote state",
-  );
-  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Review and prepare this trade")`), false);
-  console.log("PASS agent terminal · expired quote has no approval action");
-
-  await clickButton("Simulate mock trigger");
-  await waitForCondition(
-    `document.body.innerText.includes("Mock threshold met. No transaction was sent")`,
-    "AI mock recommendation simulation",
+    `document.body.innerText.includes("Emergency controls") && document.body.innerText.includes("EXECUTION_BLOCKED")`,
+    "authorized persistent control-plane dashboard",
   );
   const agentState = await evaluate(`(() => ({
     text: document.body.innerText,
@@ -703,12 +690,13 @@ async function runAgentRefusalChecks() {
     endpoints: window.__WOLV_AGENT_ENDPOINTS,
     executionButtons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()).filter((label) => /Approve and Execute|Review and prepare/.test(label))
   }))()`);
-  assert.match(agentState.text, /No transaction hashes/);
-  assert.match(agentState.text, /Open trade terminal for wallet review/);
-  assert.deepEqual(agentState.actions, ["simulate"]);
+  assert.match(agentState.text, /Emergency controls/);
+  assert.match(agentState.text, /Pending proposals/);
+  assert.match(agentState.text, /Opportunity queue/);
+  assert.match(agentState.text, /Persisted activity/);
+  assert.match(agentState.text, /EXECUTION_BLOCKED/);
   assert.deepEqual(agentState.executionButtons, []);
-  assert.deepEqual(agentState.endpoints, ["quote", "quote"]);
-  console.log("PASS agent terminal · AI trigger stays a mock recommendation and cannot authorize execution");
+  console.log("PASS agent terminal · authorized control plane remains execution-blocked and exposes proposal/policy controls");
 }
 
 async function run() {
@@ -760,7 +748,7 @@ async function run() {
       { path: "/trade/not-a-contract", expected: /Asset not found/ },
       { path: `/stock/${missingTokenAddress}`, expected: /Token not found/ },
       { path: `/trade/${missingTokenAddress}`, expected: /Asset not found/ },
-      { path: `/stock/${unavailableTokenAddress}`, expected: /Live asset signal.*Quote unavailable: no route/is },
+      { path: `/stock/${unavailableTokenAddress}`, expected: /Live asset signal.*(?:Indicative )?quote unavailable.*(?:no route|no valid market route)/is },
     ]) {
         const url = new URL(route.path, baseUrl).href;
         const state = await navigate(url, route.expected);

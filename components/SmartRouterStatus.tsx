@@ -1,6 +1,6 @@
 import { getRWATokenList } from "@/lib/binance";
 import { isAssetCompliant } from "@/lib/compliance";
-import { quoteUsd } from "@/lib/quotes";
+import { marketQuoteUsd } from "@/lib/quotes";
 import { parseRwaAssetRecords, type RwaAssetRecord } from "@/lib/spotAssets";
 import { selectBestRouterQuote } from "@/lib/routerQuoteSelection";
 import { validateQuote } from "@/lib/quoteValidation";
@@ -52,7 +52,7 @@ export default async function SmartRouterStatus({ ticker }: { ticker: string }) 
     try {
       rows = await Promise.all(
         matches.map(async (token) => {
-          const q = await quoteUsd(token.tokenContractAddress, 100);
+          const q = await marketQuoteUsd(token.tokenContractAddress, 100);
           const platform = normalizePlatform(token.platformId);
           const referenceCheck = q.ok
             ? validateQuote({ usd: q.usd, referencePrice: token.referencePrice, tokenToShareRatio: token.tokenToShareRatio })

@@ -1,4 +1,4 @@
-import { quoteUsd } from "./quotes";
+import { marketQuoteUsd } from "./quotes";
 import type { RwaAssetRecord } from "./spotAssets";
 import {
   buildOpportunityRow,
@@ -64,7 +64,7 @@ async function loadPair(pair: { ticker: string; venues: RwaAssetRecord[] }, key:
 
   const pending = (async () => {
     const venues = await mapWithConcurrency(pair.venues, MAX_CONCURRENT_QUOTES, async (token) => {
-      const quote = await quoteUsd(token.tokenContractAddress, QUOTE_AMOUNT_USDT);
+      const quote = await marketQuoteUsd(token.tokenContractAddress, QUOTE_AMOUNT_USDT);
       return buildVenueResult(token, quote);
     });
     const row = buildOpportunityRow(pair.ticker, venues);

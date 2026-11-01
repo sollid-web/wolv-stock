@@ -1,5 +1,5 @@
 import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
-import { quoteUsd } from "@/lib/quotes";
+import { marketQuoteUsd } from "@/lib/quotes";
 import Link from "next/link";
 import Image from "next/image";
 import { buildProtectionRows } from "@/lib/rwaData";
@@ -70,7 +70,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   const profile: unknown = await getRWAProfile(address).catch((error: unknown) => { errs.push("company profile: " + (error instanceof Error ? error.message : String(error))); return null; });
   await sleep(300);
   const candles: unknown = await getCandles(address, "56", "1h", "48").catch((error: unknown) => { errs.push("chart data: " + (error instanceof Error ? error.message : String(error))); return null; });
-  const q = await quoteUsd(address);
+  const q = await marketQuoteUsd(address);
 
   console.log("[profile-dump]", token.underlyingTicker, JSON.stringify(profile)?.slice(0, 1500));
 

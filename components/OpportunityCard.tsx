@@ -127,7 +127,11 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
                   {venue.stale && <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-yellow-300">Stale quote · refresh before trading</div>}
                 </>
               ) : (
-                <div className="mt-3 break-words text-xs leading-relaxed text-yellow-300">Quote unavailable: {venue.quote.err}</div>
+                <div className="mt-3 break-words text-xs leading-relaxed text-yellow-300">
+                  <div>Indicative quote unavailable: {venue.quote.err}</div>
+                  <div className="mt-2 text-slate-300">Reference {price(venue.referencePerShare)} · {venue.multiplier == null ? "share ratio unavailable" : `${venue.multiplier.toFixed(4)} shares/token`}</div>
+                  <div className="mt-1 text-[10px] text-slate-500">Reference data is visible independently; no live indicative price is reused or inferred.</div>
+                </div>
               )}
             </Link>
           );

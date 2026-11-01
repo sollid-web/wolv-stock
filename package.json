@@ -10,6 +10,7 @@
     "test:hardening": "node scripts/hardening-smoke.mjs",
     "test:logic": "bash -lc 'node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test $(printf \"%s\\n\" scripts/*.test.mjs | grep -v postgres-integration.test.mjs)'",
     "test:postgres": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/postgres-integration.test.mjs",
+    "test:provider": "node --disable-warning=ExperimentalWarning scripts/real-binance-provider.test.mjs",
     "test:responsive": "node scripts/responsive-smoke.mjs"
   },
   "dependencies": {

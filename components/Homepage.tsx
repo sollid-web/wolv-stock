@@ -173,6 +173,13 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
               </div>
             </div>
           </div>
+          {!featuredVenue.quote.ok && (
+            <div role="status" className="relative mt-3 rounded-lg border border-yellow-800/50 bg-yellow-900/10 p-3 text-xs leading-relaxed text-yellow-200">
+              <span className="font-bold">Indicative quote unavailable.</span>{" "}
+              <span>{featuredVenue.quote.err}</span>{" "}
+              <span className="text-slate-300">Reference price remains visible independently: {price(featuredVenue.referencePerShare)} per share. No stale or inferred live price is shown.</span>
+            </div>
+          )}
           <div className="relative mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] pt-3">
             <div className="min-w-0">
               <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">WOLV data read · rule-based</div>
