@@ -1,6 +1,7 @@
-import crypto from "crypto";
+import "server-only";
 import { unstable_cache } from "next/cache";
 import { isRwaAssetListResponse } from "./rwaAssetResponse";
+import { makeBinanceAuthHeaders } from "./binanceAuth";
 
 let lastCall = 0;
 let rateLimitQueue: Promise<void> = Promise.resolve();
@@ -14,25 +15,11 @@ async function rateLimit() {
   await scheduled;
 }
 
-const API_KEY = process.env.BINANCE_API_KEY!;
-const SECRET_KEY = process.env.BINANCE_SECRET_KEY!;
 const BASE_URL = "https://web3.binance.com/build";
 const UPSTREAM_TIMEOUT_MS = 10_000;
 
 function makeHeaders(method: string, path: string, body = "") {
-  const timestamp = new Date().toISOString();
-  const requestPath = "/build" + path;
-  const preHash = timestamp + method.toUpperCase() + requestPath + body;
-  const signature = crypto
-    .createHmac("sha256", SECRET_KEY)
-    .update(preHash, "utf8")
-    .digest("base64");
-  return {
-    "X-OC-APIKEY": API_KEY,
-    "X-OC-TIMESTAMP": timestamp,
-    "X-OC-SIGN": signature,
-    "X-OC-RECV-WINDOW": "60000",
-  };
+  return makeBinanceAuthHeaders(method, path, body);
 }
 
 async function get(path: string, params: Record<string, string> = {}, noStore = false) {
@@ -293,45 +280,12 @@ export async function submitOrder(
   vendor: string, // Must match rfq.vendor from swap response
   quoteId: string // rfq.orderId from /swap response
 ) {
-  // Note: This is a POST request with JSON body
-  const timestamp = new Date().toISOString();
-  const path = "/api/v1/dex/aggregator/order/submit";
-  const requestPath = "/build" + path;
-  const body = JSON.stringify({
+  return post("/api/v1/dex/aggregator/order/submit", {
     requestId,
     userSignature,
     vendor,
     quoteId,
-    // signingScheme is optional per docs
   });
-
-  const preHash = timestamp + "POST" + requestPath + body;
-  const signature = crypto
-    .createHmac("sha256", SECRET_KEY)
-    .update(preHash, "utf8")
-    .digest("base64");
-
-  const headers = {
-    "X-OC-APIKEY": API_KEY,
-    "X-OC-TIMESTAMP": timestamp,
-    "X-OC-SIGN": signature,
-    "Content-Type": "application/json",
-  };
-
-  await rateLimit();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    headers,
-    body,
-    cache: "no-store",
-    // No next: { revalidate } for POST requests
-  });
-
-  const json = await res.json();
-  if (!json.success && json.code !== 0) {
-    throw new Error(`API error ${json.code}: ${json.msg}`);
-  }
-  return json;
 }
 
 // Get order status by orderId

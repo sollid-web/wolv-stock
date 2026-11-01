@@ -9,6 +9,9 @@ export type BawExecutionState =
     | "PENDING"
     | "PARTIALLY_FILLED"
     | "FILLED"
+    | "OUTPUT_VERIFIED"
+    | "FINISHED_UNVERIFIED"
+    | "OUTPUT_MISMATCH"
     | "FAILED"
     | "CANCELLED"
     | "EXPIRED"
@@ -20,6 +23,9 @@ export type BawExecutionRecord = {
     quoteReference: string
     walletAddress: string
     tokenAddress: string
+    tokenDecimals: number | null
+    fromTokenDecimals: number
+    toTokenDecimals: number
     underlyingTicker: string
     tokenSymbol: string
     fromCoinSymbol: string

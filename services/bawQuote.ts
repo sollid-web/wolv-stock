@@ -4,7 +4,6 @@ import {
     BSC_USDT_ADDRESS,
     EVM_ADDRESS_PATTERN,
     MINIMUM_ORDER_USDT,
-    MINIMUM_ORDER_WEI,
 } from "../lib/apiValidation.ts"
 import { marketLabel } from "../lib/opportunityMath.ts"
 import { createQuoteBinding, verifyQuoteBinding } from "../lib/quoteBinding.ts"
@@ -21,6 +20,7 @@ import {
     type BawQuoteOutput,
     type BawWalletSnapshot,
 } from "./bawCli.ts"
+import { BscTokenMetadataError, type BscTokenDecimalMetadata } from "./bscTokenMetadata.ts"
 
 const BAW_CHAIN_ID = "56"
 const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1)
@@ -41,6 +41,9 @@ export type AgentQuoteAsset = {
     underlyingTicker: string
     platformId?: string
     symbol?: string
+    decimals?: number | null
+    decimalMetadata?: BscTokenDecimalMetadata | null
+    usdtDecimalMetadata?: BscTokenDecimalMetadata | null
     referencePrice?: string | number | null
     tokenToShareRatio?: string | number | null
     statusInfo?: { marketStatus?: string | null; openState?: boolean | null }
@@ -57,6 +60,8 @@ export type AgentQuoteResponse = {
     walletAddress: string
     fromTokenAddress: string
     toTokenAddress: string
+    fromTokenMetadata: BscTokenDecimalMetadata
+    toTokenMetadata: BscTokenDecimalMetadata
     fromCoinSymbol: string
     fromCoinAmount: string
     toCoinSymbol: string
@@ -66,6 +71,7 @@ export type AgentQuoteResponse = {
     tokenPriceUsd: number
     referencePrice: number
     referenceGapPercent: number | null
+    tokenDecimals: number | null
     quoteFetchedAt: number
     expiresAt: number
     quoteBindingId: string
@@ -168,9 +174,10 @@ export function slippageBpsToBawPercent(slippageBps: number): string {
 export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): VerifiedAgentQuote | null {
     if (!isRecord(value) || !hasExactKeys(value, [
         "status", "eligibility", "rejectionReasons", "direction", "chainId", "tokenAddress",
-        "underlyingTicker", "walletAddress", "fromTokenAddress", "toTokenAddress", "fromCoinSymbol", "fromCoinAmount",
+        "underlyingTicker", "walletAddress", "fromTokenAddress", "toTokenAddress",
+        "fromTokenMetadata", "toTokenMetadata", "fromCoinSymbol", "fromCoinAmount",
         "toCoinSymbol", "toCoinAmount", "slippage", "slippageBps", "tokenPriceUsd", "referencePrice",
-        "referenceGapPercent", "quoteFetchedAt", "expiresAt", "quoteBindingId", "quoteBinding", "execution",
+        "referenceGapPercent", "tokenDecimals", "quoteFetchedAt", "expiresAt", "quoteBindingId", "quoteBinding", "execution",
     ])) return null
 
     if (
@@ -182,6 +189,8 @@ export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): Veri
         value.rejectionReasons.length !== 0 ||
         typeof value.walletAddress !== "string" ||
         !EVM_ADDRESS_PATTERN.test(value.walletAddress) ||
+        (value.tokenDecimals !== null &&
+            (typeof value.tokenDecimals !== "number" || !Number.isInteger(value.tokenDecimals) || value.tokenDecimals < 0 || value.tokenDecimals > 18)) ||
         typeof value.quoteFetchedAt !== "number" ||
         typeof value.expiresAt !== "number" ||
         value.expiresAt !== value.quoteFetchedAt + TRADE_QUOTE_TTL_MS ||
@@ -207,11 +216,20 @@ export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): Veri
     const input = parsedInput.input
     const fromTokenAddress = input.direction === "BUY" ? BSC_USDT_ADDRESS : input.tokenAddress
     const toTokenAddress = input.direction === "BUY" ? input.tokenAddress : BSC_USDT_ADDRESS
+    const fromTokenMetadata = parseBscTokenDecimalMetadata(value.fromTokenMetadata)
+    const toTokenMetadata = parseBscTokenDecimalMetadata(value.toTokenMetadata)
+    const selectedTokenMetadata = input.direction === "BUY" ? toTokenMetadata : fromTokenMetadata
     if (
         typeof value.fromTokenAddress !== "string" ||
         value.fromTokenAddress.toLowerCase() !== fromTokenAddress.toLowerCase() ||
         typeof value.toTokenAddress !== "string" ||
         value.toTokenAddress.toLowerCase() !== toTokenAddress.toLowerCase() ||
+        !fromTokenMetadata ||
+        !toTokenMetadata ||
+        !selectedTokenMetadata ||
+        fromTokenMetadata.tokenAddress.toLowerCase() !== fromTokenAddress.toLowerCase() ||
+        toTokenMetadata.tokenAddress.toLowerCase() !== toTokenAddress.toLowerCase() ||
+        value.tokenDecimals !== selectedTokenMetadata.decimals ||
         typeof value.fromCoinSymbol !== "string" ||
         typeof value.toCoinSymbol !== "string"
     ) return null
@@ -238,7 +256,15 @@ export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): Veri
     }
 
     const expectedQuoteId = createHash("sha256")
-        .update(JSON.stringify({ input, quote, walletAddress: value.walletAddress, quoteFetchedAt: value.quoteFetchedAt }))
+        .update(JSON.stringify({
+            input,
+            quote,
+            fromTokenMetadata,
+            toTokenMetadata,
+            tokenDecimals: value.tokenDecimals,
+            walletAddress: value.walletAddress,
+            quoteFetchedAt: value.quoteFetchedAt,
+        }))
         .digest("hex")
     if (expectedQuoteId !== value.quoteBindingId || !isFreshQuote({ quoteFetchedAt: value.quoteFetchedAt }, now)) return null
 
@@ -254,6 +280,7 @@ export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): Veri
     }, value.quoteFetchedAt)
     if (!binding.ok) return null
 
+    const tokenDecimals = typeof value.tokenDecimals === "number" ? value.tokenDecimals : null
     const tokenPriceUsd = positiveFinite(value.tokenPriceUsd)
     const referencePrice = positiveFinite(value.referencePrice)
     if (
@@ -283,6 +310,8 @@ export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): Veri
             walletAddress: value.walletAddress,
             fromTokenAddress,
             toTokenAddress,
+            fromTokenMetadata,
+            toTokenMetadata,
             fromCoinSymbol: quote.fromCoinSymbol,
             fromCoinAmount: quote.fromCoinAmount,
             toCoinSymbol: quote.toCoinSymbol,
@@ -292,6 +321,7 @@ export function verifyAgentQuoteResponse(value: unknown, now = Date.now()): Veri
             tokenPriceUsd,
             referencePrice,
             referenceGapPercent: value.referenceGapPercent,
+            tokenDecimals,
             quoteFetchedAt: value.quoteFetchedAt,
             expiresAt: value.expiresAt,
             quoteBindingId: expectedQuoteId,
@@ -330,7 +360,15 @@ export async function getBawQuote(
     if (!resolveAsset) {
         throw new BawQuoteError("UNSUPPORTED_TOKEN", "Spot-token verification is unavailable.", 503)
     }
-    const asset = await resolveAsset(input.tokenAddress)
+    let asset: AgentQuoteAsset | null
+    try {
+        asset = await resolveAsset(input.tokenAddress)
+    } catch (error) {
+        if (error instanceof BscTokenMetadataError) {
+            throw new BawQuoteError("UNSUPPORTED_TOKEN", error.message, 422)
+        }
+        throw error
+    }
     if (
         !asset ||
         !EVM_ADDRESS_PATTERN.test(asset.tokenContractAddress) ||
@@ -350,12 +388,41 @@ export async function getBawQuote(
 
     const referencePrice = positiveFinite(asset.referencePrice)
     const tokenToShareRatio = positiveFinite(asset.tokenToShareRatio)
-    if (referencePrice === null || tokenToShareRatio === null) {
-        throw new BawQuoteError("REFERENCE_DATA_UNAVAILABLE", "A valid reference price and token-to-share ratio are required.", 422)
+    const tokenMetadata = parseBscTokenDecimalMetadata(asset.decimalMetadata)
+    const usdtMetadata = parseBscTokenDecimalMetadata(asset.usdtDecimalMetadata)
+    const tokenDecimals = tokenMetadata?.decimals ?? null
+    if (
+        referencePrice === null ||
+        tokenToShareRatio === null ||
+        !tokenMetadata ||
+        !usdtMetadata ||
+        tokenMetadata.tokenAddress.toLowerCase() !== asset.tokenContractAddress.toLowerCase() ||
+        usdtMetadata.tokenAddress.toLowerCase() !== BSC_USDT_ADDRESS.toLowerCase() ||
+        (asset.decimals !== undefined && asset.decimals !== tokenMetadata.decimals)
+    ) {
+        throw new BawQuoteError(
+            "UNSUPPORTED_TOKEN",
+            "Verified on-chain decimal metadata and reference data are required before a valid BAW quote can be created.",
+            422,
+        )
     }
 
-    const amountWei = BigInt(parseUnits(input.amount, 18))
-    if (input.direction === "BUY" && amountWei < MINIMUM_ORDER_WEI) {
+    const fromTokenAddress = input.direction === "BUY" ? BSC_USDT_ADDRESS : input.tokenAddress
+    const toTokenAddress = input.direction === "BUY" ? input.tokenAddress : BSC_USDT_ADDRESS
+    const fromTokenMetadata = input.direction === "BUY" ? usdtMetadata : tokenMetadata
+    const toTokenMetadata = input.direction === "BUY" ? tokenMetadata : usdtMetadata
+    const inputDecimals = fromTokenMetadata.decimals
+    let amountWei: bigint
+    try {
+        amountWei = parseExactAmountUnits(input.amount, inputDecimals)
+    } catch {
+        throw new BawQuoteError(
+            "INVALID_REQUEST",
+            `Amount has more fractional digits than the ${input.direction === "BUY" ? "USDT" : "token"} precision allows.`,
+            422,
+        )
+    }
+    if (input.direction === "BUY" && amountWei < parseUnits(MINIMUM_ORDER_USDT, inputDecimals)) {
         throw new BawQuoteError(
             "ORDER_BELOW_MINIMUM",
             `Minimum order amount is ${MINIMUM_ORDER_USDT} USDT (approximately $${MINIMUM_ORDER_USDT}).`,
@@ -406,8 +473,6 @@ export async function getBawQuote(
         tokenSymbol,
     })
 
-    const fromTokenAddress = input.direction === "BUY" ? BSC_USDT_ADDRESS : input.tokenAddress
-    const toTokenAddress = input.direction === "BUY" ? input.tokenAddress : BSC_USDT_ADDRESS
     const fromAmount = Number(quote.fromCoinAmount)
     const toAmount = Number(quote.toCoinAmount)
     const tokenAmount = input.direction === "BUY" ? toAmount : fromAmount
@@ -419,8 +484,16 @@ export async function getBawQuote(
     if (!Number.isFinite(tokenPriceUsd) || tokenPriceUsd <= 0) {
         throw new BawCliError("INVALID_OUTPUT", "quote")
     }
-    if (input.direction === "SELL" && BigInt(parseUnits(quote.toCoinAmount, 18)) < MINIMUM_ORDER_WEI) {
-        rejectionReasons.push(`Quoted sell proceeds are below the ${MINIMUM_ORDER_USDT} USDT minimum order amount.`)
+    if (input.direction === "SELL") {
+        let quotedProceeds: bigint
+        try {
+            quotedProceeds = parseExactAmountUnits(quote.toCoinAmount, toTokenMetadata.decimals)
+        } catch {
+            throw new BawCliError("INVALID_OUTPUT", "quote")
+        }
+        if (quotedProceeds < parseUnits(MINIMUM_ORDER_USDT, toTokenMetadata.decimals)) {
+            rejectionReasons.push(`Quoted sell proceeds are below the ${MINIMUM_ORDER_USDT} USDT minimum order amount.`)
+        }
     }
     const quoteValidation = validateQuote({
         usd: tokenPriceUsd,
@@ -439,7 +512,15 @@ export async function getBawQuote(
         rejectionReasons.push("The quote expired before it could be returned.")
     }
     const quoteId = createHash("sha256")
-        .update(JSON.stringify({ input, quote, walletAddress, quoteFetchedAt }))
+        .update(JSON.stringify({
+            input,
+            quote,
+            fromTokenMetadata,
+            toTokenMetadata,
+            tokenDecimals,
+            walletAddress,
+            quoteFetchedAt,
+        }))
         .digest("hex")
     const bindingInput = {
         toToken: toTokenAddress,
@@ -474,6 +555,8 @@ export async function getBawQuote(
         walletAddress,
         fromTokenAddress,
         toTokenAddress,
+        fromTokenMetadata,
+        toTokenMetadata,
         fromCoinSymbol: quote.fromCoinSymbol,
         fromCoinAmount: quote.fromCoinAmount,
         toCoinSymbol: quote.toCoinSymbol,
@@ -483,6 +566,7 @@ export async function getBawQuote(
         tokenPriceUsd,
         referencePrice,
         referenceGapPercent,
+        tokenDecimals,
         quoteFetchedAt,
         expiresAt: quoteFetchedAt + TRADE_QUOTE_TTL_MS,
         quoteBindingId: quoteId,
@@ -499,6 +583,42 @@ function normalizeHumanAmount(value: string): string | null {
         return formatUnits(units, 18).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
     } catch {
         return null
+    }
+}
+
+function parseExactAmountUnits(value: string, decimals: number): bigint {
+    const fractionalDigits = value.split(".")[1]?.length ?? 0
+    if (fractionalDigits > decimals) throw new RangeError("Amount exceeds token precision")
+    return parseUnits(value, decimals)
+}
+
+function parseBscTokenDecimalMetadata(value: unknown): BscTokenDecimalMetadata | null {
+    if (
+        !isRecord(value) ||
+        value.chainId !== BAW_CHAIN_ID ||
+        typeof value.tokenAddress !== "string" ||
+        !EVM_ADDRESS_PATTERN.test(value.tokenAddress) ||
+        typeof value.decimals !== "number" ||
+        !Number.isInteger(value.decimals) ||
+        value.decimals < 0 ||
+        value.decimals > 18 ||
+        value.resolutionSource !== "BSC_ETH_CALL" ||
+        typeof value.blockNumber !== "string" ||
+        !/^(?:0|[1-9]\d*)$/.test(value.blockNumber) ||
+        typeof value.resolvedAt !== "number" ||
+        !Number.isSafeInteger(value.resolvedAt) ||
+        value.resolvedAt <= 0 ||
+        value.validationStatus !== "VALIDATED"
+    ) return null
+
+    return {
+        chainId: "56",
+        tokenAddress: value.tokenAddress,
+        decimals: value.decimals,
+        resolutionSource: "BSC_ETH_CALL",
+        blockNumber: value.blockNumber,
+        resolvedAt: value.resolvedAt,
+        validationStatus: "VALIDATED",
     }
 }
 

@@ -1,0 +1,479 @@
+{
+  "auditTimestamp": "2026-11-01T09:19:42.965Z",
+  "status": "ARCHIVE_STATE_ACCESS_NOT_ESTABLISHED",
+  "targetBlockNumber": "131014770",
+  "targetBlockHash": "0x993c869807f1090f1642ef6f9a607770eb051406fcd6d9ab03cc310a676fd36e",
+  "primaryRpcIdentity": "https://bsc-dataseed.bnbchain.org/<redacted>",
+  "archiveRpcIdentity": null,
+  "providerIndependence": "NOT_ESTABLISHED",
+  "primary": {
+    "chainId": 56,
+    "latestBlockNumber": "131023849",
+    "latestBlockHash": "0xe3bc2fb14253df2b1111dbb630027f74227a0a5fd625210e47a882983e50cea0",
+    "historicalBlockHash": "0x993c869807f1090f1642ef6f9a607770eb051406fcd6d9ab03cc310a676fd36e",
+    "requestDiagnostics": [
+      {
+        "method": "eth_chainId",
+        "stage": "BLOCK",
+        "errorClass": "NONE",
+        "providerErrorCode": null,
+        "httpStatus": null,
+        "attempt": 1,
+        "requestDurationMs": 6669,
+        "validRpcResponse": true,
+        "retryable": false,
+        "retryAfterMs": null,
+        "providerMessage": null,
+        "succeeded": true,
+        "causeChain": []
+      },
+      {
+        "method": "eth_blockNumber",
+        "stage": "BLOCK",
+        "errorClass": "NONE",
+        "providerErrorCode": null,
+        "httpStatus": null,
+        "attempt": 1,
+        "requestDurationMs": 307,
+        "validRpcResponse": true,
+        "retryable": false,
+        "retryAfterMs": null,
+        "providerMessage": null,
+        "succeeded": true,
+        "causeChain": []
+      },
+      {
+        "method": "eth_getBlockByNumber",
+        "stage": "BLOCK",
+        "errorClass": "NONE",
+        "providerErrorCode": null,
+        "httpStatus": null,
+        "attempt": 1,
+        "requestDurationMs": 225,
+        "validRpcResponse": true,
+        "retryable": false,
+        "retryAfterMs": null,
+        "providerMessage": null,
+        "succeeded": true,
+        "causeChain": []
+      },
+      {
+        "method": "eth_getBlockByNumber",
+        "stage": "BLOCK",
+        "errorClass": "NONE",
+        "providerErrorCode": null,
+        "httpStatus": null,
+        "attempt": 1,
+        "requestDurationMs": 393,
+        "validRpcResponse": true,
+        "retryable": false,
+        "retryAfterMs": null,
+        "providerMessage": null,
+        "succeeded": true,
+        "causeChain": []
+      }
+    ],
+    "targets": [
+      {
+        "label": "USDT",
+        "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+        "current": {
+          "contractCodePresent": true,
+          "contractCodeSha256": "db71d17506cc212f6f6239dc29dabbc26feb68280a3f06c73ab4912597a71214",
+          "decimals": null,
+          "status": "VERIFIED",
+          "errorClassification": null,
+          "requestDiagnostics": [
+            {
+              "method": "eth_getCode",
+              "stage": "BYTECODE",
+              "errorClass": "NONE",
+              "providerErrorCode": null,
+              "httpStatus": null,
+              "attempt": 1,
+              "requestDurationMs": 228,
+              "validRpcResponse": true,
+              "retryable": false,
+              "retryAfterMs": null,
+              "providerMessage": null,
+              "succeeded": true,
+              "causeChain": []
+            }
+          ]
+        },
+        "historical": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+          "requestDiagnostics": [
+            {
+              "method": "eth_getCode",
+              "stage": "BYTECODE",
+              "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+              "providerErrorCode": -32000,
+              "httpStatus": null,
+              "attempt": 1,
+              "requestDurationMs": 287,
+              "validRpcResponse": true,
+              "retryable": false,
+              "retryAfterMs": null,
+              "providerMessage": "Missing or invalid parameters. Double check you have provided the correct parameters.",
+              "succeeded": false,
+              "causeChain": [
+                {
+                  "name": "Error",
+                  "code": -32000
+                },
+                {
+                  "name": "RpcRequestError",
+                  "code": -32000
+                },
+                {
+                  "name": "Error",
+                  "code": -32000
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "label": "previously-successful",
+        "tokenAddress": "0xe614E2fc6C787035FF51f452e8E826Bfd32D5283",
+        "current": {
+          "contractCodePresent": true,
+          "contractCodeSha256": "58fba43507c43232a29ce63a6a94360e781c78e349d34ed0109cf2925b1e99b5",
+          "decimals": null,
+          "status": "VERIFIED",
+          "errorClassification": null,
+          "requestDiagnostics": [
+            {
+              "method": "eth_getCode",
+              "stage": "BYTECODE",
+              "errorClass": "NONE",
+              "providerErrorCode": null,
+              "httpStatus": null,
+              "attempt": 1,
+              "requestDurationMs": 200,
+              "validRpcResponse": true,
+              "retryable": false,
+              "retryAfterMs": null,
+              "providerMessage": null,
+              "succeeded": true,
+              "causeChain": []
+            }
+          ]
+        },
+        "historical": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+          "requestDiagnostics": [
+            {
+              "method": "eth_getCode",
+              "stage": "BYTECODE",
+              "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+              "providerErrorCode": -32000,
+              "httpStatus": null,
+              "attempt": 1,
+              "requestDurationMs": 221,
+              "validRpcResponse": true,
+              "retryable": false,
+              "retryAfterMs": null,
+              "providerMessage": "Missing or invalid parameters. Double check you have provided the correct parameters.",
+              "succeeded": false,
+              "causeChain": [
+                {
+                  "name": "Error",
+                  "code": -32000
+                },
+                {
+                  "name": "RpcRequestError",
+                  "code": -32000
+                },
+                {
+                  "name": "Error",
+                  "code": -32000
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "label": "previously-failed",
+        "tokenAddress": "0x282973969118F9fe39bf2FF3D8DD1EFEE82CCb11",
+        "current": {
+          "contractCodePresent": true,
+          "contractCodeSha256": "6b88e42d3946430232b32d7e4bf1eddd40f014bd801f65987067b02da06a70f0",
+          "decimals": null,
+          "status": "VERIFIED",
+          "errorClassification": null,
+          "requestDiagnostics": [
+            {
+              "method": "eth_getCode",
+              "stage": "BYTECODE",
+              "errorClass": "NONE",
+              "providerErrorCode": null,
+              "httpStatus": null,
+              "attempt": 1,
+              "requestDurationMs": 292,
+              "validRpcResponse": true,
+              "retryable": false,
+              "retryAfterMs": null,
+              "providerMessage": null,
+              "succeeded": true,
+              "causeChain": []
+            }
+          ]
+        },
+        "historical": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+          "requestDiagnostics": [
+            {
+              "method": "eth_getCode",
+              "stage": "BYTECODE",
+              "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+              "providerErrorCode": -32000,
+              "httpStatus": null,
+              "attempt": 1,
+              "requestDurationMs": 272,
+              "validRpcResponse": true,
+              "retryable": false,
+              "retryAfterMs": null,
+              "providerMessage": "Missing or invalid parameters. Double check you have provided the correct parameters.",
+              "succeeded": false,
+              "causeChain": [
+                {
+                  "name": "Error",
+                  "code": -32000
+                },
+                {
+                  "name": "RpcRequestError",
+                  "code": -32000
+                },
+                {
+                  "name": "Error",
+                  "code": -32000
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "errorClassification": null
+  },
+  "archive": null,
+  "targetComparisons": [
+    {
+      "label": "USDT",
+      "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+      "currentState": {
+        "contractCodePresent": true,
+        "contractCodeSha256": "db71d17506cc212f6f6239dc29dabbc26feb68280a3f06c73ab4912597a71214",
+        "decimals": null,
+        "status": "VERIFIED",
+        "errorClassification": null,
+        "requestDiagnostics": [
+          {
+            "method": "eth_getCode",
+            "stage": "BYTECODE",
+            "errorClass": "NONE",
+            "providerErrorCode": null,
+            "httpStatus": null,
+            "attempt": 1,
+            "requestDurationMs": 228,
+            "validRpcResponse": true,
+            "retryable": false,
+            "retryAfterMs": null,
+            "providerMessage": null,
+            "succeeded": true,
+            "causeChain": []
+          }
+        ]
+      },
+      "primaryHistorical": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+        "requestDiagnostics": [
+          {
+            "method": "eth_getCode",
+            "stage": "BYTECODE",
+            "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+            "providerErrorCode": -32000,
+            "httpStatus": null,
+            "attempt": 1,
+            "requestDurationMs": 287,
+            "validRpcResponse": true,
+            "retryable": false,
+            "retryAfterMs": null,
+            "providerMessage": "Missing or invalid parameters. Double check you have provided the correct parameters.",
+            "succeeded": false,
+            "causeChain": [
+              {
+                "name": "Error",
+                "code": -32000
+              },
+              {
+                "name": "RpcRequestError",
+                "code": -32000
+              },
+              {
+                "name": "Error",
+                "code": -32000
+              }
+            ]
+          }
+        ]
+      },
+      "archiveHistorical": null,
+      "providersAgree": null
+    },
+    {
+      "label": "previously-successful",
+      "tokenAddress": "0xe614E2fc6C787035FF51f452e8E826Bfd32D5283",
+      "currentState": {
+        "contractCodePresent": true,
+        "contractCodeSha256": "58fba43507c43232a29ce63a6a94360e781c78e349d34ed0109cf2925b1e99b5",
+        "decimals": null,
+        "status": "VERIFIED",
+        "errorClassification": null,
+        "requestDiagnostics": [
+          {
+            "method": "eth_getCode",
+            "stage": "BYTECODE",
+            "errorClass": "NONE",
+            "providerErrorCode": null,
+            "httpStatus": null,
+            "attempt": 1,
+            "requestDurationMs": 200,
+            "validRpcResponse": true,
+            "retryable": false,
+            "retryAfterMs": null,
+            "providerMessage": null,
+            "succeeded": true,
+            "causeChain": []
+          }
+        ]
+      },
+      "primaryHistorical": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+        "requestDiagnostics": [
+          {
+            "method": "eth_getCode",
+            "stage": "BYTECODE",
+            "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+            "providerErrorCode": -32000,
+            "httpStatus": null,
+            "attempt": 1,
+            "requestDurationMs": 221,
+            "validRpcResponse": true,
+            "retryable": false,
+            "retryAfterMs": null,
+            "providerMessage": "Missing or invalid parameters. Double check you have provided the correct parameters.",
+            "succeeded": false,
+            "causeChain": [
+              {
+                "name": "Error",
+                "code": -32000
+              },
+              {
+                "name": "RpcRequestError",
+                "code": -32000
+              },
+              {
+                "name": "Error",
+                "code": -32000
+              }
+            ]
+          }
+        ]
+      },
+      "archiveHistorical": null,
+      "providersAgree": null
+    },
+    {
+      "label": "previously-failed",
+      "tokenAddress": "0x282973969118F9fe39bf2FF3D8DD1EFEE82CCb11",
+      "currentState": {
+        "contractCodePresent": true,
+        "contractCodeSha256": "6b88e42d3946430232b32d7e4bf1eddd40f014bd801f65987067b02da06a70f0",
+        "decimals": null,
+        "status": "VERIFIED",
+        "errorClassification": null,
+        "requestDiagnostics": [
+          {
+            "method": "eth_getCode",
+            "stage": "BYTECODE",
+            "errorClass": "NONE",
+            "providerErrorCode": null,
+            "httpStatus": null,
+            "attempt": 1,
+            "requestDurationMs": 292,
+            "validRpcResponse": true,
+            "retryable": false,
+            "retryAfterMs": null,
+            "providerMessage": null,
+            "succeeded": true,
+            "causeChain": []
+          }
+        ]
+      },
+      "primaryHistorical": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+        "requestDiagnostics": [
+          {
+            "method": "eth_getCode",
+            "stage": "BYTECODE",
+            "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+            "providerErrorCode": -32000,
+            "httpStatus": null,
+            "attempt": 1,
+            "requestDurationMs": 272,
+            "validRpcResponse": true,
+            "retryable": false,
+            "retryAfterMs": null,
+            "providerMessage": "Missing or invalid parameters. Double check you have provided the correct parameters.",
+            "succeeded": false,
+            "causeChain": [
+              {
+                "name": "Error",
+                "code": -32000
+              },
+              {
+                "name": "RpcRequestError",
+                "code": -32000
+              },
+              {
+                "name": "Error",
+                "code": -32000
+              }
+            ]
+          }
+        ]
+      },
+      "archiveHistorical": null,
+      "providersAgree": null
+    }
+  ]
+}

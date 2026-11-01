@@ -1,3 +1,4 @@
+import "server-only"
 import {
     KERNEL_V3_1,
     getEntryPoint
@@ -38,6 +39,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { getBytecode, getChainId, readContract } from "viem/actions"
 import { bsc, bscTestnet } from "viem/chains"
+import { resolvePublicRpcUrl } from "./publicRpcUrl.ts"
 
 const BUY_SELECTOR = "0x7ff36ab5" as const
 const ENTRY_POINT = getEntryPoint("0.7")
@@ -161,13 +163,20 @@ export function getAgentSmartAccountConfig(): AgentSmartAccountConfig {
     const chain = getAgentChain(chainId)
     const rpcUrl =
         chain.id === bsc.id
-            ? process.env.NEXT_PUBLIC_BSC_RPC_URL
+            ? process.env.BSC_RPC_URL ?? process.env.NEXT_PUBLIC_BSC_RPC_URL
             : process.env.NEXT_PUBLIC_BSC_TESTNET_RPC_URL
     if (!rpcUrl) {
         throw new Error(
             `Missing RPC URL for BSC chain ${chain.id}`
         )
     }
+    const resolvedRpcUrl = chain.id === bsc.id && process.env.BSC_RPC_URL
+        ? requireServerRpcUrl(process.env.BSC_RPC_URL)
+        : resolvePublicRpcUrl(
+            rpcUrl,
+            rpcUrl,
+            chain.id === bsc.id ? "NEXT_PUBLIC_BSC_RPC_URL" : "NEXT_PUBLIC_BSC_TESTNET_RPC_URL",
+        )
     const bundlerRpcUrl =
         chain.id === bsc.id
             ? process.env.NEXT_PUBLIC_BSC_BUNDLER_RPC_URL
@@ -175,7 +184,7 @@ export function getAgentSmartAccountConfig(): AgentSmartAccountConfig {
 
     return {
         chain,
-        rpcUrl,
+        rpcUrl: resolvedRpcUrl,
         bundlerRpcUrl: requirePublicUrl(
             bundlerRpcUrl,
             chain.id === bsc.id
@@ -699,10 +708,24 @@ function requirePublicUrl(value: string | undefined, variableName: string) {
         || url.username
         || url.password
         || url.hash
+        || url.search
     ) {
         throw new Error(
-            `${variableName} must be a public HTTP(S) URL without credentials`
+            `${variableName} must be a public HTTP(S) URL without credentials or query parameters`
         )
+    }
+    return url.toString()
+}
+
+function requireServerRpcUrl(value: string): string {
+    let url: URL
+    try {
+        url = new URL(value)
+    } catch {
+        throw new Error("BSC_RPC_URL must be a valid server-side HTTP(S) RPC URL.")
+    }
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.hash) {
+        throw new Error("BSC_RPC_URL must be a server-side HTTP(S) RPC URL.")
     }
     return url.toString()
 }

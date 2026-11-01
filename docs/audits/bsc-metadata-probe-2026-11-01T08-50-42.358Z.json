@@ -1,0 +1,154 @@
+{
+  "auditTimestamp": "2026-11-01T08:50:42.357Z",
+  "rpcIdentity": "https://bsc-dataseed.bnbchain.org/<redacted>",
+  "chainId": 56,
+  "blockNumber": "131014770",
+  "expectedBlockHash": "0x993c869807f1090f1642ef6f9a607770eb051406fcd6d9ab03cc310a676fd36e",
+  "observedBlockHash": "0x993c869807f1090f1642ef6f9a607770eb051406fcd6d9ab03cc310a676fd36e",
+  "rpcVerificationCount": 1,
+  "requestDiagnostics": [
+    {
+      "method": "eth_chainId",
+      "stage": "BLOCK",
+      "errorClass": "NONE",
+      "providerErrorCode": null,
+      "httpStatus": null,
+      "attempt": 1,
+      "requestDurationMs": 6444,
+      "validRpcResponse": true,
+      "retryable": false,
+      "retryAfterMs": null,
+      "succeeded": true,
+      "causeChain": []
+    },
+    {
+      "method": "eth_getBlockByNumber",
+      "stage": "BLOCK",
+      "errorClass": "NONE",
+      "providerErrorCode": null,
+      "httpStatus": null,
+      "attempt": 1,
+      "requestDurationMs": 207,
+      "validRpcResponse": true,
+      "retryable": false,
+      "retryAfterMs": null,
+      "succeeded": true,
+      "causeChain": []
+    }
+  ],
+  "status": "UNVERIFIED",
+  "targets": [
+    {
+      "label": "USDT",
+      "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+      "status": "UNVERIFIED",
+      "contractCodePresent": null,
+      "decimals": null,
+      "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+      "requestDiagnostics": [
+        {
+          "method": "eth_getCode",
+          "stage": "BYTECODE",
+          "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+          "providerErrorCode": -32000,
+          "httpStatus": null,
+          "attempt": 1,
+          "requestDurationMs": 300,
+          "validRpcResponse": true,
+          "retryable": false,
+          "retryAfterMs": null,
+          "succeeded": false,
+          "causeChain": [
+            {
+              "name": "Error",
+              "code": -32000
+            },
+            {
+              "name": "RpcRequestError",
+              "code": -32000
+            },
+            {
+              "name": "Error",
+              "code": -32000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "previously-successful",
+      "tokenAddress": "0xe614E2fc6C787035FF51f452e8E826Bfd32D5283",
+      "status": "UNVERIFIED",
+      "contractCodePresent": null,
+      "decimals": null,
+      "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+      "requestDiagnostics": [
+        {
+          "method": "eth_getCode",
+          "stage": "BYTECODE",
+          "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+          "providerErrorCode": -32000,
+          "httpStatus": null,
+          "attempt": 1,
+          "requestDurationMs": 302,
+          "validRpcResponse": true,
+          "retryable": false,
+          "retryAfterMs": null,
+          "succeeded": false,
+          "causeChain": [
+            {
+              "name": "Error",
+              "code": -32000
+            },
+            {
+              "name": "RpcRequestError",
+              "code": -32000
+            },
+            {
+              "name": "Error",
+              "code": -32000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "previously-failed",
+      "tokenAddress": "0x282973969118F9fe39bf2FF3D8DD1EFEE82CCb11",
+      "status": "UNVERIFIED",
+      "contractCodePresent": null,
+      "decimals": null,
+      "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+      "requestDiagnostics": [
+        {
+          "method": "eth_getCode",
+          "stage": "BYTECODE",
+          "errorClass": "RPC_HISTORICAL_STATE_UNAVAILABLE",
+          "providerErrorCode": -32000,
+          "httpStatus": null,
+          "attempt": 1,
+          "requestDurationMs": 410,
+          "validRpcResponse": true,
+          "retryable": false,
+          "retryAfterMs": null,
+          "succeeded": false,
+          "causeChain": [
+            {
+              "name": "Error",
+              "code": -32000
+            },
+            {
+              "name": "RpcRequestError",
+              "code": -32000
+            },
+            {
+              "name": "Error",
+              "code": -32000
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errorClassification": "RPC_HISTORICAL_STATE_UNAVAILABLE"
+}

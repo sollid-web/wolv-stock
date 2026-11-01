@@ -203,7 +203,23 @@ Create `.env.local` with server-only credentials:
 BINANCE_API_KEY=your_web3_api_key
 BINANCE_SECRET_KEY=your_web3_api_secret
 
-# Public BSC JSON-RPC endpoint (optional; defaults to the BSC public RPC)
+# Optional server-only BSC RPC endpoint; use for authenticated/private RPC access.
+BSC_RPC_URL=
+
+# Optional read-only metadata-audit cross-check. Distinct operator labels are
+# required and are operator-asserted; different URLs alone do not prove independence.
+BSC_RPC_OPERATOR=
+BSC_RPC_SECONDARY_URL=
+BSC_RPC_SECONDARY_OPERATOR=
+
+# Optional server-only archive endpoint for a separately confirmed, read-only
+# historical-state probe. Successful reads at the pinned block establish capability.
+BSC_RPC_ARCHIVE_URL=
+BSC_RPC_ARCHIVE_OPERATOR=
+BSC_RPC_ARCHIVE_INDEPENDENCE_CONFIRMED=
+
+# Optional browser-visible public BSC RPC endpoint. Must not contain URL credentials,
+# path tokens, query parameters, or fragments; defaults to a public BSC RPC.
 NEXT_PUBLIC_BSC_RPC_URL=https://bsc-dataseed.binance.org/
 
 # Optional when using WalletConnect; injected wallets can be tested without it
@@ -214,6 +230,25 @@ WOLV_AI_API_KEY=your_openai_compatible_key
 WOLV_AI_BASE_URL=https://api.openai.com/v1
 WOLV_AI_MODEL=gpt-5-mini
 ```
+
+The archive probe defaults to a no-network dry run:
+
+```bash
+node --conditions=react-server --experimental-strip-types scripts/bsc-archive-probe.mjs
+```
+
+It compares the three fixed Phase 3.15 targets at the primary endpoint's pinned
+latest block and original audit block. If `BSC_RPC_ARCHIVE_URL` is configured,
+it also reads those targets at the original block. Live reads require
+`--live-read-only` and the exact interactive confirmation
+`READ-ONLY ARCHIVE STATE PROBE`. Archive capability is determined from those
+read results, not from provider marketing. Distinct operator labels are
+assertions and do not independently prove provider ownership. Cross-provider
+classification additionally requires the explicit operator attestation value
+`I_CONFIRM_SEPARATE_OPERATORS` in `BSC_RPC_ARCHIVE_INDEPENDENCE_CONFIRMED`.
+To authorize only the primary endpoint's current-versus-historical comparison,
+use `--live-read-only --primary-only`; this explicitly excludes any configured
+archive URL from that run.
 
 Never commit `.env.local`, private keys, wallet seed phrases, or API secrets.
 `BNB_AGENT_KEY` is not read by this wallet-confirmation build and must not be used as a shared server trading key. See [.env.example](./.env.example) for the complete variable template.
@@ -235,7 +270,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The project’s development and build scripts use the Webpack path. Production builds may need network access for `next/font/google`.
+The project’s development and build scripts use the Webpack path. The app uses system-font fallbacks, so production compilation does not need a Google Fonts network request.
 
 ## Checks
 
@@ -247,16 +282,28 @@ pnpm lint
 pnpm build
 ```
 
-For a production-route responsive pass:
+The responsive command builds and starts its own production server, waits for an HTTP health response, runs Chromium at the supported viewport widths, blocks quote/approval/execution endpoints, and shuts down both server and browser:
 
 ```bash
-pnpm build
-pnpm start
-# in another terminal
 pnpm test:responsive
 ```
 
-The responsive runner checks `/`, `/gap`, `/markets`, `/trade`, and `/wallet` at mobile, tablet, and desktop widths. Set `TEST_TOKEN_ADDRESS` to include `/stock/:address` and `/trade/:address` detail cases. These checks do not connect a wallet, sign, or broadcast a transaction.
+The responsive runner checks `/`, `/gap`, `/markets`, `/trade`, `/wallet`, and `/agent` at 320, 360, 390, 414, 768, 1024, and 1440 pixels. Set `TEST_TOKEN_ADDRESS` to include `/stock/:address` and `/trade/:address` detail cases. These checks do not connect a wallet, sign, or broadcast a transaction.
+
+PostgreSQL integration tests require an explicitly configured local disposable test database. For example, start a temporary container and read its assigned loopback port:
+
+```bash
+docker run --rm --name wolv-test-postgres \
+  -e POSTGRES_DB=wolv_phase38_test \
+  -e POSTGRES_USER=wolv_test \
+  -e POSTGRES_PASSWORD=local-test-only \
+  -p 127.0.0.1::5432 -d postgres:16-alpine
+PG_PORT="$(docker port wolv-test-postgres 5432/tcp | sed 's/.*://')"
+trap 'docker stop wolv-test-postgres' EXIT
+TEST_POSTGRES_URL="postgresql://wolv_test:local-test-only@127.0.0.1:${PG_PORT}/wolv_phase38_test" pnpm test:postgres
+```
+
+`TEST_POSTGRES_URL` must point to a loopback host and a database name containing `test` or `testing`. The integration test refuses production-style database URLs and cleans up its test tables.
 
 ## Developer documentation
 

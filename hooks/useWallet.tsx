@@ -15,6 +15,7 @@ import { TransactionReceiptNotFoundError, type Hash } from "viem";
 import { createSingleFlightGate } from "@/lib/singleFlightGate";
 
 interface TxRequest {
+  from?: string;
   to: string;
   data: string;
   value?: bigint | string;
@@ -245,6 +246,12 @@ export function useWallet(): WalletHookValue {
   const signTypedData = useCallback(
     async (typedData: TypedData): Promise<string | null> => {
       if (!address) return null;
+      if (chainId !== 56 || walletClient?.chain.id !== 56) {
+        throw new Error("Switch to BNB Smart Chain before signing typed data");
+      }
+      if (walletClient.account?.address.toLowerCase() !== address.toLowerCase()) {
+        throw new Error("Connected wallet account changed; reconnect before signing");
+      }
       try {
         if (!isRecord(typedData.domain) || !isRecord(typedData.types) || !isRecord(typedData.message)) {
           throw new Error("Binance returned invalid EIP-712 typed data");
@@ -269,19 +276,30 @@ export function useWallet(): WalletHookValue {
         return null;
       }
     },
-    [address, signTypedDataAsync]
+    [address, chainId, walletClient, signTypedDataAsync]
   );
 
   const sendTransaction = useCallback(
     async (transaction: TxRequest): Promise<Hash> => {
       if (!address) throw new Error("Wallet account is unavailable; reconnect and retry");
       if (chainId !== 56) throw new Error("Switch to BNB Smart Chain before sending the transaction");
+      if (!walletClient?.account || walletClient.chain.id !== 56) {
+        throw new Error("Wallet account or BNB Smart Chain connection changed; reconnect and retry");
+      }
+      if (walletClient.account.address.toLowerCase() !== address.toLowerCase()) {
+        throw new Error("Connected wallet account changed; reconnect before sending the transaction");
+      }
+      if (transaction.from && transaction.from.toLowerCase() !== address.toLowerCase()) {
+        throw new Error("Transaction sender does not match the connected wallet account");
+      }
 
       try {
         // Binance fee fields can be incomplete or stale for the connected
         // wallet. Keep its gas limit, but let Wagmi/MetaMask estimate the
         // current BSC fee tuple before opening the confirmation prompt.
         return await sendWalletTransactionOnce(() => sendTransactionAsync({
+          account: walletClient.account,
+          chainId: 56,
           to: transaction.to as `0x${string}`,
           data: transaction.data as `0x${string}`,
           value: transaction.value !== undefined ? BigInt(transaction.value) : undefined,
@@ -293,7 +311,7 @@ export function useWallet(): WalletHookValue {
         throw new Error(message);
       }
     },
-    [address, chainId, sendTransactionAsync]
+    [address, chainId, walletClient, sendTransactionAsync]
   );
 
   const getTransactionStatus = useCallback(

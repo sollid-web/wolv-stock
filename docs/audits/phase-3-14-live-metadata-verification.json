@@ -1,0 +1,52 @@
+{
+  "phase": "3.14",
+  "reportPreparedAt": "2026-11-01T06:50:08Z",
+  "decision": "LIVE_METADATA_AUDIT_NOT_PERFORMED",
+  "status": "UNVERIFIED",
+  "liveAuditPerformed": false,
+  "catalogue": {
+    "source": "https://web3.binance.com/build/api/v1/dex/market/rwa/tokens",
+    "method": "GET",
+    "eligibleAssetCount": null,
+    "snapshotSha256": null,
+    "results": []
+  },
+  "network": {
+    "name": "BNB Smart Chain mainnet",
+    "chainId": 56,
+    "blockNumber": null,
+    "blockHash": null
+  },
+  "rpc": {
+    "primaryIdentity": "UNVERIFIED; configured endpoint not recorded",
+    "secondaryIdentity": null,
+    "verificationCount": 0,
+    "blockHashes": {}
+  },
+  "usdt": {
+    "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+    "status": "UNVERIFIED",
+    "decimals": null
+  },
+  "plannedReadOnlyRpcMethods": [
+    "eth_chainId",
+    "eth_blockNumber",
+    "eth_getBlockByNumber",
+    "eth_getCode",
+    "eth_call (decimals())"
+  ],
+  "confirmationGates": [
+    "Interactive typed confirmation before the signed catalogue GET",
+    "Interactive typed confirmation before any BSC RPC reads"
+  ],
+  "automatedTests": {
+    "status": "MOCK_VERIFIED",
+    "liveEvidence": false
+  },
+  "providerOperationsPerformed": {
+    "catalogueRequests": 0,
+    "rpcReads": 0,
+    "bawOperations": 0,
+    "transactionsOrSignatures": 0
+  }
+}

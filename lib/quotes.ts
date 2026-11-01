@@ -1,5 +1,6 @@
 import { getRWAQuote } from "@/lib/binance";
 import { OPPORTUNITY_QUOTE_TTL_MS } from "@/lib/opportunityMath";
+import { BSC_USDT_ADDRESS, EVM_ADDRESS_PATTERN, isPositiveUint256 } from "./apiValidation";
 import { validateQuote } from "@/lib/quoteValidation";
 
 export type QuoteSuccess = {
@@ -21,8 +22,11 @@ export type QuoteFailure = {
 export type Q = QuoteSuccess | QuoteFailure;
 
 type QuoteRoute = {
+  binanceChainId?: string;
+  fromTokenAmount?: string;
   toTokenAmount?: string | number;
-  fromToken?: { tokenUnitPrice?: string | number };
+  fromToken?: { tokenContractAddress?: string; tokenUnitPrice?: string | number; decimal?: string };
+  toToken?: { tokenContractAddress?: string; decimal?: string };
   executionMode?: string;
   vendorName?: string;
   priceImpactPercent?: string | number;
@@ -40,6 +44,16 @@ function isQuoteRoute(value: unknown): value is QuoteRoute {
 function asFiniteNumber(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isProviderIntegerAmount(value: unknown): value is string {
+  return typeof value === "string" && /^\d+$/.test(value) && isPositiveUint256(value);
+}
+
+function matchesTokenAddress(value: unknown, expected: string): boolean {
+  return typeof value === "string" &&
+    EVM_ADDRESS_PATTERN.test(value) &&
+    value.toLowerCase() === expected.toLowerCase();
 }
 
 export function quoteAgeSeconds(quote: Q, now = Date.now()): number {
@@ -65,22 +79,39 @@ export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
     last = Date.now();
 
     try {
-      const response: unknown = await getRWAQuote(addr, String(usdt) + "0".repeat(18));
+      const requestedAmount = String(usdt) + "0".repeat(18);
+      const response: unknown = await getRWAQuote(addr, requestedAmount);
       const routes = isRecord(response) && Array.isArray(response.data)
-        ? response.data.filter(isQuoteRoute)
+        ? response.data.filter((route): route is QuoteRoute =>
+            isQuoteRoute(route) && isProviderIntegerAmount(route.toTokenAmount)
+          )
         : [];
       routes.sort((a, b) => Number(b.toTokenAmount ?? 0) - Number(a.toTokenAmount ?? 0));
       const best = routes[0];
       const output = asFiniteNumber(best?.toTokenAmount);
-      if (!best || output == null || output <= 0) {
+      if (
+        !best ||
+        output == null ||
+        output <= 0 ||
+        best.binanceChainId !== "56" ||
+        best.executionMode !== "RFQ" ||
+        best.fromTokenAmount !== requestedAmount ||
+        !matchesTokenAddress(best.fromToken?.tokenContractAddress, BSC_USDT_ADDRESS) ||
+        !matchesTokenAddress(best.toToken?.tokenContractAddress, addr) ||
+        typeof best.fromToken?.decimal !== "string" ||
+        typeof best.toToken?.decimal !== "string"
+      ) {
         const message = isRecord(response) && typeof response.msg === "string" ? response.msg : "no route";
         throw new Error(message);
       }
 
       const validation = validateQuote({
-        fromTokenAmount: String(usdt) + "0".repeat(18),
+        fromTokenAmount: best.fromTokenAmount,
         toTokenAmount: best.toTokenAmount,
-        tokenUnitPrice: best.fromToken?.tokenUnitPrice ?? 1,
+        fromTokenDecimals: best.fromToken.decimal,
+        toTokenDecimals: best.toToken.decimal,
+        tokenUnitPrice: best.fromToken.tokenUnitPrice,
+        expectedFromTokenAmount: requestedAmount,
       });
       if (!validation.ok) throw new Error(validation.reason);
       const impact = asFiniteNumber(best.priceImpactPercent);

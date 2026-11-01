@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:hardening": "node scripts/hardening-smoke.mjs",
-    "test:logic": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/*.test.mjs",
+    "test:logic": "bash -lc 'node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test $(printf \"%s\\n\" scripts/*.test.mjs | grep -v postgres-integration.test.mjs)'",
+    "test:postgres": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/postgres-integration.test.mjs",
     "test:responsive": "node scripts/responsive-smoke.mjs"
   },
   "dependencies": {
@@ -39,6 +40,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

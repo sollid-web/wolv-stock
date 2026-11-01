@@ -14,6 +14,7 @@ const publicEnvKeys = [
   "NEXT_PUBLIC_CHAIN_ID",
   "NEXT_PUBLIC_BSC_RPC_URL",
   "NEXT_PUBLIC_BSC_TESTNET_RPC_URL",
+  "BSC_RPC_URL",
   "NEXT_PUBLIC_BSC_BUNDLER_RPC_URL",
   "NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL",
   "NEXT_PUBLIC_ROUTER_ADDRESS",
@@ -94,6 +95,40 @@ test("rejects bundler URLs containing embedded credentials", () => {
   assert.throws(
     () => getAgentSmartAccountConfig(),
     /must be a public HTTP\(S\) URL without credentials/,
+  );
+});
+
+test("mainnet smart-account services prefer the server-only BSC RPC endpoint", () => {
+  process.env.NEXT_PUBLIC_CHAIN_ID = "56";
+  process.env.NEXT_PUBLIC_BSC_RPC_URL = "https://public-bsc.example";
+  process.env.BSC_RPC_URL = "https://user:token@private-rpc.example/api/key?access_token=secret";
+  process.env.NEXT_PUBLIC_BSC_BUNDLER_RPC_URL = "https://bundler.example.test/rpc";
+  process.env.NEXT_PUBLIC_ROUTER_ADDRESS =
+    "0x0000000000000000000000000000000000000123";
+  process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS =
+    "0x0000000000000000000000000000000000000456";
+  process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS =
+    "0x0000000000000000000000000000000000000789";
+
+  const config = getAgentSmartAccountConfig();
+  assert.equal(config.rpcUrl, process.env.BSC_RPC_URL);
+});
+
+test("public RPC endpoints reject path and query credentials", () => {
+  process.env.NEXT_PUBLIC_CHAIN_ID = "97";
+  process.env.NEXT_PUBLIC_BSC_TESTNET_RPC_URL = "https://rpc.example/project-token";
+  process.env.NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL =
+    "https://bundler.example.test/rpc";
+  process.env.NEXT_PUBLIC_ROUTER_ADDRESS =
+    "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3";
+  process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS =
+    "0x0000000000000000000000000000000000000123";
+  process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS =
+    "0x0000000000000000000000000000000000000456";
+
+  assert.throws(
+    () => getAgentSmartAccountConfig(),
+    /without credentials, path tokens, query parameters, or fragments/,
   );
 });
 

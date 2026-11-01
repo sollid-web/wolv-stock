@@ -670,6 +670,15 @@ export default function AgentTerminal() {
             {bawExecution.state === "FILLED" && bawExecution.refunds.length === 0 && (
               <p className="mt-2 text-slate-400">BAW reported FINISHED. No refund information was provided; a full fill cannot be inferred from that absence.</p>
             )}
+            {bawExecution.state === "OUTPUT_VERIFIED" && (
+              <p className="mt-2 text-emerald-200">Actual output meets the approved minimum. This does not claim a full fill because BAW did not provide refund evidence.</p>
+            )}
+            {bawExecution.state === "FINISHED_UNVERIFIED" && (
+              <p className="mt-2 text-amber-200">BAW reported FINISHED, but actual output was not available. The fill is unverified.</p>
+            )}
+            {bawExecution.state === "OUTPUT_MISMATCH" && (
+              <p className="mt-2 text-rose-200">BAW reported FINISHED, but actual output is below the approved minimum.</p>
+            )}
             <p className="mt-1">Transaction hash: {bawExecution.transactionHash ?? "Not reported"}</p>
             {bawExecution.failureReason && <p className="mt-2 text-rose-200">{bawExecution.failureReason}</p>}
             {bawExecution.state === "UNKNOWN" && <p className="mt-2 text-amber-200">Outcome is uncertain. Do not retry; reconcile this execution before any further order.</p>}

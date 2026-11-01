@@ -1,0 +1,187 @@
+{
+  "auditTimestamp": "2026-11-01T09:38:06.358Z",
+  "status": "ARCHIVE_STATE_ACCESS_NOT_ESTABLISHED",
+  "targetBlockNumber": "131014770",
+  "targetBlockHash": "0x993c869807f1090f1642ef6f9a607770eb051406fcd6d9ab03cc310a676fd36e",
+  "primaryRpcIdentity": "https://bsc-dataseed.bnbchain.org/<redacted>",
+  "archiveRpcIdentity": null,
+  "providerIndependence": "NOT_ESTABLISHED",
+  "primary": {
+    "chainId": null,
+    "latestBlockNumber": null,
+    "latestBlockHash": null,
+    "historicalBlockHash": null,
+    "requestDiagnostics": [
+      {
+        "method": "eth_chainId",
+        "stage": "BLOCK",
+        "errorClass": "TRANSPORT_TIMEOUT",
+        "providerErrorCode": null,
+        "httpStatus": null,
+        "attempt": 1,
+        "requestDurationMs": 10042,
+        "validRpcResponse": false,
+        "retryable": true,
+        "retryAfterMs": null,
+        "providerMessage": "The request took too long to respond.",
+        "succeeded": false,
+        "causeChain": [
+          {
+            "name": "TimeoutError",
+            "code": null
+          }
+        ]
+      }
+    ],
+    "targets": [
+      {
+        "label": "USDT",
+        "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+        "current": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "TRANSPORT_TIMEOUT",
+          "requestDiagnostics": []
+        },
+        "historical": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "TRANSPORT_TIMEOUT",
+          "requestDiagnostics": []
+        }
+      },
+      {
+        "label": "previously-successful",
+        "tokenAddress": "0xe614E2fc6C787035FF51f452e8E826Bfd32D5283",
+        "current": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "TRANSPORT_TIMEOUT",
+          "requestDiagnostics": []
+        },
+        "historical": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "TRANSPORT_TIMEOUT",
+          "requestDiagnostics": []
+        }
+      },
+      {
+        "label": "previously-failed",
+        "tokenAddress": "0x282973969118F9fe39bf2FF3D8DD1EFEE82CCb11",
+        "current": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "TRANSPORT_TIMEOUT",
+          "requestDiagnostics": []
+        },
+        "historical": {
+          "contractCodePresent": null,
+          "contractCodeSha256": null,
+          "decimals": null,
+          "status": "UNVERIFIED",
+          "errorClassification": "TRANSPORT_TIMEOUT",
+          "requestDiagnostics": []
+        }
+      }
+    ],
+    "errorClassification": "TRANSPORT_TIMEOUT"
+  },
+  "archive": null,
+  "targetComparisons": [
+    {
+      "label": "USDT",
+      "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+      "currentState": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "TRANSPORT_TIMEOUT",
+        "requestDiagnostics": []
+      },
+      "primaryHistorical": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "TRANSPORT_TIMEOUT",
+        "requestDiagnostics": []
+      },
+      "archiveHistorical": null,
+      "providersAgree": null
+    },
+    {
+      "label": "previously-successful",
+      "tokenAddress": "0xe614E2fc6C787035FF51f452e8E826Bfd32D5283",
+      "currentState": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "TRANSPORT_TIMEOUT",
+        "requestDiagnostics": []
+      },
+      "primaryHistorical": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "TRANSPORT_TIMEOUT",
+        "requestDiagnostics": []
+      },
+      "archiveHistorical": null,
+      "providersAgree": null
+    },
+    {
+      "label": "previously-failed",
+      "tokenAddress": "0x282973969118F9fe39bf2FF3D8DD1EFEE82CCb11",
+      "currentState": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "TRANSPORT_TIMEOUT",
+        "requestDiagnostics": []
+      },
+      "primaryHistorical": {
+        "contractCodePresent": null,
+        "contractCodeSha256": null,
+        "decimals": null,
+        "status": "UNVERIFIED",
+        "errorClassification": "TRANSPORT_TIMEOUT",
+        "requestDiagnostics": []
+      },
+      "archiveHistorical": null,
+      "providersAgree": null
+    }
+  ],
+  "wireRequests": [
+    {
+      "method": "eth_chainId",
+      "parameterCount": null,
+      "targetAddress": null,
+      "blockParameterType": null,
+      "serializedBlockParameter": null,
+      "inputBlockNumberType": null,
+      "attempt": 1,
+      "responseDurationMs": 9918,
+      "httpStatus": null,
+      "jsonRpcErrorCode": 20,
+      "providerMessage": "This operation was aborted",
+      "validJsonRpcResponse": false,
+      "errorClass": "JSON_RPC_ERROR",
+      "retryable": false
+    }
+  ]
+}

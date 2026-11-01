@@ -1,8 +1,11 @@
 import { MAX_RELIABLE_GAP_PERCENT } from "./marketThresholds.js";
+import { formatUnits } from "viem";
 
 export type QuoteValidationInput = {
   fromTokenAmount?: unknown;
   toTokenAmount?: unknown;
+  fromTokenDecimals?: unknown;
+  toTokenDecimals?: unknown;
   tokenUnitPrice?: unknown;
   usd?: unknown;
   expectedFromTokenAmount?: unknown;
@@ -33,6 +36,15 @@ function positiveIntegerString(value: unknown): string | null {
   }
 }
 
+function tokenDecimals(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value >= 0 && value <= 255 ? value : null;
+  }
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d*)$/.test(value)) return null;
+  const decimals = Number(value);
+  return Number.isInteger(decimals) && decimals <= 255 ? decimals : null;
+}
+
 function referencePerShare(referencePrice: unknown, tokenToShareRatio: unknown): number | null {
   const reference = finitePositive(referencePrice);
   const ratio = finitePositive(tokenToShareRatio);
@@ -53,9 +65,11 @@ export function validateQuote(input: QuoteValidationInput): QuoteValidationResul
     const expectedFrom = input.expectedFromTokenAmount === undefined
       ? null
       : positiveIntegerString(input.expectedFromTokenAmount);
+    const fromDecimals = tokenDecimals(input.fromTokenDecimals);
+    const toDecimals = tokenDecimals(input.toTokenDecimals);
     const unitPrice = finitePositive(input.tokenUnitPrice);
-    if (!fromAmount || !toAmount || unitPrice == null) {
-      return { ok: false, reason: "Quote route contains invalid token amounts or unit price" };
+    if (!fromAmount || !toAmount || fromDecimals == null || toDecimals == null || unitPrice == null) {
+      return { ok: false, reason: "Quote route contains invalid token amounts, decimals, or unit price" };
     }
     if (input.expectedFromTokenAmount !== undefined && !expectedFrom) {
       return { ok: false, reason: "Requested input amount is invalid" };
@@ -63,8 +77,8 @@ export function validateQuote(input: QuoteValidationInput): QuoteValidationResul
     if (expectedFrom && fromAmount !== expectedFrom) {
       return { ok: false, reason: "Quote route does not match the requested input amount" };
     }
-    const outputTokens = Number(toAmount) / 1e18;
-    const inputUsdt = Number(fromAmount) / 1e18;
+    const outputTokens = Number(formatUnits(BigInt(toAmount), toDecimals));
+    const inputUsdt = Number(formatUnits(BigInt(fromAmount), fromDecimals));
     usd = (inputUsdt * unitPrice) / outputTokens;
     if (!Number.isFinite(usd) || usd <= 0) {
       return { ok: false, reason: "Quote route produces an invalid token price" };

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { broadcastBscTransaction } from "@/lib/binance";
 import { EVM_ADDRESS_PATTERN } from "@/lib/apiValidation";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +22,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid wallet address or signed transaction" }, { status: 400 });
     }
 
-    return NextResponse.json(await broadcastBscTransaction(address, signedTransaction));
+    return NextResponse.json({
+      error: "Direct transaction broadcast is disabled until the SWAP transaction intent and recovery formats are verified.",
+      code: "UNSUPPORTED_SWAP_SCHEMA",
+    }, { status: 501 });
   } catch (error) {
     console.error("Binance transaction broadcast failed:", error);
     return NextResponse.json({ error: "Transaction broadcast is temporarily unavailable" }, { status: 502 });

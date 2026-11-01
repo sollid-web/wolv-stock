@@ -12,6 +12,15 @@ const INPUT = {
   chainId: "56",
   slippageBps: 100,
 };
+const quoteMetadata = (tokenAddress, decimals) => ({
+  chainId: "56",
+  tokenAddress,
+  decimals,
+  resolutionSource: "BSC_ETH_CALL",
+  blockNumber: "100",
+  resolvedAt: 1_000,
+  validationStatus: "VALIDATED",
+});
 
 const QUOTE = {
   status: "QUOTED",
@@ -23,6 +32,8 @@ const QUOTE = {
   walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
   fromTokenAddress: "0x55d398326f99059fF775485246999027B3197955",
   toTokenAddress: INPUT.tokenAddress,
+  fromTokenMetadata: quoteMetadata("0x55d398326f99059fF775485246999027B3197955", 18),
+  toTokenMetadata: quoteMetadata(INPUT.tokenAddress, 6),
   fromCoinSymbol: "USDT",
   fromCoinAmount: "10",
   toCoinSymbol: "AAPLon",
@@ -32,6 +43,7 @@ const QUOTE = {
   tokenPriceUsd: 100,
   referencePrice: 100,
   referenceGapPercent: 0,
+  tokenDecimals: 6,
   quoteFetchedAt: 1_000,
   expiresAt: 31_000,
   quoteBinding: "mock-binding",

@@ -7,6 +7,10 @@ export const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 export const MINIMUM_ORDER_USDT = "5";
 export const MINIMUM_ORDER_WEI = parseUnits(MINIMUM_ORDER_USDT, 18);
 
+export function isValidBinanceQuoteId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{32}$/i.test(value);
+}
+
 export function isPositiveUint256(value: string): boolean {
   const normalized = normalizeUint256(value);
   return normalized !== null && BigInt(normalized) > BigInt(0);

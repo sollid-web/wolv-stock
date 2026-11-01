@@ -103,10 +103,14 @@ export async function createBawExecutionApproval(
     validateWalletFunds(snapshot, quote, config.minBnbReserve)
     await validateLimits(store, quote, config, now())
 
-    const amountOut = parsePositiveAmount(quote.toCoinAmount)
+    if (!quote.toTokenMetadata) {
+        throw new BawExecutionError("UNSUPPORTED_TOKEN", "The output token's verified decimal metadata is required before a BAW approval can be created.", 422)
+    }
+    const outputDecimals = quote.toTokenMetadata.decimals
+    const amountOut = parsePositiveAmount(quote.toCoinAmount, outputDecimals)
     const minimumOutputAmount = formatUnits(
         amountOut * BigInt(10_000 - quote.slippageBps) / BigInt(10_000),
-        18,
+        outputDecimals,
     )
     const approvalToken = randomBytes(32).toString("base64url")
     const executionId = randomUUID()
@@ -131,6 +135,9 @@ export async function createBawExecutionApproval(
         referenceGapPercent: quote.referenceGapPercent,
         walletAddress: quote.walletAddress,
         tokenAddress: quote.tokenAddress,
+        tokenDecimals: quote.tokenDecimals,
+        fromTokenDecimals: quote.fromTokenMetadata.decimals,
+        toTokenDecimals: quote.toTokenMetadata.decimals,
         underlyingTicker: quote.underlyingTicker,
         tokenSymbol: quote.direction === "BUY" ? quote.toCoinSymbol : quote.fromCoinSymbol,
         fromCoinSymbol: quote.fromCoinSymbol,
@@ -376,6 +383,23 @@ async function reconcileUncertainSubmission(
     }
 }
 
+export function compareBawOutputQuantity(
+    actualOutput: string | null | undefined,
+): { state: "FINISHED_UNVERIFIED"; reason: string; actualReceivedOutput: string | null } {
+    if (actualOutput === null || actualOutput === undefined || actualOutput.trim() === "") {
+        return {
+            state: "FINISHED_UNVERIFIED",
+            reason: "BAW reported FINISHED without actual output quantity; fill status cannot be verified.",
+            actualReceivedOutput: null,
+        }
+    }
+    return {
+        state: "FINISHED_UNVERIFIED",
+        reason: "BAW actual-output units and independent settlement semantics are not documented; fill status cannot be verified.",
+        actualReceivedOutput: actualOutput,
+    }
+}
+
 async function monitorBawOrder(
     record: BawExecutionRecord,
     runner: BawRunner,
@@ -405,7 +429,10 @@ async function monitorBawOrder(
                 return record
             }
             if (order.status === "FINISHED") {
-                record.state = order.refund?.length ? "PARTIALLY_FILLED" : "FILLED"
+                const comparison = compareBawOutputQuantity(order.toTokenActualQty)
+                record.actualReceivedOutput = comparison.actualReceivedOutput
+                record.state = comparison.state
+                record.failureReason = comparison.reason
                 record.completedAt = now()
                 await store.update(record)
                 return record
@@ -482,6 +509,8 @@ async function revalidateQuote(
         referenceGapPercent: original.referenceGapPercent,
         fromCoinSymbol: original.fromCoinSymbol,
         toCoinSymbol: original.toCoinSymbol,
+        fromTokenDecimals: original.fromTokenMetadata.decimals,
+        toTokenDecimals: original.toTokenMetadata.decimals,
     }, fresh)) {
         throw new BawExecutionError("QUOTE_CHANGED", "The live quote changed. Request a new quote before approval.", 409)
     }
@@ -493,6 +522,7 @@ function sameApprovedQuote(
         | "walletAddress" | "tokenAddress" | "direction" | "fromTokenAddress" | "toTokenAddress"
         | "underlyingTicker" | "requestedInputAmount" | "expectedOutputAmount" | "slippageBps" | "referencePrice"
         | "tokenPriceUsd" | "referenceGapPercent" | "fromCoinSymbol" | "toCoinSymbol"
+        | "fromTokenDecimals" | "toTokenDecimals"
     >,
     quote: AgentQuoteResponse,
 ): boolean {
@@ -507,6 +537,8 @@ function sameApprovedQuote(
         quote.toCoinAmount === record.expectedOutputAmount &&
         quote.fromCoinSymbol === record.fromCoinSymbol &&
         quote.toCoinSymbol === record.toCoinSymbol &&
+        quote.fromTokenMetadata.decimals === record.fromTokenDecimals &&
+        quote.toTokenMetadata.decimals === record.toTokenDecimals &&
         quote.slippageBps === record.slippageBps &&
         quote.referencePrice === record.referencePrice &&
         quote.tokenPriceUsd === record.tokenPriceUsd &&
@@ -519,8 +551,9 @@ function validateWalletFunds(snapshot: BawWalletSnapshot, quote: AgentQuoteRespo
         balance.binanceChainId === BAW_CHAIN_ID &&
         balance.contractAddress.toLowerCase() === from.toLowerCase()
     )
-    const availableInput = inputBalance ? parseBalanceAmount(inputBalance.balance) : null
-    if (availableInput === null || availableInput < parsePositiveAmount(quote.fromCoinAmount)) {
+    const inputDecimals = quote.fromTokenMetadata.decimals
+    const availableInput = inputBalance ? parseBalanceAmount(inputBalance.balance, inputDecimals) : null
+    if (availableInput === null || availableInput < parsePositiveAmount(quote.fromCoinAmount, inputDecimals)) {
         throw new BawExecutionError("INSUFFICIENT_TRADE_BALANCE", "BAW does not report sufficient source-token balance.", 409)
     }
     const bnbBalance = snapshot.balances.find((balance) =>
@@ -594,10 +627,10 @@ function getExecutionConfig(environment: NodeJS.ProcessEnv): ExecutionConfig {
     return { maxOrderUsd, dailyLimitUsd, maxSlippageBps, minBnbReserve }
 }
 
-function parsePositiveAmount(value: string): bigint {
+function parsePositiveAmount(value: string, decimals = 18): bigint {
     if (!DECIMAL_AMOUNT.test(value)) throw new BawExecutionError("INVALID_AMOUNT", "A BAW amount is malformed.", 422)
     try {
-        const amount = parseUnits(value, 18)
+        const amount = parseUnits(value, decimals)
         if (amount <= BigInt(0) || amount > UINT256_MAX) throw new Error("amount out of range")
         return amount
     } catch {
@@ -605,10 +638,10 @@ function parsePositiveAmount(value: string): bigint {
     }
 }
 
-function parseBalanceAmount(value: string): bigint | null {
+function parseBalanceAmount(value: string, decimals = 18): bigint | null {
     if (!DECIMAL_AMOUNT.test(value)) return null
     try {
-        const amount = parseUnits(value, 18)
+        const amount = parseUnits(value, decimals)
         return amount >= BigInt(0) && amount <= UINT256_MAX ? amount : null
     } catch {
         return null

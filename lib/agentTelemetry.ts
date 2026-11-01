@@ -1,7 +1,7 @@
 import { AltanaWalletProvider, TWAKProvider } from "@bnbagent/sdk/wallets";
 
 export type AgentTelemetry = {
-  executionMode: string;
+  executionMode: "execution-blocked";
   agentIdentity: { standard: string; registrationId: number | null; status: string };
   commerce: { standard: string; jobId: string | null; status: string };
   sessionKey: { status: string; reason: string };
@@ -15,7 +15,7 @@ export type AgentTelemetry = {
 
 export function buildCapabilityTelemetry(): AgentTelemetry {
   return {
-    executionMode: "wallet-confirmation",
+    executionMode: "execution-blocked",
     agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
     commerce: { standard: "ERC-8183", jobId: null, status: "disabled" },
     sessionKey: { status: "disabled", reason: "Agent signing is not enabled in wallet-confirmation mode." },

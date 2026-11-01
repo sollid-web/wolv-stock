@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:net";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const baseUrl = new URL(process.env.BASE_URL || "http://127.0.0.1:3000");
-const widths = [320, 390, 414, 768, 1440];
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const responsiveFixturePath = path.join(projectRoot, "scripts", "responsive-fixtures.mjs");
+const widths = [320, 360, 390, 414, 768, 1024, 1440];
 const height = 900;
 const timeoutMs = 90_000;
+const serverTimeoutMs = 120_000;
+const fixtureTokenAddress = "0x0000000000000000000000000000000000000123";
+const unavailableTokenAddress = "0x0000000000000000000000000000000000000124";
+const missingTokenAddress = "0x0000000000000000000000000000000000000099";
+const mockWalletAddress = "0x1234567890abcdef1234567890abcdef12345678";
 
 function findChrome() {
   if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
@@ -18,25 +26,182 @@ function findChrome() {
   throw new Error("Chromium not found. Set CHROME_BIN to a headless Chromium executable.");
 }
 
-const profileDir = await mkdtemp(path.join(os.tmpdir(), "wolv-responsive-"));
-const chrome = spawn(findChrome(), [
-  "--headless=new",
-  "--no-sandbox",
-  "--disable-gpu",
-  "--disable-dev-shm-usage",
-  "--no-first-run",
-  "--no-default-browser-check",
-  "--remote-allow-origins=*",
-  `--user-data-dir=${profileDir}`,
-  "--remote-debugging-address=127.0.0.1",
-  "--remote-debugging-port=0",
-  "about:blank",
-], { stdio: "ignore" });
-
+let baseUrl;
+const profileDirs = [];
+let chrome;
 let ws;
 let nextId = 0;
 const pending = new Map();
 let documentStatus = null;
+let server;
+let serverOutput = "";
+
+function testEnvironment() {
+  return {
+    ...process.env,
+    NODE_ENV: "production",
+    NEXT_TELEMETRY_DISABLED: "1",
+    NEXT_PUBLIC_WALLET_PROJECT_ID: "",
+    WOLV_RESPONSIVE_FIXTURE: "",
+    BAW_EXECUTION_ENABLED: "false",
+    BAW_WALLET_API_TOKEN: "",
+    WOLV_TRADING_DATABASE_URL: "",
+    BAW_EXECUTION_DATABASE_URL: "",
+  };
+}
+
+function runBuild() {
+  console.log("Building the production app for responsive verification…");
+  const result = spawnSync(process.execPath, ["node_modules/next/dist/bin/next", "build", "--webpack"], {
+    cwd: projectRoot,
+    env: testEnvironment(),
+    stdio: "inherit",
+    timeout: 1_200_000,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Production build failed with exit code ${result.status}`);
+}
+
+async function findAvailablePort() {
+  const listener = createServer();
+  await new Promise((resolve, reject) => {
+    listener.once("error", reject);
+    listener.listen(0, "127.0.0.1", resolve);
+  });
+  const address = listener.address();
+  assert.ok(address && typeof address !== "string");
+  await new Promise((resolve, reject) => listener.close((error) => error ? reject(error) : resolve()));
+  return address.port;
+}
+
+function appendServerOutput(chunk) {
+  serverOutput = `${serverOutput}${chunk}`.slice(-20_000);
+}
+
+async function startProductionServer() {
+  const port = await findAvailablePort();
+  baseUrl = new URL(`http://127.0.0.1:${port}`);
+  server = spawn(process.execPath, [
+    "node_modules/next/dist/bin/next",
+    "start",
+    "--hostname",
+    "127.0.0.1",
+    "--port",
+    String(port),
+  ], {
+    cwd: projectRoot,
+    env: {
+      ...testEnvironment(),
+      PORT: String(port),
+      WOLV_RESPONSIVE_FIXTURE: "1",
+      BINANCE_API_KEY: "responsive-fixture-key",
+      BINANCE_SECRET_KEY: "responsive-fixture-secret",
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${responsiveFixturePath}`].filter(Boolean).join(" "),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  server.stdout.setEncoding("utf8").on("data", appendServerOutput);
+  server.stderr.setEncoding("utf8").on("data", appendServerOutput);
+  server.once("error", (error) => appendServerOutput(`\nServer process error: ${error.message}`));
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < serverTimeoutMs) {
+    if (server.exitCode !== null) {
+      throw new Error(`Production server exited with code ${server.exitCode} before becoming healthy.\n${serverOutput}`);
+    }
+    try {
+      const response = await fetch(baseUrl, { signal: AbortSignal.timeout(3_000) });
+      if (response.status === 200) {
+        console.log(`Production server healthy at ${baseUrl.origin}`);
+        return;
+      }
+      appendServerOutput(`\nHealth check returned HTTP ${response.status}`);
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw new Error(`Production server did not become healthy within ${serverTimeoutMs}ms.\n${serverOutput}`);
+}
+
+async function stopChild(child, name) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  child.kill("SIGTERM");
+  const exited = await Promise.race([
+    new Promise((resolve) => child.once("exit", () => resolve(true))),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+  if (!exited && child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGKILL");
+    await Promise.race([
+      new Promise((resolve) => child.once("exit", resolve)),
+      new Promise((resolve) => setTimeout(resolve, 2_000)),
+    ]);
+  }
+  if (child.exitCode === null && child.signalCode === null) {
+    throw new Error(`${name} did not stop after SIGTERM/SIGKILL`);
+  }
+}
+
+async function startChrome() {
+  const profileDir = await mkdtemp(path.join(os.tmpdir(), "wolv-responsive-"));
+  profileDirs.push(profileDir);
+  chrome = spawn(findChrome(), [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--remote-allow-origins=*",
+    `--user-data-dir=${profileDir}`,
+    "--remote-debugging-address=127.0.0.1",
+    "--remote-debugging-port=0",
+    "about:blank",
+  ], { stdio: "ignore" });
+
+  const portFile = path.join(profileDir, "DevToolsActivePort");
+  let port;
+  const waitStarted = Date.now();
+  while (!port && Date.now() - waitStarted < 10_000) {
+    try {
+      port = Number((await readFile(portFile, "utf8")).split("\n")[0]);
+    } catch {
+      if (chrome.exitCode != null) throw new Error(`Chromium exited with code ${chrome.exitCode}`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  if (!port) throw new Error("Chromium did not publish a DevTools port");
+
+  const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
+  assert.ok(targetResponse.ok, `Could not create Chromium page target: HTTP ${targetResponse.status}`);
+  const target = await targetResponse.json();
+  await connectDevTools(target.webSocketDebuggerUrl);
+  await send("Page.enable");
+  await send("Runtime.enable");
+  await send("Network.enable");
+  await send("Network.setBlockedURLs", {
+    urls: [
+      "*://*/api/agent/quote*",
+      "*://*/api/agent/approve*",
+      "*://*/api/agent/execute*",
+      "*://*/api/quote*",
+      "*://*/api/swap*",
+      "*://*/api/order/submit*",
+      "*://*/api/approve-transaction*",
+      "*://*/api/transaction/broadcast*",
+    ],
+  });
+}
+
+async function stopChrome() {
+  for (const request of pending.values()) clearTimeout(request.timer);
+  pending.clear();
+  if (ws?.readyState === WebSocket.OPEN) ws.close();
+  ws = undefined;
+  await stopChild(chrome, "Chromium");
+  chrome = undefined;
+  documentStatus = null;
+}
 
 function connectDevTools(url) {
   return new Promise((resolve, reject) => {
@@ -88,6 +253,7 @@ async function evaluate(expression) {
 
 async function waitForPage(pathname, expected) {
   const started = Date.now();
+  let lastState;
   while (Date.now() - started < timeoutMs) {
     try {
       const state = await evaluate(`(() => ({
@@ -96,7 +262,8 @@ async function waitForPage(pathname, expected) {
         title: document.title,
         bodyText: document.body?.innerText?.slice(0, 5000) ?? ""
       }))()`);
-      if (state.ready === "complete" && state.path === pathname && expected.test(state.bodyText)) {
+      lastState = state;
+      if (state.ready !== "loading" && state.path === pathname && expected.test(state.bodyText)) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         return state;
       }
@@ -105,7 +272,10 @@ async function waitForPage(pathname, expected) {
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Timed out waiting for page ${pathname}`);
+  throw new Error(
+    `Timed out waiting for page ${pathname}; last page state: ${JSON.stringify(lastState ?? null)}; ` +
+    `document HTTP status: ${documentStatus ?? "unknown"}.\n${serverOutput}`,
+  );
 }
 
 async function navigate(url, expected) {
@@ -119,41 +289,440 @@ async function navigate(url, expected) {
   return state;
 }
 
-async function run() {
-  const portFile = path.join(profileDir, "DevToolsActivePort");
-  let port;
-  const waitStarted = Date.now();
-  while (!port && Date.now() - waitStarted < 10_000) {
+async function waitForCondition(expression, label, timeout = timeoutMs) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
     try {
-      port = Number((await readFile(portFile, "utf8")).split("\n")[0]);
+      const result = await evaluate(expression);
+      if (result) return result;
     } catch {
-      if (chrome.exitCode != null) throw new Error(`Chromium exited with code ${chrome.exitCode}`);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // The client may replace the execution context while rendering.
     }
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  if (!port) throw new Error("Chromium did not publish a DevTools port");
+  throw new Error(`Timed out waiting for ${label}`);
+}
 
-  const targetResponse = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
-  assert.ok(targetResponse.ok, `Could not create Chromium page target: HTTP ${targetResponse.status}`);
-  const target = await targetResponse.json();
-  await connectDevTools(target.webSocketDebuggerUrl);
-  await send("Page.enable");
-  await send("Runtime.enable");
-  await send("Network.enable");
+async function clickButton(label) {
+  const clicked = await evaluate(`(() => {
+    const button = Array.from(document.querySelectorAll("button")).find((item) => item.innerText.trim().startsWith(${JSON.stringify(label)}));
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`);
+  assert.equal(clicked, true, `Could not click enabled "${label}" button`);
+}
 
-  let stockPath = process.env.TEST_TOKEN_ADDRESS
-    ? `/stock/${process.env.TEST_TOKEN_ADDRESS}`
-    : null;
+async function runTradeRefusalChecks() {
+  const script = `(() => {
+    const account = ${JSON.stringify(mockWalletAddress)};
+    let connected = sessionStorage.getItem("__WOLV_RESPONSIVE_WALLET_CONNECTED") === "1";
+    window.__WOLV_WALLET_CALLS = [];
+    window.ethereum = {
+      isMetaMask: true,
+      request: async ({ method }) => {
+        window.__WOLV_WALLET_CALLS.push(method);
+        if (method === "eth_chainId") return "0x38";
+        if (method === "net_version") return "56";
+        if (method === "eth_accounts") return connected ? [account] : [];
+        if (method === "eth_requestAccounts") {
+          connected = true;
+          sessionStorage.setItem("__WOLV_RESPONSIVE_WALLET_CONNECTED", "1");
+          return [account];
+        }
+        if (method === "wallet_switchEthereumChain") return null;
+        if (["eth_sendTransaction", "eth_signTypedData", "eth_signTypedData_v4", "personal_sign"].includes(method)) {
+          throw new Error("Responsive test blocked wallet mutation");
+        }
+        return null;
+      },
+      on() {},
+      removeListener() {},
+    };
+
+    const originalFetch = window.fetch.bind(window);
+    window.__WOLV_QUOTE_MODE = "fresh";
+    window.__WOLV_API_CALLS = [];
+    window.fetch = async (input, init) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.origin);
+      if (url.pathname.startsWith("/api/")) window.__WOLV_API_CALLS.push(url.pathname);
+      if (url.pathname === "/api/quote") {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        if (window.__WOLV_QUOTE_MODE === "error") {
+          return new Response(JSON.stringify({ error: "Responsive mock quote unavailable" }), { status: 502, headers: { "content-type": "application/json" } });
+        }
+        const amount = url.searchParams.get("amount");
+        const quoteFetchedAt = window.__WOLV_QUOTE_MODE === "expired" ? Date.now() - 60000 : Date.now();
+        return new Response(JSON.stringify({
+          quoteId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          quoteBinding: "responsive-mock-binding",
+          executionIntentId: "11111111-1111-4111-8111-111111111111",
+          status: "QUOTED",
+          executionEligibility: "NOT_AVAILABLE",
+          quoteFetchedAt,
+          quoteExpiresAt: quoteFetchedAt + 30000,
+          executionMode: "RFQ",
+          fromTokenAmount: amount,
+          toTokenAmount: "1234567",
+          fromToken: { tokenUnitPrice: "1", decimal: "18" },
+          toToken: { decimal: "6" },
+          tradeIntent: {
+            direction: "BUY",
+            chainId: 56,
+            fromTokenAddress: "0x55d398326f99059ff775485246999027b3197955",
+            toTokenAddress: ${JSON.stringify(fixtureTokenAddress)},
+            fromTokenMetadata: {
+              chainId: "56",
+              tokenAddress: "0x55d398326f99059ff775485246999027b3197955",
+              decimals: 18,
+              resolutionSource: "BSC_ETH_CALL",
+              blockNumber: "100",
+              resolvedAt: quoteFetchedAt,
+              validationStatus: "VALIDATED",
+            },
+            toTokenMetadata: {
+              chainId: "56",
+              tokenAddress: ${JSON.stringify(fixtureTokenAddress)},
+              decimals: 6,
+              resolutionSource: "BSC_ETH_CALL",
+              blockNumber: "100",
+              resolvedAt: quoteFetchedAt,
+              validationStatus: "VALIDATED",
+            },
+            inputAmount: amount,
+            expectedOutputAmount: "1234567",
+            minimumOutputAmount: "1230000",
+            slippageBps: 50
+          }
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (/^\\/api\\/(?:approve-transaction|swap|order\\/submit|transaction\\/broadcast|agent\\/(?:approve|execute))/.test(url.pathname)) {
+        window.__WOLV_API_CALLS.push(url.pathname);
+        return new Response(JSON.stringify({ error: "Responsive test blocked execution endpoint" }), { status: 403, headers: { "content-type": "application/json" } });
+      }
+      return originalFetch(input, init);
+    };
+  })()`;
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: script });
+  await navigate(new URL(`/trade/${fixtureTokenAddress}`, baseUrl).href, /Connect your wallet|Checking wallet connection/);
+  await waitForCondition(
+    `document.body.innerText.includes("Connect your wallet")`,
+    "disconnected wallet refusal state",
+  );
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Get Quote")`), false);
+  console.log("PASS trade UI disconnected wallet · quote action unavailable");
+
+  await clickButton("Connect browser wallet");
+  await waitForCondition(
+    `document.body.innerText.includes("Disconnect") && document.body.innerText.includes("Connected")`,
+    "mock wallet connection",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await evaluate(`(() => {
+    const input = document.querySelector('input[placeholder="Enter USDT amount"]');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "10");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  })()`);
+  await waitForCondition(
+    `Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Get Quote" && !button.disabled)`,
+    "enabled quote action",
+  );
+  await clickButton("Get Quote");
+  await waitForCondition(
+    `Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Fetching...")`,
+    "quote loading state",
+  );
+  console.log("PASS trade UI · quote loading state");
+  await waitForCondition(
+    `document.body.innerText.includes("Quote only — no transaction submitted.")`,
+    "unsupported execution refusal",
+  );
+  const freshQuote = await evaluate(`(() => ({
+    text: document.body.innerText,
+    buttons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()),
+    dialogs: document.querySelectorAll('[role="dialog"], dialog').length,
+    scrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+    clientWidth: document.documentElement.clientWidth
+  }))()`);
+  assert.match(freshQuote.text, /QUOTED/);
+  assert.match(freshQuote.text, /1\.234567 TEST/);
+  assert.match(freshQuote.text, /Approved minimum output: 1\.23 TEST/);
+  assert.doesNotMatch(freshQuote.text, /Sign & Execute Trade|Approve USDT|Sign Typed Data/);
+  assert.equal(freshQuote.dialogs, 0, "A transaction dialog appeared while execution is unsupported");
+  assert.ok(freshQuote.scrollWidth <= freshQuote.clientWidth + 1, "The quote/refusal UI overflows horizontally");
+  console.log("PASS trade UI connected wallet · accurate 6-decimal quote shown · execution unavailable");
+
+  await evaluate(`(() => { window.__WOLV_QUOTE_MODE = "expired"; })()`);
+  await clickButton("Get Quote");
+  await waitForCondition(`document.body.innerText.includes("EXPIRED")`, "expired quote refusal");
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => /Sign & Execute Trade|Approve USDT|Sign Typed Data/.test(button.innerText))`), false);
+  console.log("PASS trade UI · expired quote remains non-executable");
+
+  await evaluate(`(() => { window.__WOLV_QUOTE_MODE = "error"; })()`);
+  await clickButton("Get fresh quote");
+  await waitForCondition(`document.body.innerText.includes("Responsive mock quote unavailable")`, "quote error state");
+  const prohibitedCalls = await evaluate(`(() => ({
+    wallet: window.__WOLV_WALLET_CALLS.filter((method) => /sendTransaction|signTypedData|personal_sign/.test(method)),
+    api: window.__WOLV_API_CALLS.filter((pathname) => pathname !== "/api/quote")
+  }))()`);
+  assert.deepEqual(prohibitedCalls.wallet, [], "A wallet signing or transaction method was called");
+  assert.deepEqual(prohibitedCalls.api, [], "A transaction/approval endpoint was called");
+  console.log("PASS trade UI · quote error shown · no signing, approval, swap, or broadcast attempted");
+}
+
+async function runAgentRefusalChecks() {
+  const script = `(() => {
+    const account = ${JSON.stringify(mockWalletAddress)};
+    let connected = sessionStorage.getItem("__WOLV_RESPONSIVE_WALLET_CONNECTED") === "1";
+    window.__WOLV_AGENT_WALLET_CALLS = [];
+    window.ethereum = {
+      isMetaMask: true,
+      request: async ({ method }) => {
+        window.__WOLV_AGENT_WALLET_CALLS.push(method);
+        if (method === "eth_chainId") return "0x38";
+        if (method === "net_version") return "56";
+        if (method === "eth_accounts") return connected ? [account] : [];
+        if (method === "eth_requestAccounts") {
+          connected = true;
+          sessionStorage.setItem("__WOLV_RESPONSIVE_WALLET_CONNECTED", "1");
+          return [account];
+        }
+        if (method === "wallet_switchEthereumChain") return null;
+        if (["personal_sign", "eth_sign"].includes(method)) return "0x" + "11".repeat(65);
+        if (method === "eth_sendTransaction" || method.startsWith("eth_signTypedData")) {
+          throw new Error("Responsive test blocked transaction signing or submission");
+        }
+        return null;
+      },
+      on() {},
+      removeListener() {},
+    };
+    const originalFetch = window.fetch.bind(window);
+    window.__WOLV_AGENT_ACTIONS = [];
+    window.__WOLV_AGENT_ENDPOINTS = [];
+    window.__WOLV_AGENT_SESSION_AUTHORIZED = false;
+    window.__WOLV_AGENT_SESSION_REQUESTS = [];
+    window.__WOLV_AGENT_QUOTE_MODE = "rejected";
+    window.fetch = async (input, init = {}) => {
+      const url = new URL(typeof input === "string" ? input : input.url, location.origin);
+      const method = (init.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (url.pathname === "/api/agent/execute" && method === "GET") {
+        return new Response(JSON.stringify({
+          executionMode: "wallet-confirmation",
+          agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
+          commerce: { standard: "ERC-8183", jobId: null, status: "disabled" },
+          sessionKey: { status: "disabled", reason: "Agent signing is not enabled." },
+          x402: { status: "disabled", reason: "No autonomous job is created." },
+          walletProviders: {
+            altana: { sdkAvailable: false, configured: false },
+            twak: { sdkAvailable: false, configured: false }
+          },
+          recentTransactions: []
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname === "/api/agent/session" && method === "GET") {
+        const fixtureAuthenticated = window.__WOLV_AGENT_SESSION_AUTHORIZED === true;
+        window.__WOLV_AGENT_SESSION_REQUESTS.push({ fixtureAuthenticated, method });
+        return new Response(JSON.stringify(fixtureAuthenticated
+          ? { authenticated: true, address: ${JSON.stringify(mockWalletAddress)} }
+          : { error: "BAW session is not authorized." }), {
+          status: fixtureAuthenticated ? 200 : 401,
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (url.pathname === "/api/agent/session/challenge" && method === "POST") {
+        return new Response(JSON.stringify({ message: "Responsive mock wallet challenge" }), {
+          headers: { "content-type": "application/json" }
+        });
+      }
+      if (url.pathname === "/api/agent/session" && method === "POST") {
+        window.__WOLV_AGENT_SESSION_AUTHORIZED = true;
+        return new Response(JSON.stringify({
+          authenticated: true,
+          address: ${JSON.stringify(mockWalletAddress)}
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname === "/api/agent/session" && method === "DELETE") {
+        window.__WOLV_AGENT_SESSION_AUTHORIZED = false;
+        return new Response(null, { status: 204 });
+      }
+      if (url.pathname === "/api/agent/wallet" && method === "GET") {
+        return new Response(JSON.stringify({
+          connected: true,
+          fetchedAt: new Date().toISOString(),
+          chains: [{ binanceChainId: "56", name: "BNB Smart Chain", simpleName: "BSC" }],
+          addresses: [],
+          balances: [],
+          settings: null,
+          errors: []
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname === "/api/agent/execute" && method === "POST") {
+        const body = JSON.parse(init.body);
+        window.__WOLV_AGENT_ACTIONS.push(body.action);
+        if (body.action === "simulate" || body.action === "preview") {
+          return new Response(JSON.stringify({
+            requestId: "responsive-mock-draft",
+            status: body.action === "simulate" ? "mock-evaluated" : "local-draft",
+            strategy: {
+              side: "buy",
+              ticker: "AAPL",
+              amount: "0.1",
+              amountUnit: "BNB",
+              triggerDirection: "down",
+              triggerPercent: 2,
+              maxSlippagePercent: 1
+            },
+            execution: { mode: "wallet-confirmation", transactionBroadcast: false, automatedExecution: false },
+            ...(body.action === "simulate" ? { mockTrigger: { triggered: true, changePercent: -2 } } : {})
+          }), { headers: { "content-type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ error: "Responsive fixture blocked execution." }), { status: 503, headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname === "/api/agent/quote" && method === "POST") {
+        window.__WOLV_AGENT_ENDPOINTS.push("quote");
+        if (window.__WOLV_AGENT_QUOTE_MODE === "rejected") {
+          return new Response(JSON.stringify({
+            status: "REJECTED",
+            eligibility: "REJECTED",
+            rejectionReasons: ["Provider semantics are not verified."],
+            error: "Provider semantics are not verified."
+          }), { status: 422, headers: { "content-type": "application/json" } });
+        }
+        const quoteFetchedAt = Date.now() - 60000;
+        return new Response(JSON.stringify({
+          status: "QUOTED",
+          eligibility: "ELIGIBLE",
+          rejectionReasons: [],
+          direction: "BUY",
+          chainId: "56",
+          tokenAddress: ${JSON.stringify(fixtureTokenAddress)},
+          underlyingTicker: "TEST",
+          walletAddress: ${JSON.stringify(mockWalletAddress)},
+          fromTokenAddress: "0x55d398326f99059ff775485246999027b3197955",
+          toTokenAddress: ${JSON.stringify(fixtureTokenAddress)},
+          fromCoinSymbol: "USDT",
+          fromCoinAmount: "5",
+          toCoinSymbol: "TESTon",
+          toCoinAmount: "0.05",
+          slippage: 0.01,
+          slippageBps: 100,
+          tokenPriceUsd: 100,
+          referencePrice: 100,
+          referenceGapPercent: 0,
+          tokenDecimals: 6,
+          quoteFetchedAt,
+          expiresAt: quoteFetchedAt + 30000,
+          quoteBindingId: "a".repeat(64),
+          quoteBinding: "responsive-mock-binding",
+          execution: { transactionSubmitted: false, signingRequested: false }
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (/^\\/api\\/agent\\/(?:approve|execute)$/.test(url.pathname)) {
+        window.__WOLV_AGENT_ENDPOINTS.push(url.pathname.slice("/api/agent/".length));
+        return new Response(JSON.stringify({ status: "REJECTED", error: "Responsive fixture blocked BAW actions." }), { status: 503, headers: { "content-type": "application/json" } });
+      }
+      return originalFetch(input, init);
+    };
+  })()`;
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: script });
+  await navigate(new URL("/agent", baseUrl).href, /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s);
+  await waitForCondition(
+    `document.body.innerText.includes("Authorize with your connected browser wallet")`,
+    "unauthorized BAW quote refusal",
+  );
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Request BAW quote" && button.disabled)`), true);
+  console.log("PASS agent terminal · disconnected BAW authorization disables quote request");
+
+  await navigate(new URL("/wallet", baseUrl).href, /Connect your wallet|Wallet connection/);
+  await waitForCondition(
+    `Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim().startsWith("Connect browser wallet") && !button.disabled)`,
+    "enabled mock wallet connect action",
+  );
+  await clickButton("Connect browser wallet");
+  await waitForCondition(
+    `document.body.innerText.includes("Wallet Address") && document.body.innerText.includes("Disconnect Wallet")`,
+    "mock browser wallet connection",
+  );
+  await navigate(new URL("/agent", baseUrl).href, /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s);
+  await waitForCondition(
+    `document.body.innerText.includes("Authorize with your connected browser wallet")`,
+    "unauthorized BAW quote refusal with connected browser wallet",
+  );
+  await clickButton("Authorize with browser wallet");
+  try {
+    await waitForCondition(
+      `document.body.innerText.includes("BAW live quote") && !Array.from(document.querySelectorAll("button")).find((button) => button.innerText.trim() === "Request BAW quote")?.disabled`,
+      "mocked BAW quote form",
+      15_000,
+    );
+  } catch (error) {
+    const diagnostic = await evaluate(`(() => ({
+      authorized: window.__WOLV_AGENT_SESSION_AUTHORIZED,
+      sessionRequests: window.__WOLV_AGENT_SESSION_REQUESTS,
+      walletCalls: window.__WOLV_AGENT_WALLET_CALLS,
+      quoteButtonDisabled: Array.from(document.querySelectorAll("button")).find((button) => button.innerText.trim() === "Request BAW quote")?.disabled,
+      sessionMessage: document.body.innerText.includes("Authorize with your connected browser wallet")
+    }))()`);
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; auth diagnostic: ${JSON.stringify(diagnostic)}`);
+  }
+  await evaluate(`(() => {
+    const setValue = (selector, value) => {
+      const input = document.querySelector(selector);
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    setValue('input[placeholder="0x…"]', ${JSON.stringify(fixtureTokenAddress)});
+    setValue('input[placeholder="5 or more"]', "5");
+  })()`);
+  await clickButton("Request BAW quote");
+  await waitForCondition(
+    `document.body.innerText.includes("Provider semantics are not verified.")`,
+    "rejected BAW quote state",
+  );
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Review and prepare this trade")`), false);
+  console.log("PASS agent terminal · rejected quote has reasons and no approval action");
+
+  await evaluate(`(() => { window.__WOLV_AGENT_QUOTE_MODE = "expired"; })()`);
+  await clickButton("Request BAW quote");
+  await waitForCondition(
+    `document.body.innerText.includes("This quote is expired.")`,
+    "expired BAW quote state",
+  );
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Review and prepare this trade")`), false);
+  console.log("PASS agent terminal · expired quote has no approval action");
+
+  await clickButton("Simulate mock trigger");
+  await waitForCondition(
+    `document.body.innerText.includes("Mock threshold met. No transaction was sent")`,
+    "AI mock recommendation simulation",
+  );
+  const agentState = await evaluate(`(() => ({
+    text: document.body.innerText,
+    actions: window.__WOLV_AGENT_ACTIONS,
+    endpoints: window.__WOLV_AGENT_ENDPOINTS,
+    executionButtons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()).filter((label) => /Approve and Execute|Review and prepare/.test(label))
+  }))()`);
+  assert.match(agentState.text, /No transaction hashes/);
+  assert.match(agentState.text, /Open trade terminal for wallet review/);
+  assert.deepEqual(agentState.actions, ["simulate"]);
+  assert.deepEqual(agentState.executionButtons, []);
+  assert.deepEqual(agentState.endpoints, ["quote", "quote"]);
+  console.log("PASS agent terminal · AI trigger stays a mock recommendation and cannot authorize execution");
+}
+
+async function run() {
   const fixedRoutes = [
     { path: "/", expected: /TOKENIZED STOCKS|Find the price/ },
     { path: "/gap", expected: /Cross-venue price discovery|Listed vs Indicative Estimate/ },
     { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
     { path: "/trade", expected: /Select an Asset to Trade/ },
     { path: "/wallet", expected: /Wallet Address|Connect your wallet|Checking wallet connection/ },
-    { path: "/agent", expected: /(?=.*Strategy control)(?=.*Quote only — no transaction submitted)/s },
+    { path: "/agent", expected: /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s },
   ];
 
   for (const width of widths) {
+    await startChrome();
     await send("Emulation.setDeviceMetricsOverride", {
       width,
       height,
@@ -184,36 +753,57 @@ async function run() {
       console.log(`PASS ${width}px ${route.path} · ${layout.scrollWidth}/${layout.clientWidth}px`);
     }
 
-    if (stockPath) {
-      for (const route of [
-        { path: stockPath, expected: /Live asset signal|Token not found|Live asset data unavailable/ },
-        { path: stockPath.replace(/^\/stock\//, "/trade/"), expected: /Trade |Connect your wallet|Checking wallet connection|Trading asset list unavailable|Asset not found/ },
-      ]) {
+    for (const route of [
+      { path: `/stock/${fixtureTokenAddress}`, expected: /Live asset signal/i },
+      { path: `/trade/${fixtureTokenAddress}`, expected: /Trade TEST|Connect your wallet|Checking wallet connection/ },
+      { path: "/stock/not-a-contract", expected: /Token not found/ },
+      { path: "/trade/not-a-contract", expected: /Asset not found/ },
+      { path: `/stock/${missingTokenAddress}`, expected: /Token not found/ },
+      { path: `/trade/${missingTokenAddress}`, expected: /Asset not found/ },
+      { path: `/stock/${unavailableTokenAddress}`, expected: /Live asset signal.*Quote unavailable: no route/is },
+    ]) {
         const url = new URL(route.path, baseUrl).href;
         const state = await navigate(url, route.expected);
         assert.match(state.bodyText, route.expected, `${route.path} did not render expected detail content at ${width}px`);
         const layout = await evaluate(`(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) }))()`);
         assert.ok(layout.scrollWidth <= layout.clientWidth + 1, `${route.path} overflows horizontally at ${width}px (${layout.scrollWidth}px content in ${layout.clientWidth}px viewport)`);
         console.log(`PASS ${width}px ${route.path} · ${layout.scrollWidth}/${layout.clientWidth}px`);
-      }
     }
+    await stopChrome();
   }
 
-  if (!stockPath) console.warn("SKIP dynamic stock/trade detail: no stock link found on homepage; set TEST_TOKEN_ADDRESS to include these routes.");
-  console.log(`Responsive smoke passed for ${baseUrl.origin} at ${widths.join(", ")}px. No wallet connection or transaction was attempted.`);
+  await startChrome();
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await runTradeRefusalChecks();
+  await stopChrome();
+  await startChrome();
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await runAgentRefusalChecks();
+  console.log(`Responsive smoke passed for ${baseUrl.origin} at ${widths.join(", ")}px. All provider data was mocked; no signature or transaction was submitted.`);
 }
 
 try {
+  runBuild();
+  await startProductionServer();
   await run();
 } finally {
-  for (const request of pending.values()) clearTimeout(request.timer);
-  if (ws?.readyState === WebSocket.OPEN) ws.close();
-  if (chrome.exitCode == null && chrome.signalCode == null) {
-    chrome.kill("SIGTERM");
-    await Promise.race([
-      new Promise((resolve) => chrome.once("exit", resolve)),
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
-    ]);
+  try {
+    await stopChrome();
+  } finally {
+    try {
+      await stopChild(server, "Next.js production server");
+    } finally {
+      await Promise.all(profileDirs.map((profileDir) => rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })));
+    }
   }
-  await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }

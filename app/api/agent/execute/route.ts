@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { evaluateMockTrigger, parseAgentStrategy } from "../../../../lib/agentStrategies.ts";
 import { buildCapabilityTelemetry } from "../../../../lib/agentTelemetry.ts";
-import { handleBawExecutionAction } from "../../../../services/bawExecutionHttp.ts"
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -84,11 +83,7 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "executeBaw") {
-    const { resolveBawSpotAsset } = await import("../../../../services/bawAsset.ts")
-    return handleBawExecutionAction(request, body, {
-      configuredToken: process.env.BAW_WALLET_API_TOKEN,
-      resolveAsset: resolveBawSpotAsset,
-    })
+    return errorResponse("BAW execution is blocked during Phase 4.0; no trade was submitted.", 403);
   }
 
   const action = body.action ?? "preview";

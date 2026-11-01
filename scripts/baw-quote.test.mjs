@@ -11,18 +11,35 @@ import {
   getBawQuote,
   parseAgentQuoteInput,
   slippageBpsToBawPercent,
+  verifyAgentQuoteResponse,
 } from "../services/bawQuote.ts";
 import {
   BawCliError,
   buildBawMarketQuoteArgs,
   parseBawMarketQuoteArgs,
 } from "../services/bawCli.ts";
+import { resolveBawSpotAsset } from "../services/bawAsset.ts";
 
 const TOKEN = "0x0000000000000000000000000000000000000123";
 const WALLET = "0x1234567890abcdef1234567890abcdef12345678";
 const TOKEN_SYMBOL = "AAPLon";
 const SECRET = "baw-quote-tests-secret-with-at-least-32-characters";
 const ORIGINAL_SECRET = process.env.BINANCE_SECRET_KEY;
+const BLOCK_NUMBER = "100";
+const RESOLVED_AT = 1_000;
+
+function metadata(tokenAddress, decimals, overrides = {}) {
+  return {
+    chainId: "56",
+    tokenAddress,
+    decimals,
+    resolutionSource: "BSC_ETH_CALL",
+    blockNumber: BLOCK_NUMBER,
+    resolvedAt: RESOLVED_AT,
+    validationStatus: "VALIDATED",
+    ...overrides,
+  };
+}
 
 before(() => {
   process.env.BINANCE_SECRET_KEY = SECRET;
@@ -37,6 +54,9 @@ const asset = {
   tokenContractAddress: TOKEN,
   underlyingTicker: "AAPL",
   symbol: TOKEN_SYMBOL,
+  decimals: 18,
+  decimalMetadata: metadata(TOKEN, 18),
+  usdtDecimalMetadata: metadata(BSC_USDT_ADDRESS, 18),
   referencePrice: "100",
   tokenToShareRatio: "1",
   statusInfo: { marketStatus: "open", openState: true },
@@ -162,6 +182,50 @@ test("BUY and SELL map explicitly to USDT and selected token using BAW human-rea
   }
 });
 
+test("catalogue metadata resolution reaches BUY and SELL quote command construction", async (t) => {
+  const catalogue = {
+    data: [{
+      tokenContractAddress: TOKEN,
+      underlyingTicker: "AAPL",
+      platformId: "bStock",
+      symbol: TOKEN_SYMBOL,
+      referencePrice: "100",
+      tokenToShareRatio: "1",
+      statusInfo: { marketStatus: "open", openState: true },
+    }],
+  };
+  const metadataClient = {
+    getChainId: async () => 56,
+    getBlockNumber: async () => BigInt(BLOCK_NUMBER),
+    getBytecode: async () => "0x6000",
+    readContract: async ({ address }) =>
+      address.toLowerCase() === BSC_USDT_ADDRESS.toLowerCase() ? 6 : 8,
+  };
+  for (const direction of ["BUY", "SELL"]) {
+    await t.test(direction, async () => {
+      const harness = dependencies(direction);
+      harness.dependencies.resolveAsset = (address) => resolveBawSpotAsset(address, {
+        getTokenList: async () => catalogue,
+        metadataClient,
+        now: () => RESOLVED_AT,
+      });
+
+      const quote = await getBawQuote(request(direction), harness.dependencies);
+      assert.equal(quote.fromTokenMetadata.decimals, direction === "BUY" ? 6 : 8);
+      assert.equal(quote.toTokenMetadata.decimals, direction === "BUY" ? 8 : 6);
+      assert.deepEqual(harness.calls[0], [
+        "market-order", "quote",
+        "--fromTokenQty", direction === "BUY" ? "10" : "0.1",
+        "--fromToken", direction === "BUY" ? BSC_USDT_ADDRESS : TOKEN,
+        "--toToken", direction === "BUY" ? TOKEN : BSC_USDT_ADDRESS,
+        "--binanceChainId", "56",
+        "--slippage", "1",
+        "--json",
+      ]);
+    });
+  }
+});
+
 test("derives BAW token symbols only from explicit supported provider mappings", async (t) => {
   const bstockAsset = {
     ...asset,
@@ -230,6 +294,208 @@ test("CLI argument builder and runner allow only validated quote commands", asyn
   ]) {
     assert.throws(() => buildBawMarketQuoteArgs(invalid), BawCliError);
   }
+});
+
+test("unknown token decimals are rejected before creating a quote", async () => {
+  const harness = dependencies("BUY", { asset: { ...asset, decimals: null } });
+  await assert.rejects(
+    getBawQuote(request(), harness.dependencies),
+    (error) => error instanceof BawQuoteError && error.code === "UNSUPPORTED_TOKEN",
+  );
+  assert.equal(harness.calls.length, 0);
+});
+
+test("validated token decimals reach BUY and SELL quote command construction without executing", async (t) => {
+  for (const decimals of [0, 6, 8, 18]) {
+    await t.test(`${decimals} decimals`, async () => {
+      const buyHarness = dependencies("BUY", {
+        asset: { ...asset, decimals, decimalMetadata: metadata(TOKEN, decimals) },
+        outputOverrides: { fromCoinAmount: "100", toCoinAmount: "1" },
+      });
+      const buyQuote = await getBawQuote(request("BUY", { amount: "100" }), buyHarness.dependencies);
+      assert.equal(buyQuote.tokenDecimals, decimals);
+      assert.equal(buyQuote.fromTokenMetadata.tokenAddress, BSC_USDT_ADDRESS);
+      assert.equal(buyQuote.fromTokenMetadata.decimals, 18);
+      assert.equal(buyQuote.toTokenMetadata.tokenAddress, TOKEN);
+      assert.equal(buyQuote.toTokenMetadata.decimals, decimals);
+      assert.equal(buyHarness.calls.length, 1);
+      assert.deepEqual(buyHarness.calls[0], [
+        "market-order", "quote",
+        "--fromTokenQty", "100",
+        "--fromToken", BSC_USDT_ADDRESS,
+        "--toToken", TOKEN,
+        "--binanceChainId", "56",
+        "--slippage", "1",
+        "--json",
+      ]);
+      assert.equal(parseBawMarketQuoteArgs(buyHarness.calls[0]).direction, "BUY");
+
+      const sellHarness = dependencies("SELL", {
+        asset: { ...asset, decimals, decimalMetadata: metadata(TOKEN, decimals) },
+        outputOverrides: { fromCoinAmount: "1", toCoinAmount: "100" },
+      });
+      const sellQuote = await getBawQuote(request("SELL", { amount: "1" }), sellHarness.dependencies);
+      assert.equal(sellQuote.tokenDecimals, decimals);
+      assert.equal(sellQuote.fromTokenMetadata.tokenAddress, TOKEN);
+      assert.equal(sellQuote.fromTokenMetadata.decimals, decimals);
+      assert.equal(sellQuote.toTokenMetadata.tokenAddress, BSC_USDT_ADDRESS);
+      assert.equal(sellQuote.toTokenMetadata.decimals, 18);
+      assert.equal(sellHarness.calls.length, 1);
+      assert.deepEqual(sellHarness.calls[0], [
+        "market-order", "quote",
+        "--fromTokenQty", "1",
+        "--fromToken", TOKEN,
+        "--toToken", BSC_USDT_ADDRESS,
+        "--binanceChainId", "56",
+        "--slippage", "1",
+        "--json",
+      ]);
+      assert.equal(parseBawMarketQuoteArgs(sellHarness.calls[0]).direction, "SELL");
+      assert.equal(
+        buyHarness.calls.concat(sellHarness.calls).some((args) => args[1] === "swap"),
+        false,
+      );
+    });
+  }
+});
+
+test("invalid or conflicting asset metadata is rejected before quote command construction", async (t) => {
+  for (const [label, tokenMetadata, usdtMetadata] of [
+    ["missing asset metadata", null, metadata(BSC_USDT_ADDRESS, 18)],
+    ["null asset metadata", null, metadata(BSC_USDT_ADDRESS, 18)],
+    ["negative decimals", metadata(TOKEN, -1), metadata(BSC_USDT_ADDRESS, 18)],
+    ["non-integer decimals", metadata(TOKEN, 6.5), metadata(BSC_USDT_ADDRESS, 18)],
+    ["unsupported decimal range", metadata(TOKEN, 19), metadata(BSC_USDT_ADDRESS, 18)],
+    ["wrong metadata chain", metadata(TOKEN, 6, { chainId: "97" }), metadata(BSC_USDT_ADDRESS, 18)],
+    ["wrong asset address", metadata("0x0000000000000000000000000000000000000456", 6), metadata(BSC_USDT_ADDRESS, 18)],
+    ["untrusted metadata source", metadata(TOKEN, 6, { resolutionSource: "CATALOGUE" }), metadata(BSC_USDT_ADDRESS, 18)],
+    ["malformed block number", metadata(TOKEN, 6, { blockNumber: "latest" }), metadata(BSC_USDT_ADDRESS, 18)],
+    ["missing USDT metadata", metadata(TOKEN, 18), null],
+    ["wrong USDT address", metadata(TOKEN, 18), metadata(TOKEN, 18)],
+    ["conflicting mirrored decimals", metadata(TOKEN, 6), metadata(BSC_USDT_ADDRESS, 18)],
+  ]) {
+    await t.test(label, async () => {
+      const harness = dependencies("BUY", {
+        asset: {
+          ...asset,
+          decimals: label === "conflicting mirrored decimals" ? 8 : tokenMetadata?.decimals ?? null,
+          decimalMetadata: tokenMetadata,
+          usdtDecimalMetadata: usdtMetadata,
+        },
+      });
+      await assert.rejects(
+        getBawQuote(request(), harness.dependencies),
+        (error) => error instanceof BawQuoteError && error.code === "UNSUPPORTED_TOKEN",
+      );
+      assert.equal(harness.calls.length, 0);
+    });
+  }
+
+  await t.test("asset address conflicts with requested token", async () => {
+    const harness = dependencies("BUY", {
+      asset: {
+        ...asset,
+        tokenContractAddress: "0x0000000000000000000000000000000000000456",
+        decimals: 6,
+        decimalMetadata: metadata("0x0000000000000000000000000000000000000456", 6),
+      },
+    });
+    await assert.rejects(
+      getBawQuote(request(), harness.dependencies),
+      (error) => error instanceof BawQuoteError && error.code === "UNSUPPORTED_TOKEN",
+    );
+    assert.equal(harness.calls.length, 0);
+  });
+});
+
+test("SELL input precision is exact and never rounded to token decimals", async (t) => {
+  await t.test("accepts exactly six fractional digits for a six-decimal asset", async () => {
+    const harness = dependencies("SELL", {
+      asset: { ...asset, decimals: 6, decimalMetadata: metadata(TOKEN, 6) },
+      outputOverrides: { fromCoinAmount: "0.123456", toCoinAmount: "12.3456" },
+    });
+    const quote = await getBawQuote(request("SELL", { amount: "0.123456" }), harness.dependencies);
+    assert.equal(quote.eligibility, "ELIGIBLE");
+    assert.equal(harness.calls[0][3], "0.123456");
+  });
+
+  await t.test("rejects a non-zero digit beyond six decimals before CLI invocation", async () => {
+    const harness = dependencies("SELL", { asset: { ...asset, decimals: 6, decimalMetadata: metadata(TOKEN, 6) } });
+    await assert.rejects(
+      getBawQuote(request("SELL", { amount: "0.1234561" }), harness.dependencies),
+      (error) => error instanceof BawQuoteError && error.code === "INVALID_REQUEST",
+    );
+    assert.equal(harness.calls.length, 0);
+  });
+
+  await t.test("normalizes redundant trailing zeros without changing quantity", async () => {
+    const harness = dependencies("SELL", {
+      asset: { ...asset, decimals: 0, decimalMetadata: metadata(TOKEN, 0) },
+      outputOverrides: { fromCoinAmount: "1", toCoinAmount: "100" },
+    });
+    const quote = await getBawQuote(request("SELL", { amount: "1.000" }), harness.dependencies);
+    assert.equal(quote.eligibility, "ELIGIBLE");
+    assert.equal(harness.calls[0][3], "1");
+  });
+});
+
+test("USDT input and output quantities use independently resolved USDT decimals", async (t) => {
+  await t.test("BUY validates input precision using on-chain USDT decimals", async () => {
+    const usdtDecimalMetadata = metadata(BSC_USDT_ADDRESS, 6);
+    const valid = dependencies("BUY", {
+      asset: { ...asset, usdtDecimalMetadata },
+      outputOverrides: { fromCoinAmount: "100.123456", toCoinAmount: "1.00123456" },
+    });
+    const quote = await getBawQuote(
+      request("BUY", { amount: "100.123456" }),
+      valid.dependencies,
+    );
+    assert.equal(quote.fromTokenMetadata.decimals, 6);
+    assert.equal(valid.calls[0][3], "100.123456");
+
+    const invalid = dependencies("BUY", {
+      asset: { ...asset, usdtDecimalMetadata },
+    });
+    await assert.rejects(
+      getBawQuote(request("BUY", { amount: "100.1234567" }), invalid.dependencies),
+      (error) => error instanceof BawQuoteError && error.code === "INVALID_REQUEST",
+    );
+    assert.equal(invalid.calls.length, 0);
+  });
+
+  await t.test("SELL parses quoted USDT proceeds using on-chain USDT decimals", async () => {
+    const usdtDecimalMetadata = metadata(BSC_USDT_ADDRESS, 6);
+    const harness = dependencies("SELL", {
+      asset: {
+        ...asset,
+        referencePrice: "5",
+        usdtDecimalMetadata,
+      },
+      outputOverrides: { fromCoinAmount: "1", toCoinAmount: "5.000001" },
+    });
+    const quote = await getBawQuote(
+      request("SELL", { amount: "1" }),
+      harness.dependencies,
+    );
+    assert.equal(quote.toTokenMetadata.decimals, 6);
+    assert.equal(quote.eligibility, "ELIGIBLE");
+    assert.equal(harness.calls.length, 1);
+  });
+});
+
+test("quote integrity binding rejects altered token-decimal metadata", async () => {
+  const harness = dependencies("BUY", { asset });
+  const quote = await getBawQuote(request(), harness.dependencies);
+  const verificationTime = quote.quoteFetchedAt + 1;
+
+  assert.ok(verifyAgentQuoteResponse(quote, verificationTime));
+  assert.equal(
+    verifyAgentQuoteResponse({
+      ...quote,
+      toTokenMetadata: { ...quote.toTokenMetadata, decimals: 6 },
+    }, verificationTime),
+    null,
+  );
 });
 
 test("disconnected wallet and unsupported spot tokens are rejected before the quote command", async (t) => {

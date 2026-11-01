@@ -7,6 +7,7 @@ import {
 import { BSC_USDT_ADDRESS } from "../lib/apiValidation.ts";
 import {
   BawExecutionError,
+  compareBawOutputQuantity,
   createBawExecutionApproval,
   executeApprovedBawTrade,
   reconcileBawExecution,
@@ -25,6 +26,19 @@ const SECRET = "baw-execution-tests-secret-with-at-least-32-characters";
 const TOKEN_VALUE = "test-baw-operator-token-at-least-32-characters";
 const NOW = 1_800_000_000_000;
 const ORIGINAL_SECRET = process.env.BINANCE_SECRET_KEY;
+const tokenMetadata = {
+  chainId: "56",
+  tokenAddress: TOKEN,
+  decimals: 18,
+  resolutionSource: "BSC_ETH_CALL",
+  blockNumber: "100",
+  resolvedAt: NOW,
+  validationStatus: "VALIDATED",
+};
+const usdtMetadata = {
+  ...tokenMetadata,
+  tokenAddress: BSC_USDT_ADDRESS,
+};
 
 before(() => {
   process.env.BINANCE_SECRET_KEY = SECRET;
@@ -39,6 +53,9 @@ const asset = {
   tokenContractAddress: TOKEN,
   underlyingTicker: "AAPL",
   symbol: "AAPLon",
+  decimals: 18,
+  decimalMetadata: tokenMetadata,
+  usdtDecimalMetadata: usdtMetadata,
   referencePrice: "100",
   tokenToShareRatio: "1",
   statusInfo: { marketStatus: "open", openState: true },
@@ -84,7 +101,7 @@ function makeHarness(options = {}) {
       const amount = args[3];
       const outputAmount = options.changedQuote && quoteCount > 1
         ? (direction === "BUY" ? "0.099" : "9.9")
-        : (direction === "BUY" ? "0.1" : "10");
+        : (options.outputAmount ?? (direction === "BUY" ? "0.1" : "10"));
       return {
         stdout: JSON.stringify({
           success: true,
@@ -123,7 +140,9 @@ function makeHarness(options = {}) {
               fromTokenQty: swap[3],
               toToken,
               toTokenName: "AAPLon",
-              toTokenActualQty: swap[5].toLowerCase() === BSC_USDT_ADDRESS.toLowerCase() ? "0.1" : "10",
+              ...(options.actualOutput === null ? {} : {
+                toTokenActualQty: options.actualOutput ?? (swap[5].toLowerCase() === BSC_USDT_ADDRESS.toLowerCase() ? "0.1" : "10"),
+              }),
               status: options.orderStatus ?? "FINISHED",
               slippage: "1",
               txHash: `0x${"a".repeat(64)}`,
@@ -141,7 +160,7 @@ function makeHarness(options = {}) {
     store,
     runner,
     readSnapshot: async () => options.snapshot ?? snapshot,
-    resolveAsset: async (address) => address.toLowerCase() === TOKEN.toLowerCase() ? asset : null,
+    resolveAsset: async (address) => address.toLowerCase() === TOKEN.toLowerCase() ? (options.asset ?? asset) : null,
     now: () => currentNow,
     sleep: async () => {},
     environment: {
@@ -158,6 +177,7 @@ function makeHarness(options = {}) {
     store,
     calls,
     runner,
+    asset: options.asset ?? asset,
     dependencies,
     setNow(value) { currentNow = value; },
   };
@@ -173,7 +193,7 @@ async function createQuote(harness, direction = "BUY") {
   }, {
     runner: harness.runner,
     readSnapshot: async () => makeSnapshot(),
-    resolveAsset: async () => asset,
+    resolveAsset: async () => harness.asset,
     now: () => NOW,
   });
 }
@@ -189,7 +209,26 @@ function request(body, token = TOKEN_VALUE) {
   });
 }
 
-test("mocked BUY and SELL execution flows require one-time approval and verify provider status", async (t) => {
+test("BAW output remains unverified while provider units and settlement semantics are undocumented", () => {
+  const outputs = [
+    "123.456789",
+    "1.23456789",
+    "0.1",
+    "123.000000",
+    "0.000000",
+    "999.999999",
+  ];
+  for (const actual of outputs) {
+    const result = compareBawOutputQuantity(actual);
+    assert.equal(result.state, "FINISHED_UNVERIFIED");
+    assert.equal(result.actualReceivedOutput, actual);
+    assert.match(result.reason, /units and independent settlement semantics are not documented/i);
+  }
+
+  assert.equal(compareBawOutputQuantity(null).actualReceivedOutput, null);
+});
+
+test("mocked BUY and SELL execution flows keep provider-reported output unverified", async (t) => {
   for (const direction of ["BUY", "SELL"]) {
     await t.test(direction, async () => {
       const harness = makeHarness();
@@ -204,7 +243,8 @@ test("mocked BUY and SELL execution flows require one-time approval and verify p
           approvalToken: approval.approvalToken,
           securityAuditAcknowledged: true,
         }, harness.dependencies);
-        assert.equal(result.state, "FILLED");
+        assert.equal(result.state, "FINISHED_UNVERIFIED");
+        assert.match(result.failureReason ?? "", /units and independent settlement semantics/i);
         assert.equal(result.providerOrderId, "1234567890");
         assert.equal(result.actualReceivedOutput, direction === "BUY" ? "0.1" : "10");
         assert.equal(result.transactionHash, `0x${"a".repeat(64)}`);
@@ -213,6 +253,54 @@ test("mocked BUY and SELL execution flows require one-time approval and verify p
         assert.equal(swap[5].toLowerCase(), direction === "BUY" ? BSC_USDT_ADDRESS.toLowerCase() : TOKEN.toLowerCase());
         assert.equal(swap[7].toLowerCase(), direction === "BUY" ? TOKEN.toLowerCase() : BSC_USDT_ADDRESS.toLowerCase());
         assert.deepEqual(swap.slice(-5), ["--mev", "true", "--gasLevel", "MEDIUM", "--json"]);
+      } finally {
+        harness.store.close();
+      }
+    });
+
+  }
+});
+
+test("SELL approval uses independently resolved output-token decimals for minimum output", async () => {
+  const assetWithSixDecimalUsdt = {
+    ...asset,
+    usdtDecimalMetadata: { ...usdtMetadata, decimals: 6 },
+  };
+  const harness = makeHarness({
+    asset: assetWithSixDecimalUsdt,
+    outputAmount: "10.000001",
+  });
+  try {
+    const quote = await createQuote(harness, "SELL");
+    const approval = await createBawExecutionApproval(quote, harness.dependencies);
+
+    assert.equal(approval.trade.minimumOutputAmount, "9.9");
+    const storedRecord = await harness.store.get(approval.executionId);
+    assert.equal(storedRecord.fromTokenDecimals, 18);
+    assert.equal(storedRecord.toTokenDecimals, 6);
+    assert.ok(harness.calls.every((args) => args[1] === "quote"));
+  } finally {
+    harness.store.close();
+  }
+});
+
+test("BAW FINISHED remains unverified without documented output and settlement semantics", async (t) => {
+  for (const [name, options, expectedState] of [
+    ["missing actual output", { actualOutput: null }, "FINISHED_UNVERIFIED"],
+    ["provider reports output below the local minimum", { actualOutput: "0.098" }, "FINISHED_UNVERIFIED"],
+  ]) {
+    await t.test(name, async () => {
+      const harness = makeHarness(options);
+      try {
+        const quote = await createQuote(harness);
+        const approval = await createBawExecutionApproval(quote, harness.dependencies);
+        const result = await executeApprovedBawTrade({
+          executionId: approval.executionId,
+          approvalToken: approval.approvalToken,
+          securityAuditAcknowledged: true,
+        }, harness.dependencies);
+        assert.equal(result.state, expectedState);
+        assert.match(result.failureReason ?? "", /output|fill/i);
       } finally {
         harness.store.close();
       }
@@ -270,7 +358,7 @@ test("approval is single-use, short-lived, and bound to the exact quote", async 
       );
       assert.equal(
         (await executeApprovedBawTrade({ ...approval, securityAuditAcknowledged: true }, harness.dependencies)).state,
-        "FILLED",
+        "FINISHED_UNVERIFIED",
       );
     } finally { harness.store.close(); }
   });
@@ -376,7 +464,7 @@ test("daily cap includes consumed executions without counting the active executi
     const quote = await createQuote(harness);
     const approval = await createBawExecutionApproval(quote, harness.dependencies);
     const result = await executeApprovedBawTrade({ ...approval, securityAuditAcknowledged: true }, harness.dependencies);
-    assert.equal(result.state, "FILLED");
+    assert.equal(result.state, "FINISHED_UNVERIFIED");
     assert.equal(await harness.store.dailyNotionalSince(Date.UTC(2027, 0, 15)), 10);
     await assert.rejects(
       createBawExecutionApproval(await createQuote(harness), harness.dependencies),
@@ -479,7 +567,7 @@ test("uncertain submission and provider states are never represented as success"
     [{ swapError: new BawCliError("BAW_TIMEOUT", "market-order") }, "UNKNOWN"],
     [{ orderStatus: "PENDING" }, "PENDING"],
     [{ orderStatus: "FAILED" }, "FAILED"],
-    [{ refund: true }, "PARTIALLY_FILLED"],
+    [{ refund: true }, "FINISHED_UNVERIFIED"],
     [{ listError: new BawCliError("INVALID_OUTPUT", "market-order") }, "UNKNOWN"],
   ]) {
     await t.test(expectedState, async () => {
@@ -508,7 +596,7 @@ test("uncertain submission is reconciled through the documented filtered order h
     assert.equal(uncertain.providerOrderId, null);
     const reconciled = await reconcileBawExecution(approval.executionId, harness.dependencies);
     assert.equal(reconciled.providerOrderId, "1234567890");
-    assert.equal(reconciled.state, "FILLED");
+    assert.equal(reconciled.state, "FINISHED_UNVERIFIED");
     assert.ok(harness.calls.some((args) => args[1] === "list" && args.includes("--startTime")));
   } finally { harness.store.close(); }
 });

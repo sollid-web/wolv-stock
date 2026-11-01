@@ -1,11 +1,36 @@
-import { getRWATokenList } from "../lib/binance.ts"
-import { isSpotRwaTokenAddress, parseRwaAssetRecords } from "../lib/spotAssets.ts"
+import type { getRWATokenList } from "../lib/binance.ts"
+import { EVM_ADDRESS_PATTERN } from "../lib/apiValidation.ts"
+import { parseRwaAssetRecords } from "../lib/rwaAssetResponse.ts"
+import {
+    resolveBscTokenMetadata,
+    selectTrustedBawSpotAsset,
+    type BscMetadataClient,
+} from "./bscTokenMetadata.ts"
 
-export async function resolveBawSpotAsset(tokenAddress: string) {
-    if (!await isSpotRwaTokenAddress(tokenAddress)) return null
-    const records = parseRwaAssetRecords(await getRWATokenList())
-    const matches = records.filter((asset) =>
-        asset.tokenContractAddress.toLowerCase() === tokenAddress.toLowerCase()
-    )
-    return matches.length === 1 ? matches[0] : null
+export type ResolvedBawSpotAsset = Awaited<ReturnType<typeof resolveBawSpotAsset>>
+
+export async function resolveBawSpotAsset(
+    tokenAddress: string,
+    dependencies: {
+        getTokenList?: typeof getRWATokenList
+        metadataClient?: BscMetadataClient
+        now?: () => number
+    } = {},
+) {
+    if (typeof tokenAddress !== "string" || !EVM_ADDRESS_PATTERN.test(tokenAddress)) return null
+    const getTokenList = dependencies.getTokenList ?? (await import("../lib/binance.ts")).getRWATokenList
+    const records = parseRwaAssetRecords(await getTokenList())
+    const asset = selectTrustedBawSpotAsset(records, tokenAddress)
+    if (!asset) return null
+
+    const metadata = await resolveBscTokenMetadata(asset, {
+        client: dependencies.metadataClient,
+        now: dependencies.now,
+    })
+    return {
+        ...asset,
+        decimals: metadata.token.decimals,
+        decimalMetadata: metadata.token,
+        usdtDecimalMetadata: metadata.usdt,
+    }
 }

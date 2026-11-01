@@ -27,9 +27,16 @@ type TokenInfo = {
 type QuoteData = {
   quoteId: string;
   quoteBinding: string;
+  executionIntentId: string;
+  status?: string;
+  tradeIntent?: {
+    minimumOutputAmount?: string;
+    slippageBps?: number;
+  };
   fromTokenAmount: string;
   toTokenAmount: string;
-  fromToken?: { tokenUnitPrice?: string | number };
+  fromToken?: { tokenUnitPrice?: string | number; decimal?: string };
+  toToken?: { decimal?: string };
   priceImpactPercent?: number | string;
   quoteFetchedAt?: number;
   executionMode: string;
@@ -86,13 +93,16 @@ const MAX_ORDER_POLLS = 12;
 
 type ExecutionPhase = "idle" | "signing" | "confirming" | "submitting";
 
-function displayTokenAmount(value: string | undefined): string {
+function displayTokenAmount(value: string | undefined, decimals = 18): string {
   if (!value) return "—";
   try {
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) return value;
     const raw = BigInt(value);
-    const scale = BigInt("1000000000000000000");
+    const scale = BigInt(10) ** BigInt(decimals);
     const whole = raw / scale;
-    const fraction = (raw % scale).toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
+    const fraction = decimals === 0
+      ? ""
+      : (raw % scale).toString().padStart(decimals, "0").slice(0, 6).replace(/0+$/, "");
     return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
   } catch {
     return value;
@@ -184,6 +194,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteOnlyNotice, setQuoteOnlyNotice] = useState<string | null>(null);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [requiresFreshQuote, setRequiresFreshQuote] = useState(false);
   const [quoteNow, setQuoteNow] = useState(0);
@@ -213,6 +224,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
 
     setIsLoading(true);
     setQuoteError(null);
+    setQuoteOnlyNotice(null);
     setQuoteData(null);
     setQuoteNow(0);
     setSwapData(null);
@@ -254,10 +266,15 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       if (typeof quoteResult?.quoteBinding !== "string" || !quoteResult.quoteBinding) {
         throw new Error("Quote failed — no server quote binding returned. Refresh and retry.");
       }
+      if (typeof quoteResult?.executionIntentId !== "string" || !quoteResult.executionIntentId) {
+        throw new Error("Quote failed — durable execution intent was not created. Refresh and retry.");
+      }
 
       const quoteValidation = validateQuote({
         fromTokenAmount: quoteResult.fromTokenAmount,
         toTokenAmount: quoteResult.toTokenAmount,
+        fromTokenDecimals: quoteResult.fromToken?.decimal,
+        toTokenDecimals: quoteResult.toToken?.decimal,
         tokenUnitPrice: quoteResult.fromToken?.tokenUnitPrice ?? 1,
         expectedFromTokenAmount: amountInWei,
       });
@@ -268,57 +285,9 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       const quoteFetchedAt = typeof quoteResult?.quoteFetchedAt === "number" ? quoteResult.quoteFetchedAt : 0;
       const nextQuoteData = { ...quoteResult, quoteId: rawQuoteId, quoteFetchedAt } as QuoteData;
       setQuoteData(nextQuoteData);
-      setQuoteNow(quoteFetchedAt);
+      setQuoteNow(Date.now());
       quoteIdRef.current = rawQuoteId;
-
-      const executionMode = quoteResult?.executionMode ?? quoteResult?.data?.executionMode;
-      if (executionMode === "SWAP") {
-        if (await checkApproval(amountInWei, undefined, nextQuoteData)) return;
-      } else if (executionMode === "RFQ") {
-        const vendorName = quoteResult?.vendorName ?? quoteResult?.data?.vendorName;
-        if (typeof vendorName !== "string" || !vendorName) {
-          throw new Error("RFQ quote is missing the vendor name required for approval");
-        }
-        if (await checkApproval(amountInWei, vendorName, nextQuoteData)) return;
-      } else {
-        throw new Error("Quote returned an unsupported execution mode");
-      }
-
-      // Get swap details
-      const swapParams = new URLSearchParams({
-        toToken: token.address,
-        amount: amountInWei,
-        userWalletAddress: address ?? "",
-        quoteId: rawQuoteId,
-        quoteBinding: quoteResult.quoteBinding,
-      });
-      const swapResponse = await fetch(`/api/swap?${swapParams}`);
-      const rawSwapObject = await swapResponse.json();
-      const swapResult = rawSwapObject?.data ?? rawSwapObject;
-
-      if (!swapResponse.ok || swapResult?.error) {
-        throw new Error(swapResult?.error || "Swap service is temporarily unavailable");
-      }
-      if (swapResult?.executionMode !== executionMode) {
-        throw new Error("Quote and swap returned different execution modes");
-      }
-
-      setSwapData(swapResult);
-
-      if (swapResult?.executionMode === "SWAP") {
-        const transaction = swapResult.tx;
-        if (!address || !transaction?.from || !transaction.to || !transaction.data || transaction.from.toLowerCase() !== address.toLowerCase()) {
-          throw new Error("Swap response is missing valid transaction details for this wallet");
-        }
-        setSwapSimulation(await simulateTransaction(address, transaction.to, transaction.data, transaction.value ?? "0"));
-      }
-
-      // If this is an RFQ, extract the typed data for signing
-      if (swapResult?.executionMode === "RFQ" && swapResult.rfq && swapResult.rfq.typedDataToSign) {
-        setTypedDataToSign(swapResult.rfq.typedDataToSign);
-      } else {
-        setTypedDataToSign(null);
-      }
+      setQuoteOnlyNotice("Quote only — no transaction submitted. Browser-wallet execution remains disabled until Binance SWAP and RFQ formats can be independently validated.");
     } catch (error: unknown) {
       setQuoteError(errorMessage(error, "Failed to fetch quote"));
       console.error("Trade error:", error);
@@ -332,6 +301,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     setUsdtAmount(e.target.value);
     setQuoteError(null);
     setQuoteData(null);
+    setQuoteOnlyNotice(null);
     setQuoteNow(0);
     setSwapData(null);
     setSwapSimulation(null);
@@ -397,6 +367,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         userWalletAddress: address ?? "",
         quoteId: activeQuote.quoteId,
         quoteBinding: activeQuote.quoteBinding,
+        executionIntentId: activeQuote.executionIntentId,
       });
       if (vendor) params.set("vendor", vendor);
 
@@ -490,6 +461,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     try {
       // Create a transaction request for the approval
       const transactionRequest = {
+        from: address,
         to: approvalData.tokenContractAddress,
         data: approvalData.calldata,
         gas: approvalData.gasLimit,
@@ -565,6 +537,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
         }
         setExecutionPhase("signing");
         const transactionHash = await sendTransaction({
+          from: address,
           to: tx.to,
           data: tx.data,
           value: tx.value,
@@ -631,6 +604,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
           amount: usdtAmountToWei(usdtAmount),
           userWalletAddress: address,
           quoteBinding: quoteData.quoteBinding,
+          executionIntentId: quoteData.executionIntentId,
         }),
       });
 
@@ -772,8 +746,7 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     const quoteFetchedAt = quoteData?.quoteFetchedAt;
     if (!quoteFetchedAt) return;
 
-    const startedAt = Date.now();
-    const updateQuoteClock = () => setQuoteNow(quoteFetchedAt + Date.now() - startedAt);
+    const updateQuoteClock = () => setQuoteNow(Date.now());
     const interval = setInterval(updateQuoteClock, 1000);
     document.addEventListener("visibilitychange", updateQuoteClock);
     return () => {
@@ -948,13 +921,13 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.4rem", margin: "1rem 0 1.25rem" }} aria-label="Safe trade steps">
         {([
           ["01", "Quote", Boolean(quoteData)],
-          ["02", "Simulate", Boolean(swapSimulation || approvalSimulation)],
-          ["03", "Confirm", Boolean(transactionStatus?.status === "confirmed")],
+          ["02", "Validate", Boolean(quoteData)],
+          ["03", "Execute", false],
         ] as const).map(([number, label, complete]) => (
           <div key={label as string} style={{ position: "relative", overflow: "hidden", borderRadius: "0.7rem", border: `1px solid ${complete ? "rgba(52,211,153,.4)" : "rgba(255,255,255,.08)"}`, background: complete ? "rgba(16,185,129,.1)" : "rgba(255,255,255,.035)", padding: "0.6rem" }}>
             <div className={complete ? "wolv-pulse" : ""} style={{ display: "inline-grid", placeItems: "center", width: "1.35rem", height: "1.35rem", borderRadius: "999px", background: complete ? "#34d399" : "rgba(217,168,10,.16)", color: complete ? "#06130e" : "#d9a80a", fontSize: "0.6rem", fontWeight: 900 }}>{complete ? "✓" : number}</div>
             <div style={{ marginTop: "0.4rem", fontSize: "0.7rem", fontWeight: 800, color: complete ? "#a7f3d0" : "#cbd5e1" }}>{label}</div>
-            <div style={{ marginTop: "0.15rem", fontSize: "0.6rem", color: "#64748b" }}>{label === "Quote" ? "Fresh price" : label === "Simulate" ? "No funds sent" : "Your approval"}</div>
+            <div style={{ marginTop: "0.15rem", fontSize: "0.6rem", color: "#64748b" }}>{label === "Quote" ? "Fresh price" : label === "Validate" ? "WOLV checks" : "Unavailable"}</div>
           </div>
         ))}
       </div>
@@ -1025,10 +998,23 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
       {/* Quote Details */}
       {quoteData && (
         <div style={{ backgroundColor: "#1f2937", borderRadius: "0.25rem", padding: "0.75rem", marginBottom: "0.5rem" }}>
-          <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Your trade quote</div>
-          <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
-            {displayTokenAmount(quoteData.fromTokenAmount)} USDT → approximately {displayTokenAmount(quoteData.toTokenAmount)} {token.symbol}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", fontSize: "0.75rem", color: "#6b7280" }}>
+            <span>Your trade quote</span>
+            <strong style={{ color: quoteIsFresh ? "#86efac" : "#fbbf24" }}>{quoteIsFresh ? "QUOTED" : "EXPIRED"}</strong>
           </div>
+          <div style={{ fontSize: "0.875rem", marginBottom: "0.25rem" }}>
+            {displayTokenAmount(quoteData.fromTokenAmount, Number(quoteData.fromToken?.decimal))} USDT → approximately {displayTokenAmount(quoteData.toTokenAmount, Number(quoteData.toToken?.decimal))} {token.symbol}
+          </div>
+          {quoteData.tradeIntent?.minimumOutputAmount && (
+            <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
+              Approved minimum output: {displayTokenAmount(quoteData.tradeIntent.minimumOutputAmount, Number(quoteData.toToken?.decimal))} {token.symbol} · slippage {quoteData.tradeIntent.slippageBps ?? "—"} bps
+            </div>
+          )}
+          {quoteOnlyNotice && (
+            <div role="status" style={{ backgroundColor: "#422006", color: "#fde68a", borderRadius: "0.25rem", padding: "0.5rem", fontSize: "0.75rem", marginTop: "0.5rem" }}>
+              {quoteOnlyNotice}
+            </div>
+          )}
           {process.env.NEXT_PUBLIC_WOLV_REFERRER && (
             <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.25rem" }}>
               WOLV fee: 0.10% of the USDT input
