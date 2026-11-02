@@ -529,11 +529,12 @@ export interface AgentMemoryStorePort {
   getStrategyEvaluations(input: { ownerAddress: string; strategyId?: string; limit?: number }): Promise<Array<Record<string, unknown>>>;
   updateOpportunityOutcome(opportunityId: string, ownerAddress: string, outcome: Record<string, unknown>): Promise<void>;
   getDailyExposure(ownerAddress: string, since: number): Promise<string>;
+  getRecentProposalCount(ownerAddress: string, since: number): Promise<number>;
   getActivePolicy(ownerAddress: string, name: string): Promise<RiskPolicy | null>;
 }
 
 export class AgentMemoryStoreError extends Error {
-  readonly code: "NOT_CONFIGURED" | "INVALID_DATABASE_URL" | "NOT_FOUND" | "INVALID_TRANSITION" | "EMERGENCY_STOP" | "DUPLICATE";
+  readonly code: "NOT_CONFIGURED" | "INVALID_DATABASE_URL" | "NOT_FOUND" | "INVALID_TRANSITION" | "EMERGENCY_STOP" | "DUPLICATE" | "RATE_LIMITED" | "POLICY_CHANGED";
 
   constructor(
     code: AgentMemoryStoreError["code"],
@@ -920,6 +921,48 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     if (!input.policyDecision.accepted) throw new AgentMemoryStoreError("INVALID_TRANSITION");
     const proposalHash = hashJson(input);
     await this.sql.begin(async (transaction) => {
+      const controlRows = await transaction`
+        SELECT emergency_stop, stop_monitoring, reject_new_opportunities, permission_expires_at
+        FROM wolv_agent_control WHERE control_id = true FOR SHARE
+      `;
+      const permissionExpiresAt = controlRows[0]?.permission_expires_at === null
+        ? null
+        : Date.parse(String(controlRows[0]?.permission_expires_at));
+      if (!controlRows[0] || controlRows[0].emergency_stop !== false ||
+        controlRows[0].stop_monitoring !== false || controlRows[0].reject_new_opportunities !== false ||
+        permissionExpiresAt === null || !Number.isFinite(permissionExpiresAt) || permissionExpiresAt <= createdAt) {
+        throw new AgentMemoryStoreError("EMERGENCY_STOP");
+      }
+
+      const runRows = await transaction`
+        SELECT owner_address FROM wolv_agent_runs WHERE run_id = ${input.runId} FOR UPDATE
+      `;
+      if (!runRows[0]) throw new AgentMemoryStoreError("NOT_FOUND");
+      const owner = requireOwnerAddress(String(runRows[0].owner_address));
+      const policyRows = await transaction`
+        SELECT policy_document FROM wolv_agent_risk_policies
+        WHERE owner_address = ${owner} AND policy_name = 'default' AND active = true
+        FOR UPDATE
+      `;
+      if (!policyRows[0]) throw new AgentMemoryStoreError("POLICY_CHANGED");
+      const activePolicy = parseJson<RiskPolicy>(policyRows[0].policy_document);
+      if (activePolicy.version !== input.policyDecision.policyVersion ||
+        activePolicy.permissionExpiresAt <= createdAt || activePolicy.emergencyStop !== false ||
+        !Number.isSafeInteger(activePolicy.maxProposalsPerHour) ||
+        activePolicy.maxProposalsPerHour < 1 || activePolicy.maxProposalsPerHour > 12) {
+        throw new AgentMemoryStoreError("POLICY_CHANGED");
+      }
+      const recentProposals = await transaction`
+        SELECT COUNT(*)::integer AS proposal_count
+        FROM wolv_agent_proposals p
+        JOIN wolv_agent_runs r ON r.run_id = p.run_id
+        WHERE r.owner_address = ${owner}
+          AND p.created_at >= ${new Date(createdAt - 60 * 60_000)}
+      `;
+      if (Number(recentProposals[0]?.proposal_count ?? 0) >= activePolicy.maxProposalsPerHour) {
+        throw new AgentMemoryStoreError("RATE_LIMITED");
+      }
+
       await transaction`
         INSERT INTO wolv_agent_proposals (
           proposal_id, run_id, opportunity_id, asset_id, direction, intended_amount, quote_reference,
@@ -1225,12 +1268,28 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     await this.ready;
     const owner = requireOwnerAddress(input.ownerAddress);
     const plan = input.plan;
+    const permissions = isRecord(plan.permissions) ? plan.permissions : null;
+    const assetAllowlist = permissions?.assetAllowlist;
+    const validConfiguredScope =
+      typeof permissions?.targetAddress === "string" &&
+      /^0x[a-fA-F0-9]{40}$/.test(permissions.targetAddress) &&
+      Array.isArray(assetAllowlist) &&
+      assetAllowlist.length === 1 &&
+      typeof assetAllowlist[0] === "string" &&
+      /^0x[a-fA-F0-9]{40}$/.test(assetAllowlist[0]);
+    const validEmptyScope =
+      permissions?.targetAddress === null &&
+      Array.isArray(assetAllowlist) &&
+      assetAllowlist.length === 0;
     if (
       plan.provider !== "zerodev" ||
       plan.mode !== "simulation-only" ||
       plan.status !== "not-granted" ||
       plan.chainId !== AGENT_SESSION_TESTNET_CHAIN_ID ||
       plan.executionEnabled !== false ||
+      permissions?.targetType !== "router" ||
+      permissions?.selector !== "swapExactETHForTokens" ||
+      (!validConfiguredScope && !validEmptyScope) ||
       !AGENT_SESSION_VALIDITY_SECONDS
     ) {
       throw new AgentMemoryStoreError("INVALID_TRANSITION");
@@ -1784,6 +1843,18 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         AND p.created_at >= ${new Date(since)}
     `;
     return String(rows[0]?.exposure ?? "0");
+  }
+
+  async getRecentProposalCount(ownerAddress: string, since: number): Promise<number> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const rows = await this.sql`
+      SELECT COUNT(*)::integer AS proposal_count
+      FROM wolv_agent_proposals p
+      JOIN wolv_agent_runs r ON r.run_id = p.run_id
+      WHERE r.owner_address = ${owner} AND p.created_at >= ${new Date(since)}
+    `;
+    return Number(rows[0]?.proposal_count ?? 0);
   }
 
   async getActivePolicy(ownerAddress: string, name: string): Promise<RiskPolicy | null> {

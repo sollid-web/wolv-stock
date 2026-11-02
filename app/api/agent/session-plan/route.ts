@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { createAgentSessionPlan } from "@/lib/agentSessionPlan";
+import { getAgentSmartAccountConfig } from "@/lib/smartAccount";
 import { AgentMemoryStore } from "@/services/agentMemoryStore";
 import {
   authorizeBawWalletRequest,
@@ -100,7 +101,20 @@ export async function POST(request: Request): Promise<Response> {
     if (Boolean(control.emergency_stop)) {
       return errorResponse("Global emergency stop prevents session-plan preparation.", 423);
     }
-    const plan = createAgentSessionPlan({ ownerAddress });
+    let accountConfig: ReturnType<typeof getAgentSmartAccountConfig>;
+    try {
+      accountConfig = getAgentSmartAccountConfig();
+    } catch {
+      return errorResponse("A configured BSC testnet router and target token are required.", 503);
+    }
+    if (accountConfig.chain.id !== 97) {
+      return errorResponse("Session-plan preparation is restricted to BSC testnet.", 409);
+    }
+    const plan = createAgentSessionPlan({
+      ownerAddress,
+      routerAddress: accountConfig.routerAddress,
+      targetTokenAddress: accountConfig.targetTokenAddress,
+    });
     const result = await store.prepareAgentSessionPlan({
       ownerAddress,
       sessionId: randomUUID(),

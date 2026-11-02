@@ -270,6 +270,7 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     approvedDirections: ["BUY"],
     maxOrderValue,
     maxDailyExposure: "1000",
+    maxProposalsPerHour: 4,
     maxSlippageBps: 100,
     maxReferenceDeviationPercent: 2,
     allowedSessions: ["US_REGULAR"],
@@ -573,6 +574,7 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     const successfulRun = await makeOrchestrator(restartedStore).run(runRequest("pg-successful-flow"));
     assert.equal(successfulRun.status, "AWAITING_USER_APPROVAL");
     assert.ok(successfulRun.opportunityId && successfulRun.analysisId && successfulRun.proposalId);
+    assert.equal(await restartedStore.getRecentProposalCount(ownerA, now - 60 * 60_000), 1);
     const successfulProposal = await restartedStore.getProposal(successfulRun.proposalId, ownerA);
     assert.equal(successfulProposal.proposal_status, "AWAITING_USER_APPROVAL");
     assert.ok((await restartedStore.getPriorAnalyses(ownerA, String(successfulProposal.asset_id)))

@@ -36,7 +36,6 @@ import {
     isAddress,
     parseEther
 } from "viem"
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { getBytecode, getChainId, readContract } from "viem/actions"
 import { bsc, bscTestnet } from "viem/chains"
 import { resolvePublicRpcUrl } from "./publicRpcUrl.ts"
@@ -212,10 +211,6 @@ export function createAgentPublicClient(config = getAgentSmartAccountConfig()) {
         chain: config.chain,
         transport: http(config.rpcUrl)
     })
-}
-
-export function createAgentSessionSigner() {
-    return privateKeyToAccount(generatePrivateKey())
 }
 
 export type PoolReserves = {
@@ -626,6 +621,14 @@ export async function executeAgentBuy(
         method(JSON.stringify(record))
     }
 ) {
+    if (process.env.ENABLE_LIVE_USEROP_SUBMISSION !== "true") {
+        throw new Error(
+            "Live UserOperation submission is disabled; set ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
+        )
+    }
+    if (config.chain.id !== 97) {
+        throw new Error("Agent UserOperation submission is restricted to BSC testnet")
+    }
     const account = accountClient.account
     return runAgentExecutionWithTelemetry(
         {

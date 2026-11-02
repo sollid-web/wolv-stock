@@ -183,6 +183,7 @@ async function startChrome() {
     urls: [
       "*://*/api/agent/quote*",
       "*://*/api/agent/approve*",
+      "*://*/api/agent/simulation*",
       "*://*/api/agent/execute*",
       "*://*/api/quote*",
       "*://*/api/swap*",
@@ -578,6 +579,8 @@ async function runAgentRefusalChecks() {
               permissions: {
                 targetType: "router",
                 selector: "swapExactETHForTokens",
+                targetAddress: null,
+                assetAllowlist: [],
                 nativeValueLimitWei: "500000000000000000",
                 validitySeconds: 604800,
                 slippageBps: 100,
@@ -643,6 +646,26 @@ async function runAgentRefusalChecks() {
           }), { headers: { "content-type": "application/json" } });
         }
         return new Response(JSON.stringify({ error: "Responsive fixture blocked execution." }), { status: 503, headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname === "/api/agent/simulation" && method === "POST") {
+        return new Response(JSON.stringify({
+          status: "SIMULATION_PASSED",
+          chainId: 97,
+          blockNumber: "123",
+          account: mockWalletAddress,
+          router: "0x0000000000000000000000000000000000000123",
+          targetToken: "0x0000000000000000000000000000000000000456",
+          tokenPath: ["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000456"],
+          amountBnb: "0.001",
+          expectedAmountOut: "1000",
+          minimumAmountOut: "990",
+          slippageBps: 100,
+          priceImpactBps: 35,
+          estimatedGas: "100000",
+          estimatedGasPriceWei: "3",
+          estimatedNetworkFeeWei: "300000",
+          execution: { signingRequested: false, transactionBroadcast: false, executionEnabled: false }
+        }), { headers: { "content-type": "application/json" } });
       }
       if (url.pathname === "/api/agent/quote" && method === "POST") {
         window.__WOLV_AGENT_ENDPOINTS.push("quote");

@@ -281,6 +281,10 @@ export class AgentOrchestrator {
       state = "POLICY_VALIDATION";
 
       const dailyExposure = await this.store.getDailyExposure(request.ownerAddress, startOfUtcDay(now()));
+      const recentProposalCount = await this.store.getRecentProposalCount(
+        request.ownerAddress,
+        now() - 60 * 60_000,
+      );
       const policy = await this.store.getActivePolicy(request.ownerAddress, "default");
       const policyContext = await (this.options.policyContext ?? defaultPolicyContext)({
         evidence: found.observations,
@@ -295,6 +299,7 @@ export class AgentOrchestrator {
           direction: "BUY",
           notional: request.strategyConfiguration.notionalValue,
           dailyExposure,
+          recentProposalCount,
           slippageBps: policyContext.slippageBps,
           referenceDeviationPercent: policyContext.referenceDeviationPercent,
           dataFresh: policyContext.dataFresh,

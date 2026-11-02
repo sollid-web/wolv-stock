@@ -28,6 +28,29 @@ type AgentResponse = {
   mockTrigger?: { triggered: boolean; changePercent: number };
 };
 
+type AgentSimulationResult = {
+  status: "SIMULATION_PASSED";
+  chainId: number;
+  blockNumber: string;
+  account: string;
+  router: string;
+  targetToken: string;
+  tokenPath: string[];
+  amountBnb: string;
+  expectedAmountOut: string;
+  minimumAmountOut: string;
+  slippageBps: number;
+  priceImpactBps: number;
+  estimatedGas: string;
+  estimatedGasPriceWei: string;
+  estimatedNetworkFeeWei: string;
+  execution: {
+    signingRequested: false;
+    transactionBroadcast: false;
+    executionEnabled: false;
+  };
+};
+
 type AgentQuoteResult = {
   status: "QUOTED" | "REJECTED";
   eligibility?: "ELIGIBLE" | "REJECTED";
@@ -116,6 +139,10 @@ export default function AgentTerminal() {
   const [referencePrice, setReferencePrice] = useState("100");
   const [currentPrice, setCurrentPrice] = useState("98");
   const [draft, setDraft] = useState<AgentResponse | null>(null);
+  const [simulationAmount, setSimulationAmount] = useState("0.001");
+  const [simulationResult, setSimulationResult] = useState<AgentSimulationResult | null>(null);
+  const [simulationError, setSimulationError] = useState("");
+  const [simulationBusy, setSimulationBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -304,6 +331,31 @@ export default function AgentTerminal() {
       setError(cause instanceof Error ? cause.message : "The strategy request failed.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function simulateConfiguredRoute(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSimulationBusy(true);
+    setSimulationError("");
+    setSimulationResult(null);
+    try {
+      const response = await fetch("/api/agent/simulation", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountBnb: simulationAmount.trim(), slippageBps: 100 }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "BSC testnet simulation was rejected.");
+      }
+      setSimulationResult(data as AgentSimulationResult);
+    } catch (cause) {
+      setSimulationError(cause instanceof Error ? cause.message : "BSC testnet simulation failed.");
+    } finally {
+      setSimulationBusy(false);
     }
   }
 
@@ -741,6 +793,48 @@ export default function AgentTerminal() {
               {draft.mockTrigger?.triggered && <Link href="/trade" className="mt-3 inline-flex min-h-10 items-center rounded-lg border border-[#FFC700]/30 px-3 font-bold text-[#FFC700] hover:bg-[#FFC700]/[0.08]">Open trade terminal for wallet review</Link>}
             </div>
           )}
+
+          <section className="wolv-glass-control mt-5 rounded-xl p-4" aria-labelledby="testnet-simulation-heading">
+            <h3 id="testnet-simulation-heading" className="text-sm font-bold text-white">BSC testnet transaction simulation</h3>
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              Simulates the configured router and target-token path using read-only RPC calls. It does not sign, submit, or broadcast a transaction.
+            </p>
+            <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(event) => void simulateConfiguredRoute(event)}>
+              <label className="min-w-40 flex-1 text-xs font-semibold text-slate-300">
+                BNB input amount
+                <input
+                  className={`${fieldClass} mt-2`}
+                  inputMode="decimal"
+                  value={simulationAmount}
+                  onChange={(event) => {
+                    setSimulationAmount(event.target.value);
+                    setSimulationResult(null);
+                  }}
+                  required
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={simulationBusy || !bawSessionAuthenticated}
+                className="min-h-11 rounded-xl border border-[#FFC700]/35 bg-[#FFC700]/[0.06] px-4 text-xs font-bold text-[#FFC700] transition hover:bg-[#FFC700]/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {simulationBusy ? "Simulating…" : "Simulate configured route"}
+              </button>
+            </form>
+            {!bawSessionAuthenticated && <p className="mt-2 text-xs text-amber-200">Authorize a browser-wallet session before simulating.</p>}
+            {simulationError && <p role="alert" className="mt-3 rounded-lg border border-rose-400/20 bg-rose-400/[0.06] p-3 text-xs text-rose-200">{simulationError}</p>}
+            {simulationResult && (
+              <div className="mt-4 space-y-1 break-all text-xs text-slate-300" aria-live="polite">
+                <p className="font-bold text-emerald-200">Read-only simulation passed · BSC testnet · block {simulationResult.blockNumber}</p>
+                <p>Wallet: <span className="font-mono">{simulationResult.account}</span></p>
+                <p>Router: <span className="font-mono">{simulationResult.router}</span></p>
+                <p>Target token: <span className="font-mono">{simulationResult.targetToken}</span></p>
+                <p>Minimum output: {simulationResult.minimumAmountOut} raw token units · slippage {simulationResult.slippageBps} bps · impact {simulationResult.priceImpactBps} bps</p>
+                <p>Estimated network fee: {simulationResult.estimatedNetworkFeeWei} wei · gas {simulationResult.estimatedGas}</p>
+                <p className="text-amber-200">No signature requested; no transaction broadcast.</p>
+              </div>
+            )}
+          </section>
         </section>
 
         <aside className="space-y-5">

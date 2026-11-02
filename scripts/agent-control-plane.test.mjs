@@ -41,6 +41,7 @@ test("risk policy rejects threshold, freshness, permission, and evidence failure
       approvedDirections: ["BUY"],
       maxOrderValue: "100",
       maxDailyExposure: "150",
+      maxProposalsPerHour: 4,
       maxSlippageBps: 100,
       maxReferenceDeviationPercent: 2,
       allowedSessions: ["US_REGULAR"],
@@ -53,6 +54,7 @@ test("risk policy rejects threshold, freshness, permission, and evidence failure
     direction: "SELL",
     notional: "120",
     dailyExposure: "50",
+    recentProposalCount: 0,
     slippageBps: 200,
     referenceDeviationPercent: null,
     dataFresh: false,
@@ -85,6 +87,7 @@ test("risk policy uses exact decimal arithmetic at daily exposure boundaries", (
     approvedDirections: ["BUY"],
     maxOrderValue: "0.2",
     maxDailyExposure: "0.3",
+    maxProposalsPerHour: 4,
     maxSlippageBps: 100,
     maxReferenceDeviationPercent: 1,
     allowedSessions: ["US_REGULAR"],
@@ -100,6 +103,7 @@ test("risk policy uses exact decimal arithmetic at daily exposure boundaries", (
     direction: "BUY",
     notional: "0.2",
     dailyExposure: "0.1",
+    recentProposalCount: 0,
     slippageBps: 50,
     referenceDeviationPercent: 0,
     dataFresh: true,
@@ -109,6 +113,45 @@ test("risk policy uses exact decimal arithmetic at daily exposure boundaries", (
     now,
   });
   assert.equal(decision.accepted, true);
+});
+
+test("risk policy rejects proposal generation at the configured hourly cap", () => {
+  const now = 1_000;
+  const policy = {
+    version: "hourly-cap",
+    approvedAssets: [ADDRESSES[0]],
+    approvedDirections: ["BUY"],
+    maxOrderValue: "10",
+    maxDailyExposure: "20",
+    maxProposalsPerHour: 1,
+    maxSlippageBps: 100,
+    maxReferenceDeviationPercent: 1,
+    allowedSessions: ["US_REGULAR"],
+    minimumBalance: "1",
+    quoteTtlMs: 30_000,
+    permissionExpiresAt: now + 60_000,
+    emergencyStop: false,
+  };
+  assert.deepEqual(validateRiskPolicy(policy, now), []);
+  const decision = evaluateRiskPolicy({
+    policy,
+    assetKey: ADDRESSES[0],
+    direction: "BUY",
+    notional: "1",
+    dailyExposure: "0",
+    recentProposalCount: 1,
+    slippageBps: 50,
+    referenceDeviationPercent: 0,
+    dataFresh: true,
+    quoteExpiresAt: now + 1_000,
+    availableBalance: "2",
+    session: "US_REGULAR",
+    now,
+  });
+  assert.equal(decision.accepted, false);
+  assert.deepEqual(decision.refusalReasons, [
+    "Hourly proposal frequency limit would be exceeded.",
+  ]);
 });
 
 test("market observations reject stale provider timestamps and never substitute ingestion time", () => {
@@ -308,6 +351,7 @@ test("fixture-driven workflow records evidence, detects a deduplicated opportuni
     approvedDirections: ["BUY"],
     maxOrderValue: "100",
     maxDailyExposure: "1000",
+    maxProposalsPerHour: 4,
     maxSlippageBps: 100,
     maxReferenceDeviationPercent: 2,
     allowedSessions: ["US_REGULAR"],
@@ -471,6 +515,7 @@ test("policy API refuses malformed policy data and activates only a validated ex
     approvedDirections: ["BUY"],
     maxOrderValue: "100",
     maxDailyExposure: "1000",
+    maxProposalsPerHour: 4,
     maxSlippageBps: 100,
     maxReferenceDeviationPercent: 2,
     allowedSessions: ["US_REGULAR"],
@@ -671,6 +716,9 @@ function createFakeStore(nowSource) {
     },
     async getDailyExposure() {
       return "0";
+    },
+    async getRecentProposalCount() {
+      return 0;
     },
     async getActivePolicy() {
       return this.policy;

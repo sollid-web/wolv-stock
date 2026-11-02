@@ -402,6 +402,7 @@ function isRiskPolicy(value: unknown): value is RiskPolicy {
     "approvedDirections",
     "maxOrderValue",
     "maxDailyExposure",
+    "maxProposalsPerHour",
     "maxSlippageBps",
     "maxReferenceDeviationPercent",
     "allowedSessions",
@@ -456,8 +457,10 @@ async function readBoundedJson(request: Request):
 
 function storeErrorResponse(error: unknown, fallback: string): Response {
   if (error instanceof AgentMemoryStoreError) {
-    const status = error.code === "NOT_FOUND" ? 404
-      : error.code === "INVALID_TRANSITION" || error.code === "DUPLICATE" ? 409
+    const status = error.code === "RATE_LIMITED" ? 429
+      : error.code === "NOT_FOUND" ? 404
+      : error.code === "INVALID_TRANSITION" || error.code === "DUPLICATE" ||
+        error.code === "POLICY_CHANGED" ? 409
         : error.code === "EMERGENCY_STOP" ? 423 : 503;
     return json({ error: fallback, code: error.code }, status);
   }

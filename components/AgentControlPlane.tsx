@@ -114,6 +114,8 @@ type AgentStatusSnapshot = {
       ownerAddress: string | null;
       permissions: {
         selector: string;
+        targetAddress: string | null;
+        assetAllowlist: string[];
         nativeValueLimitWei: string;
         validitySeconds: number;
         slippageBps: number;
@@ -567,7 +569,7 @@ export default function AgentControlPlane() {
                     <CapabilityStatus
                       label="Scoped testnet session"
                       value={agentStatus.telemetry.scopedSession.status}
-                      detail={`${agentStatus.telemetry.scopedSession.provider} · BSC ${agentStatus.telemetry.scopedSession.chainId} · ${agentStatus.telemetry.scopedSession.permissions.selector} · ${(Number(agentStatus.telemetry.scopedSession.permissions.nativeValueLimitWei) / 1e18).toFixed(1)} BNB cap · ${agentStatus.sessionPlans?.length ?? 0} persisted plan${(agentStatus.sessionPlans?.length ?? 0) === 1 ? "" : "s"}`}
+                      detail={`${agentStatus.telemetry.scopedSession.provider} · BSC ${agentStatus.telemetry.scopedSession.chainId} · ${agentStatus.telemetry.scopedSession.permissions.selector} · ${(Number(agentStatus.telemetry.scopedSession.permissions.nativeValueLimitWei) / 1e18).toFixed(1)} BNB cap · ${agentStatus.telemetry.scopedSession.permissions.assetAllowlist.length} allowed token${agentStatus.telemetry.scopedSession.permissions.assetAllowlist.length === 1 ? "" : "s"} · ${agentStatus.sessionPlans?.length ?? 0} persisted plan${(agentStatus.sessionPlans?.length ?? 0) === 1 ? "" : "s"}`}
                       warning
                     />
                     <CapabilityStatus

@@ -320,6 +320,33 @@ Durable global emergency stop
 Execution disabled by feature flag and environment policy
 I would not implement server-held private keys, token approvals, autonomous withdrawal, AI-generated calldata, or unrestricted execution in the first implementation.
 
+## 9. Progress and PC handoff — 2026-11-02
+
+### Completed and checked before this handoff
+
+- Phases 1–2: the existing wallet/session, policy, canonical proposal, ownership, approval, expiry, and replay-protection foundations were cross-checked against the code and Phase 4.0.1 verification report.
+- Phase 3: added authenticated, read-only BSC testnet transaction simulation for the configured router and target token. The service validates the route/calldata, wallet balance, gas estimate, and EVM call result. It does not sign, submit, or persist an execution authorization.
+- Phase 4: prepared ZeroDev plans are bound to the configured router/token but remain `simulation-only` and `not-granted`. Server-generated ephemeral session-key creation was removed. Submission remains disabled.
+- Prior Phase 3–4 checks: 43 focused tests passed; TypeScript and targeted ESLint passed. Responsive production build was not verified in this environment because its native Lightning CSS binding was incompatible with Android Node/proot.
+
+### Phase 5–6 safety groundwork added; validation deferred
+
+- Session-plan telemetry now explicitly states that a human approval and successful simulation are prerequisites. It does not grant permissions or enable execution.
+- Risk policies now include `maxProposalsPerHour`, bounded from 1 to 12. Deterministic policy evaluation rejects proposals at the configured cap.
+- Proposal creation now transactionally rechecks the durable global stop and permission expiry, verifies the active policy/version, and enforces the hourly cap under a lock. This prevents proposal creation after a stop or policy change and serializes cap checks.
+- Updated focused policy, session-plan, and PostgreSQL integration test cases, plus the README.
+- **Do not treat these changes as verified yet.** The latest policy/frequency-control changes have not been tested or type-checked. Tests/builds were intentionally deferred for a stable PC environment. A responsive build attempt in the mobile environment was stopped before completion; its result is unknown.
+- No transaction was signed or broadcast. No live execution was enabled.
+
+### Continue on the stable PC
+
+1. Pull the pushed handoff commit and inspect `git status` before proceeding.
+2. Install from the committed lockfile with the project package manager, then run focused agent-control-plane, session-plan, and PostgreSQL integration tests; run TypeScript and lint checks.
+3. Fix any issues introduced by the hourly-cap/policy-transaction changes. Then run the responsive smoke and production build in the stable environment.
+4. Record verified results here before beginning more implementation.
+5. Phases 5–6 are **not complete**: an actual human-approved pilot or bounded automation still requires a separate custody/signer choice and explicit authorization. Do not enable signing, session grants, or transaction submission based on this groundwork alone.
+6. Phase 7 remains pending and requires operational evidence from authorized earlier phases.
+
 6:35 AM
 31s
 

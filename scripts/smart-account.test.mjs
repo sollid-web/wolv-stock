@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
   createAgentPublicClient,
-  createAgentSessionSigner,
   calculateDynamicQuote,
   encodeAgentBuyCall,
   getAgentSmartAccountConfig,
@@ -178,15 +177,6 @@ test("encodes only a one-hop WBNB-to-target-token buy for the smart account", ()
   ]);
   assert.equal(decoded.args[2], "0x0000000000000000000000000000000000000789");
   assert.equal(decoded.args[0], 100n);
-});
-
-test("generates distinct ephemeral session signers", () => {
-  const firstSigner = createAgentSessionSigner();
-  const secondSigner = createAgentSessionSigner();
-
-  assert.match(firstSigner.address, /^0x[0-9a-fA-F]{40}$/);
-  assert.match(secondSigner.address, /^0x[0-9a-fA-F]{40}$/);
-  assert.notEqual(firstSigner.address, secondSigner.address);
 });
 
 test("rejects trade calls outside the on-chain cap or without minimum output", () => {

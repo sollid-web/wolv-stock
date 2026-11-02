@@ -81,6 +81,7 @@ export type RiskPolicy = {
   approvedDirections: AgentDirection[];
   maxOrderValue: string;
   maxDailyExposure: string;
+  maxProposalsPerHour: number;
   maxSlippageBps: number;
   maxReferenceDeviationPercent: number;
   allowedSessions: string[];
@@ -341,6 +342,7 @@ export function evaluateRiskPolicy(input: {
   direction: AgentDirection;
   notional: string;
   dailyExposure: string;
+  recentProposalCount: number;
   slippageBps: number;
   referenceDeviationPercent: number | null;
   dataFresh: boolean;
@@ -376,6 +378,10 @@ export function evaluateRiskPolicy(input: {
     notional === null || dailyExposure + notional > maxDaily) {
     refusalReasons.push("Daily exposure would exceed the policy maximum.");
   }
+  if (!Number.isSafeInteger(input.recentProposalCount) || input.recentProposalCount < 0 ||
+    input.recentProposalCount >= policy.maxProposalsPerHour) {
+    refusalReasons.push("Hourly proposal frequency limit would be exceeded.");
+  }
   if (!Number.isSafeInteger(input.slippageBps) || input.slippageBps < 0 ||
     input.slippageBps > policy.maxSlippageBps) refusalReasons.push("Slippage exceeds the policy maximum.");
   if (input.referenceDeviationPercent === null ||
@@ -401,6 +407,7 @@ export function evaluateRiskPolicy(input: {
     direction: input.direction,
     notional: input.notional,
     dailyExposure: input.dailyExposure,
+    recentProposalCount: input.recentProposalCount,
     slippageBps: input.slippageBps,
     referenceDeviationPercent: input.referenceDeviationPercent,
     dataFresh: input.dataFresh,
@@ -440,6 +447,10 @@ export function validateRiskPolicy(policy: RiskPolicy, now = Date.now()): string
   const minimumBalance = parseDecimalUnits(policy.minimumBalance);
   if (maxOrder === null || maxOrder <= ZERO_DECIMAL_UNITS) errors.push("Maximum order value is invalid.");
   if (maxDaily === null || maxDaily <= ZERO_DECIMAL_UNITS) errors.push("Maximum daily exposure is invalid.");
+  if (!Number.isSafeInteger(policy.maxProposalsPerHour) ||
+    policy.maxProposalsPerHour < 1 || policy.maxProposalsPerHour > 12) {
+    errors.push("Maximum hourly proposal frequency must be between 1 and 12.");
+  }
   if (minimumBalance === null || minimumBalance < ZERO_DECIMAL_UNITS) errors.push("Minimum balance is invalid.");
   if (!Number.isSafeInteger(policy.maxSlippageBps) || policy.maxSlippageBps < 0 || policy.maxSlippageBps > 10_000) {
     errors.push("Maximum slippage is invalid.");
