@@ -95,6 +95,44 @@ type Dashboard = {
   };
 };
 
+type AgentStatusSnapshot = {
+  telemetry: {
+    executionMode: "execution-blocked";
+    agentIdentity: { standard: string; registrationId: number | null; status: string };
+    commerce: { standard: string; jobId: string | null; status: string };
+    sessionKey: { status: string; reason: string; expiresAt?: number };
+    x402: { status: string; reason: string };
+    walletProviders: {
+      altana: { sdkAvailable: boolean; configured: boolean };
+      twak: { sdkAvailable: boolean; configured: boolean };
+    };
+    scopedSession: {
+      provider: "zerodev";
+      mode: "simulation-only";
+      status: "not-granted";
+      chainId: 97;
+      ownerAddress: string | null;
+      permissions: {
+        selector: string;
+        nativeValueLimitWei: string;
+        validitySeconds: number;
+        slippageBps: number;
+        maxPriceImpactBps: number;
+      };
+      executionEnabled: false;
+      reason: string;
+    };
+    recentTransactions: string[];
+  };
+  sessionPlans?: Array<{
+    session_id: string;
+    status: "PREPARED" | "REVOKED" | "EXPIRED";
+    chain_id: number;
+    expires_at: number;
+  }>;
+  checkedAt: number;
+};
+
 const cardClass = "wolv-glass rounded-2xl p-5";
 const inputClass = "wolv-glass-control w-full rounded-xl px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-[#FFC700]/60";
 
@@ -125,6 +163,7 @@ export default function AgentControlPlane() {
   const [runResult, setRunResult] = useState<Record<string, unknown> | null>(null);
   const [cursor, setCursor] = useState("");
   const [policyDraft, setPolicyDraft] = useState("");
+  const [agentStatus, setAgentStatus] = useState<AgentStatusSnapshot | null>(null);
 
   const loadDashboard = useCallback(async (nextCursor = "") => {
     const query = buildFilterQuery(filters, nextCursor);
@@ -140,6 +179,13 @@ export default function AgentControlPlane() {
     setCursor(nextCursor);
   }, [filters]);
 
+  const loadAgentStatus = useCallback(async () => {
+    const response = await fetch("/api/agent/status", { cache: "no-store", credentials: "same-origin" });
+    const data = await response.json() as AgentStatusSnapshot & { error?: string };
+    if (!response.ok) throw new Error(data.error ?? "Agent capability status could not be loaded.");
+    setAgentStatus(data);
+  }, []);
+
   useEffect(() => {
     let active = true;
     fetch("/api/agent/session", { cache: "no-store", credentials: "same-origin" })
@@ -150,6 +196,9 @@ export default function AgentControlPlane() {
         setAuthenticated(data.authenticated === true);
         setAuthenticatedAddress(data.address ?? "");
         if (data.authenticated === true) {
+          void loadAgentStatus().catch((cause: unknown) => {
+            if (active) setError(cause instanceof Error ? cause.message : "Agent capability status could not be loaded.");
+          });
           fetch("/api/agent/control", { cache: "no-store", credentials: "same-origin" })
             .then(async (controlResponse) => {
               const controlData: unknown = await controlResponse.json();
@@ -174,7 +223,7 @@ export default function AgentControlPlane() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadAgentStatus]);
 
   useEffect(() => {
     if (!authenticated || !authenticatedAddress) return;
@@ -185,6 +234,7 @@ export default function AgentControlPlane() {
         setAuthenticated(false);
         setAuthenticatedAddress("");
         setDashboard(null);
+        setAgentStatus(null);
       });
   }, [address, authenticated, authenticatedAddress, isConnected]);
 
@@ -222,6 +272,10 @@ export default function AgentControlPlane() {
       setAuthenticated(true);
       setAuthenticatedAddress(session.address);
       setNotice("Operator authorization established with a message signature; no transaction was signed.");
+      await loadAgentStatus().catch((cause: unknown) => {
+        setAgentStatus(null);
+        setError(cause instanceof Error ? cause.message : "Agent capability status could not be loaded.");
+      });
       await loadDashboard();
     } catch (cause) {
       setAuthError(cause instanceof Error ? cause.message : "Operator authorization failed.");
@@ -472,6 +526,72 @@ export default function AgentControlPlane() {
               </section>
 
               <section className={`${cardClass} mb-5`}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Wallet and capability controls</h2>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      Read-only discovery of the BNB Agent SDK custody seams. Configuration here does not grant signing or execution permission.
+                    </p>
+                  </div>
+                  <button type="button" disabled={busy} onClick={() => void loadAgentStatus().catch((cause: unknown) =>
+                    setError(cause instanceof Error ? cause.message : "Agent capability status could not be loaded.")
+                  )}
+                    className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-bold text-slate-300 disabled:opacity-50">
+                    Refresh capabilities
+                  </button>
+                </div>
+                {agentStatus ? (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <CapabilityStatus
+                      label="Execution mode"
+                      value={agentStatus.telemetry.executionMode.toUpperCase()}
+                      detail="Transaction signing and submission are disabled."
+                      warning
+                    />
+                    <CapabilityStatus
+                      label="Agent identity"
+                      value={agentStatus.telemetry.agentIdentity.status}
+                      detail={`${agentStatus.telemetry.agentIdentity.standard}${agentStatus.telemetry.agentIdentity.registrationId === null ? " · not registered" : ` · ID ${agentStatus.telemetry.agentIdentity.registrationId}`}`}
+                    />
+                    <CapabilityStatus
+                      label="Agent commerce"
+                      value={agentStatus.telemetry.commerce.status}
+                      detail={`${agentStatus.telemetry.commerce.standard}${agentStatus.telemetry.commerce.jobId ? ` · job ${agentStatus.telemetry.commerce.jobId}` : " · no job created"}`}
+                    />
+                    <CapabilityStatus
+                      label="Session key"
+                      value={agentStatus.telemetry.sessionKey.status}
+                      detail={agentStatus.telemetry.sessionKey.reason}
+                      warning={agentStatus.telemetry.sessionKey.status !== "active"}
+                    />
+                    <CapabilityStatus
+                      label="Scoped testnet session"
+                      value={agentStatus.telemetry.scopedSession.status}
+                      detail={`${agentStatus.telemetry.scopedSession.provider} · BSC ${agentStatus.telemetry.scopedSession.chainId} · ${agentStatus.telemetry.scopedSession.permissions.selector} · ${(Number(agentStatus.telemetry.scopedSession.permissions.nativeValueLimitWei) / 1e18).toFixed(1)} BNB cap · ${agentStatus.sessionPlans?.length ?? 0} persisted plan${(agentStatus.sessionPlans?.length ?? 0) === 1 ? "" : "s"}`}
+                      warning
+                    />
+                    <CapabilityStatus
+                      label="x402"
+                      value={agentStatus.telemetry.x402.status}
+                      detail={agentStatus.telemetry.x402.reason}
+                      warning={agentStatus.telemetry.x402.status !== "enabled"}
+                    />
+                    <CapabilityStatus
+                      label="Wallet providers"
+                      value={[
+                        agentStatus.telemetry.walletProviders.altana.sdkAvailable ? "Altana SDK" : "",
+                        agentStatus.telemetry.walletProviders.twak.sdkAvailable ? "TWAK SDK" : "",
+                      ].filter(Boolean).join(" · ") || "None detected"}
+                      detail={`Altana configured: ${agentStatus.telemetry.walletProviders.altana.configured ? "yes" : "no"} · TWAK configured: ${agentStatus.telemetry.walletProviders.twak.configured ? "yes" : "no"}`}
+                      warning
+                    />
+                  </div>
+                ) : (
+                  <Empty>Capability status is loading or unavailable.</Empty>
+                )}
+              </section>
+
+              <section className={`${cardClass} mb-5`}>
                 <h2 className="text-lg font-bold text-white">Pending proposals</h2>
                 {dashboard.proposals.length === 0 ? <Empty>No proposals are stored.</Empty> : (
                   <ul className="mt-3 space-y-3">
@@ -618,6 +738,26 @@ export default function AgentControlPlane() {
 
 function ConfigStatus({ label, enabled }: { label: string; enabled: boolean }) {
   return <p className="rounded-lg bg-black/15 px-3 py-2 text-slate-400">{label}: <span className={enabled ? "text-emerald-200" : "text-amber-200"}>{enabled ? "enabled" : "disabled"}</span></p>;
+}
+
+function CapabilityStatus({
+  label,
+  value,
+  detail,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  warning?: boolean;
+}) {
+  return (
+    <div className="wolv-glass-control rounded-xl p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+      <p className={`mt-1 break-words text-xs font-bold ${warning ? "text-amber-200" : "text-emerald-200"}`}>{value}</p>
+      <p className="mt-2 text-[10px] leading-4 text-slate-400">{detail}</p>
+    </div>
+  );
 }
 
 function Filter({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {

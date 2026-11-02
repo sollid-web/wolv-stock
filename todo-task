@@ -1,0 +1,324 @@
+Market providers
+      |
+      v
+Market memory + verification
+      |
+      v
+Opportunity detector
+      |
+      v
+AI analysis service
+      |
+      v
+Deterministic policy engine
+      |
+      +--> REJECT
+      |
+      +--> APPROVEABLE PROPOSAL
+                |
+                v
+        Human approval or
+        preauthorized strategy limit
+                |
+                v
+        Transaction builder
+                |
+                v
+        Ephemeral/session signer
+                |
+                v
+        Policy/safety service
+                |
+                v
+        Provider execution adapter
+
+2. Security model
+The implementation should use four independent authorization layers:
+
+Agent authorization
+
+Authenticated user/owner
+Agent identity
+Run ownership
+Emergency stop
+Strategy authorization
+
+Position limits
+Daily loss limits
+Maximum trade size
+Approved assets and venues
+Trading windows
+Minimum liquidity and price deviation
+Wallet authorization
+
+Session ownership
+Chain restrictions
+Token allowlist
+Amount and slippage limits
+Spend and approval limits
+Explicit signing recipient and calldata
+Transaction authorization
+
+Recreate and verify the proposal from immutable records
+Fresh quote and expiry validation
+Recompute expected tokens and balances
+Require an authorized approval
+Prevent same approval being reused
+Reject material parameter changes
+A successful AI recommendation should never bypass any of these layers.
+
+3. Wallet custody options
+We should choose one custody model before implementation.
+
+Option	Benefit	Risk
+Browser wallet + signer	Clear user custody and consent	Limited automation; wallet must remain connected and capable of signing
+Session/scoped smart account	Automated policy-controlled trades	More complex key and recovery design
+Server-held trading wallet	Smooth automation	Highest custody, compromise, and regulatory risk
+Delegated exchange account	Provider-native automation	Requires carefully scoped provider credentials and withdrawal restrictions
+For WOLV, the safest initial model is a non-custodial smart account with:
+
+Session-scoped or strategy-scoped permissions
+Small transaction and daily limits
+Asset and contract allowlists
+Explicit expiration
+Revocation and recovery controls
+Emergency stop
+No withdrawals, approvals, or transfers unless separately authorized
+Server-managed private keys should not be introduced initially.
+
+ANALYSIS_READY
+    |
+    v
+PROPOSED
+    |
+    +--> APPROVED
+    |       |
+    |       v
+    |    SIMULATION_PASSED
+    |       |
+    |       v
+    |    SIGNING_PENDING
+    |       |
+    |       +--> SIGNED
+    |       |
+    |       +--> SIGNING_FAILED
+    |
+    +--> REJECTED
+    +--> EXPIRED
+    +--> CANCELLED_BY_EMERGENCY_STOP    
+    
+   
+    Execution should add separate final states
+    SUBMITTED
+    CONFIRMED
+    FAILED
+    REVERTED
+
+5. Core services
+TradePolicyService
+A deterministic service that evaluates:
+
+Proposal asset and direction
+Size limits
+Loss limits
+Exposure limits
+Market volatility
+Liquidity
+Quote age
+Price deviation
+Cooldown
+Trading-session restrictions
+Emergency stop
+Approved strategy configuration
+AI output is advisory only. This service may veto an AI recommendation but may not approve outside deterministic bounds.
+
+TradeProposalService
+Creates a canonical proposal containing:
+
+User and wallet identity
+Asset addresses
+Buy/sell direction
+Human and machine-readable quantities
+Quote or reference snapshot
+Slippage
+Expiration
+Chain
+Strategy version
+Policy version
+Deterministic approval binding
+ApprovalService
+Must enforce:
+
+Owner-only approval
+Approval binding to the exact proposal
+Proposal revalidation
+Expiration
+Idempotent approval processing
+No approval reuse
+Material-change invalidation
+TransactionBuilder
+Responsible only for building provider-specific or EVM transaction data.
+
+It must not decide whether the trade should occur.
+
+ExecutionAuthorizationService
+Rechecks every condition immediately before signing/submission and returns an allow-or-deny decision.
+
+Signer
+The smallest possible boundary containing wallet or smart-account signing capability.
+
+It must receive only a signed canonical transaction request already validated by the authorization service.
+
+ExecutionWorker
+A controlled worker that:
+
+Cannot start itself
+Has no bypass of emergency stop
+Cannot modify proposals
+Cannot increase limits
+Uses a single-flight lock
+Has replay protection
+Records every lifecycle transition
+There should be no autonomous worker until explicit phased approval.
+
+6. Deterministic execution safeguards
+Required controls include:
+
+Global emergency stop stored durably and shared across workers
+Per-agent stop
+Read-only startup mode
+Maximum proposal TTL
+Maximum trade frequency
+Maximum notional per trade
+Maximum session and daily exposure
+Maximum slippage
+Quote freshness before submission
+Token and chain allowlists
+Route allowlist
+Simulated transaction before submission where supported
+Rejection of token approvals unless explicitly requested
+Withdrawal and transfer denylist
+Provider secret separation
+Idempotency keys
+Audit ledger
+Correlation IDs
+Alerting for repeated failures
+Operator manual reset
+A stop activated while a transaction is awaiting approval must invalidate pending authorization. Submission should be prevented by rechecking the stop immediately before signing.
+
+7. Suggested implementation sequence
+Phase 1 — Wallet/session abstraction
+Formalize wallet identity and connection state
+Add chain and asset validation
+Add wallet capability declarations
+Add read-only quote adapters
+Keep all signing disabled
+Phase 2 — Canonical proposal and approval
+Persist the exact proposed transaction parameters
+Bind quote, wallet, expiry, and policy version
+Add owner-only approval
+Add approval invalidation on proposal changes
+Add proposal reconstruction and replay protection
+Phase 3 — Transaction simulation
+Add transaction simulation and calldata validation
+Verify gas, balances, token direction, recipient, and route
+Add dry-run UI and provider simulation
+Still submit no transactions
+Phase 4 — Scoped smart-account permissions
+Deploy or integrate only approved account infrastructure
+Add spend limits and asset allowlists
+Add account recovery
+Add policy-aware session keys
+Add explicit human revocation
+Phase 5 — Controlled execution pilot
+Enable one token, one chain, and one direction
+Very small limits
+Human approval for every trade
+Manual kill switch
+Operator monitoring
+Halt on stale quote, simulation failure, or anomaly
+Phase 6 — Bounded automation
+Introduce limited preauthorized strategies
+Configurable daily and per-trade caps
+Hard global stop
+Deterministic policy rejection
+No AI override
+Small-frequency pilot
+Remote alerting and automatic halt on errors
+Phase 7 — Expanded autonomy
+Only after operational evidence should this include:
+
+Multiple strategies
+Additional assets
+Strategy backtesting
+Monitoring and self-recovery
+Formal incident handling
+“Autonomous” should mean autonomous recommendation and bounded execution, never unrestricted wallet control.
+
+8. Key design decisions still required
+Before implementation begins, we need to resolve:
+
+Custody
+
+Browser wallet
+Smart account with scoped session permissions
+Provider custodial account
+Anything else
+Approval mode
+
+Human approval for every trade
+Preauthorized strategy limits
+Hybrid of both
+Which trades become eligible for automation
+Initial scope
+
+One asset
+Several RWA stocks
+Stablecoin swaps only
+Which chains and venues
+Autonomy boundary
+
+Proposal generation only
+Approval recommendation
+Automated approval under hard caps
+Submission after approval
+Fully preauthorized bounded execution
+Withdrawal/transfers
+
+Always prohibited
+Never exposed to agent execution
+Only separately authorized by a human
+Signer infrastructure
+
+Existing wallet connection
+Existing ZeroDev architecture
+New session-key/smart-account layer
+External custodial signer
+Failure policy
+
+Halt immediately
+Cancel pending work
+Expire approvals
+Retry submissions only under idempotency rules
+Recommended starting position
+Start with human-approved smart-account execution disabled, then add a simulator and one tightly bounded pilot.
+
+Recommended initial boundary:
+
+RWA token allowlist only
+One chain
+Buy/sell with USDT
+Human approval
+Maximum small trade size
+Maximum daily cumulative notional
+Fresh quote requirement
+Strict slippage
+Smart-account spend allowlist
+No withdrawals
+No arbitrary contract calls
+Durable global emergency stop
+Execution disabled by feature flag and environment policy
+I would not implement server-held private keys, token approvals, autonomous withdrawal, AI-generated calldata, or unrestricted execution in the first implementation.
+
+6:35 AM
+31s

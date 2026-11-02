@@ -6,6 +6,7 @@ import { BawExecutionStore } from "../services/bawExecutionStore.ts";
 import { AgentMemoryStore } from "../services/agentMemoryStore.ts";
 import { AgentOrchestrator } from "../services/agentOrchestrator.ts";
 import { MarketDataCollector } from "../services/marketDataCollector.ts";
+import { createAgentSessionPlan } from "../lib/agentSessionPlan.ts";
 import {
   handleAgentProposalPost,
   handleAgentRunGet,
@@ -382,6 +383,38 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
       updatedAt: now,
       correlationId: randomUUID(),
     });
+
+    const sessionPlan = createAgentSessionPlan({ ownerAddress: ownerA });
+    const sessionId = randomUUID();
+    const prepared = await store.prepareAgentSessionPlan({
+      ownerAddress: ownerA,
+      sessionId,
+      plan: sessionPlan,
+      createdAt: now,
+    });
+    assert.equal(prepared.status, "PREPARED");
+    assert.equal(prepared.created, true);
+    const persistedPlan = await store.getAgentSessionPlan(sessionId, ownerA);
+    assert.equal(persistedPlan?.status, "PREPARED");
+    assert.equal(persistedPlan?.chain_id, 97);
+    assert.equal(persistedPlan?.owner_address, ownerA);
+    assert.equal((await store.getAgentSessionPlan(sessionId, ownerB)), null);
+    const duplicate = await store.prepareAgentSessionPlan({
+      ownerAddress: ownerA,
+      sessionId: randomUUID(),
+      plan: sessionPlan,
+      createdAt: now,
+    });
+    assert.equal(duplicate.created, false);
+    assert.equal(duplicate.sessionId, sessionId);
+    const revoked = await store.revokeAgentSessionPlan(
+      sessionId,
+      ownerA,
+      now + 1_000,
+      "Disposable integration revoke",
+    );
+    assert.equal(revoked.status, "REVOKED");
+    assert.equal(revoked.revocation_reason, "Disposable integration revoke");
 
     const oldAsset = await store.recordAssetVersion({
       chainId: 56,

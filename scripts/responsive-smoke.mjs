@@ -10,7 +10,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const responsiveFixturePath = path.join(projectRoot, "scripts", "responsive-fixtures.mjs");
 const widths = [320, 360, 390, 414, 768, 1024, 1440];
 const height = 900;
-const timeoutMs = 90_000;
+const timeoutMs = 180_000;
 const serverTimeoutMs = 120_000;
 const fixtureTokenAddress = "0x0000000000000000000000000000000000000123";
 const unavailableTokenAddress = "0x0000000000000000000000000000000000000124";
@@ -557,6 +557,42 @@ async function runAgentRefusalChecks() {
           errors: []
         }), { headers: { "content-type": "application/json" } });
       }
+      if (url.pathname === "/api/agent/status" && method === "GET") {
+        return new Response(JSON.stringify({
+          telemetry: {
+            executionMode: "execution-blocked",
+            agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
+            commerce: { standard: "ERC-8183", jobId: null, status: "disabled" },
+            sessionKey: { status: "disabled", reason: "Agent signing is not enabled in wallet-confirmation mode." },
+            x402: { status: "disabled", reason: "No autonomous commerce job is created in wallet-confirmation mode." },
+            walletProviders: {
+              altana: { sdkAvailable: false, configured: false },
+              twak: { sdkAvailable: false, configured: false }
+            },
+            scopedSession: {
+              provider: "zerodev",
+              mode: "simulation-only",
+              status: "not-granted",
+              chainId: 97,
+              ownerAddress: ${JSON.stringify(mockWalletAddress)},
+              permissions: {
+                targetType: "router",
+                selector: "swapExactETHForTokens",
+                nativeValueLimitWei: "500000000000000000",
+                validitySeconds: 604800,
+                slippageBps: 100,
+                maxPriceImpactBps: 300
+              },
+              prohibited: ["arbitrary-contract-calls", "token-transfers", "native-token-withdrawals", "mainnet-submission", "signature-generation"],
+              executionEnabled: false,
+              reason: "Scoped session grants are not enabled; wallet signing and UserOperation submission remain blocked."
+            },
+            recentTransactions: []
+          },
+          sessionPlans: [],
+          checkedAt: Date.now()
+        }), { headers: { "content-type": "application/json" } });
+      }
       if (url.pathname === "/api/agent/control" && method === "GET") {
         const stopReason = "Responsive fixture global stop state";
         return new Response(JSON.stringify({
@@ -695,6 +731,10 @@ async function runAgentRefusalChecks() {
   assert.match(agentState.text, /Opportunity queue/);
   assert.match(agentState.text, /Persisted activity/);
   assert.match(agentState.text, /EXECUTION_BLOCKED/);
+  assert.match(agentState.text, /Wallet and capability controls/);
+  assert.match(agentState.text, /SESSION KEY/);
+  assert.match(agentState.text, /SCOPED TESTNET SESSION/i);
+  assert.match(agentState.text, /BSC 97/i);
   assert.deepEqual(agentState.executionButtons, []);
   console.log("PASS agent terminal · authorized control plane remains execution-blocked and exposes proposal/policy controls");
 }

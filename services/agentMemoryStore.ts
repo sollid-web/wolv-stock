@@ -1,5 +1,5 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import postgres, { type Sql } from "postgres";
 import {
   assertAgentTransition,
@@ -14,6 +14,10 @@ import {
   type TradeProposalInput,
   validateRiskPolicy,
 } from "../lib/agentControlPlane.ts";
+import {
+  AGENT_SESSION_TESTNET_CHAIN_ID,
+  AGENT_SESSION_VALIDITY_SECONDS,
+} from "../lib/agentSessionPlan.ts";
 
 const MIGRATIONS = [{
   version: 1,
@@ -355,6 +359,28 @@ const MIGRATIONS = [{
     `CREATE UNIQUE INDEX wolv_agent_one_active_policy
       ON wolv_agent_risk_policies (owner_address, policy_name) WHERE active`,
   ],
+}, {
+  version: 3,
+  statements: [
+    `CREATE TABLE wolv_agent_session_plans (
+      session_id uuid PRIMARY KEY,
+      owner_address text NOT NULL,
+      provider text NOT NULL CHECK (provider = 'zerodev'),
+      mode text NOT NULL CHECK (mode = 'simulation-only'),
+      chain_id integer NOT NULL CHECK (chain_id = 97),
+      status text NOT NULL CHECK (status IN ('PREPARED','REVOKED','EXPIRED')),
+      plan_document jsonb NOT NULL,
+      plan_hash char(64) NOT NULL,
+      created_at timestamptz NOT NULL,
+      expires_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL,
+      revoked_at timestamptz,
+      revocation_reason text,
+      UNIQUE (owner_address, plan_hash)
+    )`,
+    `CREATE INDEX wolv_agent_session_plans_owner_status
+      ON wolv_agent_session_plans (owner_address, status, expires_at DESC)`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -465,6 +491,15 @@ export interface AgentMemoryStorePort {
     correlationId: string;
   }): Promise<void>;
   getControlState(now?: number): Promise<Record<string, unknown>>;
+  prepareAgentSessionPlan(input: {
+    ownerAddress: string;
+    sessionId: string;
+    plan: Record<string, unknown>;
+    createdAt: number;
+  }): Promise<{ sessionId: string; created: boolean; status: "PREPARED" }>;
+  getAgentSessionPlan(sessionId: string, ownerAddress: string): Promise<Record<string, unknown> | null>;
+  listAgentSessionPlans(ownerAddress: string, limit?: number): Promise<Record<string, unknown>[]>;
+  revokeAgentSessionPlan(sessionId: string, ownerAddress: string, now: number, reason: string): Promise<Record<string, unknown>>;
   listActivity(input: {
     ownerAddress: string;
     limit?: number;
@@ -1182,6 +1217,219 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         }
       }
     });
+  }
+
+  async prepareAgentSessionPlan(
+    input: Parameters<AgentMemoryStorePort["prepareAgentSessionPlan"]>[0],
+  ): Promise<{ sessionId: string; created: boolean; status: "PREPARED" }> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    const plan = input.plan;
+    if (
+      plan.provider !== "zerodev" ||
+      plan.mode !== "simulation-only" ||
+      plan.status !== "not-granted" ||
+      plan.chainId !== AGENT_SESSION_TESTNET_CHAIN_ID ||
+      plan.executionEnabled !== false ||
+      !AGENT_SESSION_VALIDITY_SECONDS
+    ) {
+      throw new AgentMemoryStoreError("INVALID_TRANSITION");
+    }
+    const planHash = createHash("sha256")
+      .update(JSON.stringify(plan))
+      .digest("hex");
+    const expiresAt = input.createdAt + AGENT_SESSION_VALIDITY_SECONDS * 1000;
+    return this.sql.begin(async (transaction) => {
+      const inserted = await transaction`
+        INSERT INTO wolv_agent_session_plans (
+          session_id, owner_address, provider, mode, chain_id, status,
+          plan_document, plan_hash, created_at, expires_at, updated_at
+        )
+        VALUES (
+          ${input.sessionId}, ${owner}, 'zerodev', 'simulation-only', 97, 'PREPARED',
+          ${JSON.stringify(plan)}::jsonb, ${planHash}, ${new Date(input.createdAt)},
+          ${new Date(expiresAt)}, ${new Date(input.createdAt)}
+        )
+        ON CONFLICT (owner_address, plan_hash) DO NOTHING
+        RETURNING session_id, status
+      `;
+      if (inserted[0]) {
+        await appendEventInTransaction(transaction, null, {
+          eventType: "AGENT_SESSION_PLAN_PREPARED",
+          occurredAt: input.createdAt,
+          correlationId: input.sessionId,
+          payload: {
+            sessionId: input.sessionId,
+            provider: "zerodev",
+            chainId: AGENT_SESSION_TESTNET_CHAIN_ID,
+            status: "PREPARED",
+            executionEnabled: false,
+          },
+          provenance: { source: "operator-session-plan" },
+          idempotencyKey: `session-plan-prepared:${owner}:${planHash}`,
+        }, owner);
+        return { sessionId: input.sessionId, created: true, status: "PREPARED" as const };
+      }
+      const existing = await transaction`
+        SELECT session_id, status FROM wolv_agent_session_plans
+        WHERE owner_address = ${owner} AND plan_hash = ${planHash} LIMIT 1
+      `;
+      if (!existing[0]) throw new AgentMemoryStoreError("NOT_FOUND");
+      if (String(existing[0].status) === "REVOKED") {
+        throw new AgentMemoryStoreError("INVALID_TRANSITION");
+      }
+      if (String(existing[0].status) === "EXPIRED") {
+        const renewedSessionId = String(existing[0].session_id);
+        await transaction`
+          UPDATE wolv_agent_session_plans
+          SET status = 'PREPARED', created_at = ${new Date(input.createdAt)},
+              expires_at = ${new Date(expiresAt)}, updated_at = ${new Date(input.createdAt)},
+              revoked_at = NULL, revocation_reason = NULL
+          WHERE session_id = ${renewedSessionId} AND owner_address = ${owner}
+        `;
+        await appendEventInTransaction(transaction, null, {
+          eventType: "AGENT_SESSION_PLAN_PREPARED",
+          occurredAt: input.createdAt,
+          correlationId: renewedSessionId,
+          payload: { sessionId: renewedSessionId, status: "PREPARED", executionEnabled: false },
+          provenance: { source: "operator-session-plan" },
+          idempotencyKey: `session-plan-prepared:${owner}:${planHash}:${input.createdAt}`,
+        }, owner);
+        return { sessionId: renewedSessionId, created: true, status: "PREPARED" as const };
+      }
+      return { sessionId: String(existing[0].session_id), created: false, status: "PREPARED" as const };
+    });
+  }
+
+  async getAgentSessionPlan(
+    sessionId: string,
+    ownerAddress: string,
+  ): Promise<Record<string, unknown> | null> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const rows = await this.sql`
+      SELECT session_id, owner_address, provider, mode, chain_id, status,
+             plan_document, plan_hash, created_at, expires_at, updated_at,
+             revoked_at, revocation_reason
+      FROM wolv_agent_session_plans
+      WHERE session_id = ${sessionId} AND owner_address = ${owner} LIMIT 1
+    `;
+    if (!rows[0]) return null;
+    const row = normalizeRow(rows[0]);
+    return {
+      ...row,
+      created_at: Date.parse(String(row.created_at)),
+      expires_at: Date.parse(String(row.expires_at)),
+      updated_at: Date.parse(String(row.updated_at)),
+      revoked_at: row.revoked_at === null ? null : Date.parse(String(row.revoked_at)),
+    };
+  }
+
+  async listAgentSessionPlans(
+    ownerAddress: string,
+    limit = 20,
+  ): Promise<Record<string, unknown>[]> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    return this.sql.begin(async (transaction) => {
+      const expired = await transaction`
+        SELECT session_id FROM wolv_agent_session_plans
+        WHERE owner_address = ${owner} AND status = 'PREPARED'
+          AND expires_at <= now() FOR UPDATE
+      `;
+      await transaction`
+        UPDATE wolv_agent_session_plans
+        SET status = 'EXPIRED', updated_at = now()
+        WHERE owner_address = ${owner} AND status = 'PREPARED' AND expires_at <= now()
+      `;
+      for (const row of expired) {
+        await appendEventInTransaction(transaction, null, {
+          eventType: "AGENT_SESSION_PLAN_EXPIRED",
+          occurredAt: Date.now(),
+          correlationId: String(row.session_id),
+          payload: { sessionId: String(row.session_id), status: "EXPIRED", executionEnabled: false },
+          provenance: { source: "session-plan-lifecycle" },
+          idempotencyKey: `session-plan-expired:${owner}:${String(row.session_id)}`,
+        }, owner);
+      }
+      const rows = await transaction`
+        SELECT session_id, owner_address, provider, mode, chain_id, status,
+               plan_document, plan_hash, created_at, expires_at, updated_at,
+               revoked_at, revocation_reason
+        FROM wolv_agent_session_plans
+        WHERE owner_address = ${owner}
+        ORDER BY created_at DESC LIMIT ${boundedLimit(limit)}
+      `;
+      return rows.map((row) => normalizeRow(row));
+    });
+  }
+
+  async revokeAgentSessionPlan(
+    sessionId: string,
+    ownerAddress: string,
+    now: number,
+    reason: string,
+  ): Promise<Record<string, unknown>> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    if (!reason.trim()) throw new AgentMemoryStoreError("INVALID_TRANSITION");
+    return this.sql.begin(async (transaction) => {
+      const rows = await transaction`
+        SELECT status, expires_at FROM wolv_agent_session_plans
+        WHERE session_id = ${sessionId} AND owner_address = ${owner} FOR UPDATE
+      `;
+      if (!rows[0]) throw new AgentMemoryStoreError("NOT_FOUND");
+      const current = String(rows[0].status);
+      if (current === "REVOKED" || current === "EXPIRED") {
+        return this.normalizeAgentSessionPlanRow(await transaction`
+          SELECT session_id, owner_address, provider, mode, chain_id, status,
+                 plan_document, plan_hash, created_at, expires_at, updated_at,
+                 revoked_at, revocation_reason
+          FROM wolv_agent_session_plans
+          WHERE session_id = ${sessionId} AND owner_address = ${owner}
+        `);
+      }
+      const expired = Date.parse(String(rows[0].expires_at)) <= now;
+      const nextStatus = expired ? "EXPIRED" : "REVOKED";
+      await transaction`
+        UPDATE wolv_agent_session_plans
+        SET status = ${nextStatus}, updated_at = ${new Date(now)},
+            revoked_at = ${expired ? null : new Date(now)},
+            revocation_reason = ${reason.trim().slice(0, 500)}
+        WHERE session_id = ${sessionId} AND owner_address = ${owner}
+      `;
+      await appendEventInTransaction(transaction, null, {
+        eventType: nextStatus === "EXPIRED"
+          ? "AGENT_SESSION_PLAN_EXPIRED"
+          : "AGENT_SESSION_PLAN_REVOKED",
+        occurredAt: now,
+        correlationId: sessionId,
+        payload: { sessionId, status: nextStatus, reason: reason.trim().slice(0, 500), executionEnabled: false },
+        provenance: { source: "operator-session-plan" },
+        idempotencyKey: `session-plan:${nextStatus.toLowerCase()}:${owner}:${sessionId}`,
+      }, owner);
+      return this.normalizeAgentSessionPlanRow(await transaction`
+        SELECT session_id, owner_address, provider, mode, chain_id, status,
+               plan_document, plan_hash, created_at, expires_at, updated_at,
+               revoked_at, revocation_reason
+        FROM wolv_agent_session_plans
+        WHERE session_id = ${sessionId} AND owner_address = ${owner}
+      `);
+    });
+  }
+
+  private normalizeAgentSessionPlanRow(
+    rows: readonly Record<string, unknown>[],
+  ): Record<string, unknown> {
+    if (!rows[0]) throw new AgentMemoryStoreError("NOT_FOUND");
+    const row = normalizeRow(rows[0]);
+    return {
+      ...row,
+      created_at: Date.parse(String(row.created_at)),
+      expires_at: Date.parse(String(row.expires_at)),
+      updated_at: Date.parse(String(row.updated_at)),
+      revoked_at: row.revoked_at === null ? null : Date.parse(String(row.revoked_at)),
+    };
   }
 
   async getControlState(now = Date.now()): Promise<Record<string, unknown>> {

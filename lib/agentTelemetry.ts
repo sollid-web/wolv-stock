@@ -1,4 +1,5 @@
 import { AltanaWalletProvider, TWAKProvider } from "@bnbagent/sdk/wallets";
+import { createAgentSessionPlan, type AgentSessionPlan } from "./agentSessionPlan.ts";
 
 export type AgentTelemetry = {
   executionMode: "execution-blocked";
@@ -10,10 +11,16 @@ export type AgentTelemetry = {
     altana: { sdkAvailable: boolean; configured: boolean };
     twak: { sdkAvailable: boolean; configured: boolean };
   };
+  scopedSession: AgentSessionPlan;
   recentTransactions: string[];
 };
 
-export function buildCapabilityTelemetry(): AgentTelemetry {
+export function buildCapabilityTelemetry(input: {
+  ownerAddress?: string | null;
+  emergencyStopEnabled?: boolean;
+} = {}): AgentTelemetry {
+  const liveSubmissionEnabled =
+    process.env.ENABLE_LIVE_USEROP_SUBMISSION?.trim().toLowerCase() === "true";
   return {
     executionMode: "execution-blocked",
     agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
@@ -24,6 +31,16 @@ export function buildCapabilityTelemetry(): AgentTelemetry {
       altana: { sdkAvailable: typeof AltanaWalletProvider === "function", configured: false },
       twak: { sdkAvailable: typeof TWAKProvider === "function", configured: false },
     },
+    scopedSession: liveSubmissionEnabled
+      ? createAgentSessionPlan({
+          ownerAddress: input.ownerAddress,
+          liveSubmissionEnabled: true,
+          emergencyStopEnabled: input.emergencyStopEnabled,
+        })
+      : createAgentSessionPlan({
+          ownerAddress: input.ownerAddress,
+          emergencyStopEnabled: input.emergencyStopEnabled,
+        }),
     recentTransactions: [],
   };
 }
