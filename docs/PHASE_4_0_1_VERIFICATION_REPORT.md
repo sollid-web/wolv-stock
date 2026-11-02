@@ -74,7 +74,7 @@ Route coverage had no required-route skip.
 
 **VERIFIED_AND_TESTED — disposable PostgreSQL 16 integration**
 
-Two disposable PostgreSQL 16 containers were used. One container ran the final 5-suite agent/trading integration; another supplied `BAW_TEST_DATABASE_URL` to execute the formerly environment-gated logic test. The containers were stopped and removed.
+Disposable PostgreSQL 16 containers were used. A PostgreSQL 16 container ran the final 5-suite agent/trading integration; the database server reported version 16.15. The same disposable pattern supplied `BAW_TEST_DATABASE_URL` for the previously environment-gated logic test. The containers were stopped and removed.
 
 `pnpm test:postgres` passed:
 
@@ -184,8 +184,8 @@ No real transaction or signing path was enabled. Proposal approval is terminally
 
 | Check | Result |
 |---|---|
-| `pnpm test:logic` with disposable `BAW_TEST_DATABASE_URL` | 383 passed, 0 skipped, 0 failed |
-| Focused agent tests | 19 passed, 0 failed |
+| `pnpm test:logic` with disposable PostgreSQL | 389 passed, 1 skipped, 0 failed |
+| Focused agent tests | 108 passed, 0 failed |
 | `pnpm test:hardening` | Passed against the deployment URL |
 | `pnpm test:responsive` | Passed at 320, 360, 390, 414, 768, 1024, and 1440px |
 | `pnpm test:postgres` | 5 passed, 0 failed |
@@ -193,11 +193,12 @@ No real transaction or signing path was enabled. Proposal approval is terminally
 | ESLint | 0 errors, 6 existing warnings |
 | `pnpm build` | Passed |
 
-The logic suite skip was initially environment-gated because `BAW_TEST_DATABASE_URL` was absent. It was resolved with a disposable PostgreSQL URL:
+The remaining logic-suite skip is explicitly external-provider gated:
 
-- Previously skipped test: `PostgreSQL execution records survive independent store instances`
-- Final disposition: **VERIFIED_AND_TESTED**
-- Final logic result: **383 passed, 0 skipped**
+- Skipped test: `real Binance provider parses RWA assets and indicative stock quotes`
+- Final disposition: **BLOCKED_EXTERNAL_DEPENDENCY**
+- Reason: live Binance provider credentials and real-provider verification were not enabled.
+- Final logic result with disposable PostgreSQL: **389 passed, 1 skipped**
 
 ESLint preserved the six existing warnings:
 
