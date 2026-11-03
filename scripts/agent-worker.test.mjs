@@ -140,6 +140,18 @@ test("refuses paused, revoked, or uninstalled accounts", async t => {
   }
 });
 
+test("refuses accounts without a configured on-chain policy signer", async () => {
+  const harness = createHarness({
+    readValidator: async () => validPolicyState({
+      policyConfigured: false,
+      intentSigner: "0x0000000000000000000000000000000000000000",
+    }),
+  });
+  await harness.worker.evaluateOnce();
+  assert.equal(harness.telemetry[0].reasonCode, "POLICY_NOT_CONFIGURED");
+  assert.equal(harness.intents.length, 0);
+});
+
 test("rejects high price impact and does not create an intent", async () => {
   const { worker, telemetry, intents } = createHarness({
     readMarket: async () => ({

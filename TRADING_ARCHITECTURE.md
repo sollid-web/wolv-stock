@@ -109,13 +109,28 @@ UserOperation, sign a transaction, or enable execution.
 ## On-Chain Policy Enforcement
 
 The ERC-7579 `TradingAgentPolicyValidator` is the final execution boundary. It supports
-guardian-configured, account-scoped policy records containing a policy hash, maximum trade value, and
-expiration. Configured accounts must match the policy hash, respect the policy cap and expiry, and still
-pass router, token, rolling-volume, pause, and revocation checks. Clearing a policy restores the existing
-global 0.5-BNB fallback for backward-compatible accounts; newly enabled accounts should configure an
-explicit policy hash and cap.
+guardian-configured, account-scoped policy records containing a policy hash, delegated intent signer,
+maximum trade value, and expiration. No trade is accepted until an explicit policy is configured.
+Clearing a policy therefore disables execution for that account.
 
-The server reads the account policy state before UserOperation dispatch and rejects missing or mismatched
-intent policy hashes, expired policies, and account-specific trade caps. Slippage, market freshness,
-calendars, and strategy evidence remain off-chain. Route, token, trade cap, custody, pause, revoke, and
-rolling-volume constraints remain on-chain.
+Each BUY call carries an ABI-encoded EIP-712 authorization envelope appended after the standard
+PancakeSwap `swapExactETHForTokens` arguments. The delegated signer is recovered and checked against
+the signer configured for that account. The signature binds the smart account, policy hash, target token,
+input value, minimum output, slippage and price-impact limits, expiration, and a unique bytes32 nonce.
+The hook checks the policy hash, expiry, trade cap, signature and nonce on-chain, consumes the nonce,
+then applies router, route, recipient, rolling-volume, pause, and revocation checks. Replays and edits to
+the signed swap parameters are rejected by the hook. The router's ABI accepts the trailing envelope;
+this must remain covered by fork/integration tests for each approved router.
+
+The worker now requires a configured policy and signer before creating an execution intent. The
+executor re-reads on-chain policy, requires the delegated signer to match, signs the exact transaction
+parameters with EIP-712, and appends the envelope before UserOperation submission. Submission remains
+disabled by default and the existing separate mainnet authorization gates remain in force. Market
+freshness, calendars, and strategy evidence remain off-chain; they are not represented as on-chain
+proofs.
+
+The previously deployed testnet hook predates this signed-envelope enforcement and cannot be upgraded
+in place. It must not be used for agent execution. Deploy the updated implementation, configure each
+account's policy hash, delegated signer, cap, and expiry through the guardian, and verify those values
+against the account's approved ZeroDev session before enabling any testnet execution. A successful
+contract deployment alone is not production readiness.

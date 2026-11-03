@@ -573,15 +573,16 @@ export class AgentExecutor {
     ) {
         const amountBnb = intent.amountBnb
         const policyExpired = validator.policyConfigured === true &&
-            (validator.expiresAt === undefined || validator.expiresAt === BigInt(0) ||
-                Number(validator.expiresAt) * 1000 <= this.now())
+            (validator.expiresAt === undefined
+                || validator.expiresAt === BigInt(0)
+                || validator.expiresAt * BigInt(1000) <= BigInt(this.now()))
         const policyCapExceeded = validator.policyConfigured === true &&
-            validator.maxTradeValue !== undefined &&
-            amountBnb > validator.maxTradeValue
+            (validator.maxTradeValue === undefined || amountBnb > validator.maxTradeValue)
         const policyHashMismatch = validator.policyConfigured === true &&
             (!intent.policyHash || !validator.policyHash ||
                 intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase())
         const intentSignerMismatch = !validator.intentSigner
+            || !/^0x[0-9a-f]{40}$/i.test(validator.intentSigner)
             || getAddress(validator.intentSigner) !== getAddress(signer)
         if (
             validator.paused
