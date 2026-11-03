@@ -14,6 +14,10 @@ const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const TARGET = "0x0000000000000000000000000000000000000456";
 const router = "0x0000000000000000000000000000000000000123";
 const hook = "0x0000000000000000000000000000000000000321";
+const POLICY_HASH = `0x${"c".repeat(64)}`;
+const INTENT_NONCE = `0x${"d".repeat(64)}`;
+const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
+const INTENT_SIGNATURE = `0x${"11".repeat(65)}`;
 const bundlerFlag = process.env.ENABLE_LIVE_USEROP_SUBMISSION;
 
 afterEach(() => {
@@ -27,6 +31,7 @@ function createHarness(overrides = {}) {
   const failures = [];
   const sentCalls = [];
   const waitOptions = [];
+  const signedTypedData = [];
   const config = {
     chain: { id: 97 },
     rpcUrl: "https://rpc.test",
@@ -57,13 +62,31 @@ function createHarness(overrides = {}) {
   const dependencies = {
     isLiveEnabled: () => true,
     getConfig: () => config,
-    resolveAuthorization: async () => ({ ownerValidator: {}, sessionKeySigner: {} }),
+    resolveAuthorization: async () => ({
+      ownerValidator: {},
+      sessionKeySigner: {},
+    }),
+    createIntentSigner: async () => ({
+      account: {
+        address: INTENT_SIGNER,
+        signTypedData: async typedData => {
+          signedTypedData.push(typedData);
+          return INTENT_SIGNATURE;
+        },
+      },
+      getSignerData: () => INTENT_SIGNER,
+    }),
     createAccountClient: async () => ({ account: accountClient.account, client: accountClient }),
     readValidator: async () => ({
       paused: false,
       installed: true,
       revoked: false,
       rollingVolume: parseEther("0.2"),
+      policyConfigured: true,
+      policyHash: POLICY_HASH,
+      maxTradeValue: parseEther("0.5"),
+      expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+      intentSigner: INTENT_SIGNER,
     }),
     buildBuyCall: async () => ({
       to: router,
@@ -100,6 +123,8 @@ function createHarness(overrides = {}) {
     maxPriceImpactBps: 300,
     sourcePriceMicros: 90_000_000n,
     createdAt: new Date(now).toISOString(),
+    policyHash: POLICY_HASH,
+    intentNonce: INTENT_NONCE,
   };
 
   return {
@@ -110,6 +135,7 @@ function createHarness(overrides = {}) {
     failures,
     sentCalls,
     waitOptions,
+    signedTypedData,
     receipt,
     setNow(value) {
       now = value;
@@ -210,7 +236,17 @@ test("submits a signed UserOperation and returns final receipt and gas accountin
   assert.equal(harness.sentCalls.length, 1);
   assert.equal(harness.sentCalls[0][0].to, router);
   assert.equal(harness.sentCalls[0][0].value, parseEther("0.1"));
-  assert.equal(harness.sentCalls[0][0].data, "0x6e");
+  assert.ok(harness.sentCalls[0][0].data.startsWith("0x6e"));
+  assert.ok(harness.sentCalls[0][0].data.length > 200);
+  assert.equal(harness.signedTypedData.length, 1);
+  assert.equal(harness.signedTypedData[0].domain.verifyingContract, hook);
+  assert.equal(harness.signedTypedData[0].primaryType, "TradeIntent");
+  assert.equal(harness.signedTypedData[0].message.smartAccount, ACCOUNT);
+  assert.equal(harness.signedTypedData[0].message.policyHash, POLICY_HASH);
+  assert.equal(harness.signedTypedData[0].message.targetToken, TARGET);
+  assert.equal(harness.signedTypedData[0].message.amountIn, harness.intent.amountBnb);
+  assert.equal(harness.signedTypedData[0].message.amountOutMin, 110n);
+  assert.equal(harness.signedTypedData[0].message.nonce, INTENT_NONCE);
   assert.equal(quoteRequests[0].slippageBps, harness.intent.slippageBps);
   assert.equal(quoteRequests[0].maxPriceImpactBps, harness.intent.maxPriceImpactBps);
   assert.equal(harness.waitOptions[0].hash, HASH);
@@ -365,7 +401,30 @@ test("onchain account policy rejects missing, expired, capped, and mismatched in
       policyHash,
       maxTradeValue: parseEther("0.5"),
       expiresAt: 1n,
+      intentSigner: INTENT_SIGNER,
     }),
+  });
+
+  test("refuses dispatch when the configured onchain intent signer differs from the session key", async () => {
+    const harness = createHarness({
+      readValidator: async () => ({
+        paused: false,
+        installed: true,
+        revoked: false,
+        rollingVolume: 0n,
+        policyConfigured: true,
+        policyHash: POLICY_HASH,
+        maxTradeValue: parseEther("0.5"),
+        expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+        intentSigner: "0x0000000000000000000000000000000000000789",
+      }),
+    });
+    await assert.rejects(
+      harness.executor.executeUserOperation(harness.intent),
+      error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+    );
+    assert.equal(harness.signedTypedData.length, 0);
+    assert.equal(harness.sentCalls.length, 0);
   });
   await assert.rejects(
     expiredHarness.executor.executeUserOperation({ ...expiredHarness.intent, policyHash }),
@@ -382,6 +441,7 @@ test("onchain account policy rejects missing, expired, capped, and mismatched in
       policyHash,
       maxTradeValue: parseEther("0.5"),
       expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+      intentSigner: INTENT_SIGNER,
     }),
   });
   await assert.rejects(
@@ -402,6 +462,7 @@ test("onchain account policy rejects missing, expired, capped, and mismatched in
       policyHash,
       maxTradeValue: parseEther("0.05"),
       expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+      intentSigner: INTENT_SIGNER,
     }),
   });
   await assert.rejects(

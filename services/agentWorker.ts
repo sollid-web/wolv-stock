@@ -1,4 +1,5 @@
-import type { Address, Client } from "viem"
+import type { Address, Client, Hex } from "viem"
+import { toHex } from "viem"
 import { readContract } from "viem/actions"
 import {
     calculateDynamicQuote,
@@ -29,6 +30,11 @@ export type ValidatorSnapshot = {
     installed: boolean
     revoked: boolean
     rollingVolume: bigint
+    policyConfigured: boolean
+    policyHash: Hex
+    maxTradeValue: bigint
+    policyExpiresAt: bigint
+    intentSigner: Address
 }
 
 export type AgentCycleReason =
@@ -39,6 +45,8 @@ export type AgentCycleReason =
     | "CIRCUIT_BREAKER_PAUSED"
     | "SESSION_REVOKED"
     | "SESSION_NOT_INSTALLED"
+    | "POLICY_NOT_CONFIGURED"
+    | "POLICY_EXPIRED"
     | "SLIPPAGE_HIGH"
     | "VALIDATOR_PASS"
     | "RPC_FAILURE"
@@ -74,7 +82,8 @@ export type AgentExecutionIntent = {
     maxPriceImpactBps: number
     sourcePriceMicros: bigint
     createdAt: string
-    policyHash?: `0x${string}`
+    policyHash: Hex
+    intentNonce: Hex
 }
 
 export type AgentWorkerDependencies = {
@@ -132,6 +141,19 @@ const validatorAbi = [
         inputs: [{ name: "account", type: "address" }],
         outputs: [{ type: "uint256" }],
         stateMutability: "view"
+    },
+    {
+        type: "function",
+        name: "getAccountPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "configured", type: "bool" },
+            { name: "policyHash", type: "bytes32" },
+            { name: "maxTradeValue", type: "uint192" },
+            { name: "expiresAt", type: "uint64" },
+            { name: "intentSigner", type: "address" }
+        ],
+        stateMutability: "view"
     }
 ] as const
 
@@ -140,7 +162,7 @@ export function createViemValidatorReader(
     validatorAddress: Address
 ) {
     return async (strategy: AgentStrategy): Promise<ValidatorSnapshot> => {
-        const [paused, installed, revoked, rollingVolume] = await Promise.all([
+        const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
             readContract(client, {
                 address: validatorAddress,
                 abi: validatorAbi,
@@ -163,9 +185,27 @@ export function createViemValidatorReader(
                 abi: validatorAbi,
                 functionName: "getEffectiveRollingVolume",
                 args: [strategy.account]
+            }),
+            readContract(client, {
+                address: validatorAddress,
+                abi: validatorAbi,
+                functionName: "getAccountPolicy",
+                args: [strategy.account]
             })
         ])
-        return { paused, installed, revoked, rollingVolume }
+        const [policyConfigured, policyHash, maxTradeValue, policyExpiresAt, intentSigner] =
+            accountPolicy
+        return {
+            paused,
+            installed,
+            revoked,
+            rollingVolume,
+            policyConfigured,
+            policyHash,
+            maxTradeValue,
+            policyExpiresAt,
+            intentSigner
+        }
     }
 }
 
@@ -315,7 +355,22 @@ export class AgentWorker {
             this.rejectCycle(strategy, telemetry("SESSION_NOT_INSTALLED"))
             return
         }
+        if (
+            !validator.policyConfigured || /^0x0{64}$/i.test(validator.policyHash)
+                || /^0x0{40}$/i.test(validator.intentSigner)
+        ) {
+            this.rejectCycle(strategy, telemetry("POLICY_NOT_CONFIGURED"))
+            return
+        }
+        if (validator.policyExpiresAt * BigInt(1000) <= BigInt(this.now())) {
+            this.rejectCycle(strategy, telemetry("POLICY_EXPIRED"))
+            return
+        }
         if (strategy.amountBnb <= BigInt(0) || strategy.amountBnb > MAX_TRADE_BNB) {
+            this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
+            return
+        }
+        if (strategy.amountBnb > validator.maxTradeValue) {
             this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
             return
         }
@@ -371,7 +426,9 @@ export class AgentWorker {
                 slippageBps: strategy.slippageBps,
                 maxPriceImpactBps: strategy.maxPriceImpactBps,
                 sourcePriceMicros: market.priceMicros,
-                createdAt: this.timestamp()
+                createdAt: this.timestamp(),
+                policyHash: validator.policyHash,
+                intentNonce: toHex(globalThis.crypto.getRandomValues(new Uint8Array(32)))
             }
             if (generation !== this.generation || this.halted) return
             this.pendingIntent = intent

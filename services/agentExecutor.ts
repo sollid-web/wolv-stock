@@ -1,7 +1,8 @@
 import type { KernelValidator } from "@zerodev/sdk"
 import type { Signer } from "@zerodev/sdk/types"
+import { toECDSASigner } from "@zerodev/permissions/signers"
 import type { Address, Client, Hex } from "viem"
-import { getAddress } from "viem"
+import { concatHex, encodeAbiParameters, getAddress } from "viem"
 import { readContract } from "viem/actions"
 import {
     buildAgentBuyCall,
@@ -64,6 +65,8 @@ export type AgentAuthorization = {
     sessionKeySigner: Signer
 }
 
+type AgentIntentSigner = Awaited<ReturnType<typeof toECDSASigner>>
+
 type AgentAccountClient = Awaited<ReturnType<typeof createAgentSmartAccountClient>>["client"]
 type AgentReceipt = Awaited<ReturnType<AgentAccountClient["waitForUserOperationReceipt"]>>
 
@@ -72,6 +75,7 @@ export type AgentExecutorDependencies = {
     getConfig?: () => AgentSmartAccountConfig
     resolveAuthorization: (intent: AgentExecutionIntent) => Promise<AgentAuthorization>
     createAccountClient?: typeof createAgentSmartAccountClient
+    createIntentSigner?: (signer: Signer) => Promise<AgentIntentSigner>
     readValidator?: (client: Client, account: Address) => Promise<{
         paused: boolean
         installed: boolean
@@ -81,6 +85,7 @@ export type AgentExecutorDependencies = {
         policyHash?: Hex
         maxTradeValue?: bigint
         expiresAt?: bigint
+        intentSigner?: Address
     }>
     buildBuyCall?: typeof buildAgentBuyCall
     encodeBuyCall?: typeof encodeAgentBuyCall
@@ -133,11 +138,26 @@ const VALIDATOR_ABI = [
             { name: "configured", type: "bool" },
             { name: "policyHash", type: "bytes32" },
             { name: "maxTradeValue", type: "uint192" },
-            { name: "expiresAt", type: "uint64" }
+            { name: "expiresAt", type: "uint64" },
+            { name: "intentSigner", type: "address" }
         ],
         stateMutability: "view"
     }
 ] as const
+
+const TRADE_INTENT_TYPES = {
+    TradeIntent: [
+        { name: "smartAccount", type: "address" },
+        { name: "policyHash", type: "bytes32" },
+        { name: "targetToken", type: "address" },
+        { name: "amountIn", type: "uint256" },
+        { name: "amountOutMin", type: "uint256" },
+        { name: "slippageBps", type: "uint16" },
+        { name: "maxPriceImpactBps", type: "uint16" },
+        { name: "validUntil", type: "uint64" },
+        { name: "nonce", type: "bytes32" }
+    ]
+} as const
 
 const DEFAULT_MAX_INTENT_AGE_MS = 30_000
 const DEFAULT_RECEIPT_TIMEOUT_MS = 120_000
@@ -208,7 +228,7 @@ export async function readAgentValidatorState(client: Client, account: Address) 
             args: [account]
         })
     ])
-    const [policyConfigured, policyHash, maxTradeValue, expiresAt] = accountPolicy
+    const [policyConfigured, policyHash, maxTradeValue, expiresAt, intentSigner] = accountPolicy
     return {
         paused,
         installed,
@@ -217,7 +237,8 @@ export async function readAgentValidatorState(client: Client, account: Address) 
         policyConfigured,
         policyHash,
         maxTradeValue,
-        expiresAt
+        expiresAt,
+        intentSigner
     }
 }
 
@@ -296,7 +317,11 @@ export class AgentExecutor {
             const validator = await (
                 this.dependencies.readValidator ?? readAgentValidatorState
             )(client.client, account.address)
-            this.validateValidatorState(validator, intent)
+            const delegatedSigner = this.dependencies.createIntentSigner
+                ? await this.dependencies.createIntentSigner(authorization.sessionKeySigner)
+                : await toECDSASigner({ signer: authorization.sessionKeySigner })
+            const intentSigner = getAddress(delegatedSigner.getSignerData())
+            this.validateValidatorState(validator, intent, intentSigner)
 
             const call = await (this.dependencies.buildBuyCall ?? buildAgentBuyCall)(
                 client.client,
@@ -326,6 +351,77 @@ export class AgentExecutor {
                     ),
                     quote: { ...call.quote, amountOutMin }
                 }
+            const expiresAt = validator.expiresAt
+            if (expiresAt === undefined) {
+                throw new AgentExecutorError(
+                    "VALIDATOR_PREFLIGHT_FAILED",
+                    "On-chain policy expiry is unavailable."
+                )
+            }
+            const nowSeconds = Math.floor(this.now() / 1000)
+            const validUntil = Math.min(nowSeconds + 30, Number(expiresAt))
+            if (!Number.isSafeInteger(validUntil) || validUntil <= nowSeconds) {
+                throw new AgentExecutorError(
+                    "INTENT_STALE",
+                    "On-chain policy expires before this intent can be submitted."
+                )
+            }
+            const signedIntent = {
+                smartAccount: getAddress(account.address),
+                policyHash: intent.policyHash,
+                targetToken: getAddress(intent.targetToken),
+                amountIn: intent.amountBnb,
+                amountOutMin: safeCall.quote.amountOutMin,
+                slippageBps: intent.slippageBps,
+                maxPriceImpactBps: intent.maxPriceImpactBps,
+                validUntil: BigInt(validUntil),
+                nonce: intent.intentNonce
+            }
+            let intentSignature: Hex
+            try {
+                intentSignature = await signTradeIntent(
+                    delegatedSigner,
+                    {
+                        domain: {
+                            name: "WolvTradingAgent",
+                            version: "1",
+                            chainId: config.chain.id,
+                            verifyingContract: config.policyHookAddress
+                        },
+                        types: TRADE_INTENT_TYPES,
+                        primaryType: "TradeIntent",
+                        message: signedIntent
+                    }
+                )
+            } catch (error) {
+                throw new AgentExecutorError(
+                    "INTENT_INVALID",
+                    `Delegated intent signer could not sign the on-chain authorization: ${errorMessage(error)}`,
+                    error
+                )
+            }
+            const intentEnvelope = encodeAbiParameters(
+                [
+                    { type: "bytes32" },
+                    { type: "bytes32" },
+                    { type: "uint64" },
+                    { type: "uint16" },
+                    { type: "uint16" },
+                    { type: "bytes" }
+                ],
+                [
+                    intent.policyHash,
+                    intent.intentNonce,
+                    BigInt(validUntil),
+                    intent.slippageBps,
+                    intent.maxPriceImpactBps,
+                    intentSignature
+                ]
+            )
+            const authorizedCall = {
+                ...safeCall,
+                data: concatHex([safeCall.data, intentEnvelope])
+            }
 
             log({
                 event: "userop_prepared",
@@ -338,9 +434,9 @@ export class AgentExecutor {
             try {
                 userOperationHash = await client.sendUserOperation({
                     calls: [{
-                        to: safeCall.to,
-                        value: safeCall.value,
-                        data: safeCall.data
+                        to: authorizedCall.to,
+                        value: authorizedCall.value,
+                        data: authorizedCall.data
                     }]
                 })
             } catch (error) {
@@ -437,6 +533,9 @@ export class AgentExecutor {
             || !/^0x[0-9a-f]{40}$/i.test(intent.account)
             || !/^0x[0-9a-f]{40}$/i.test(intent.targetToken)
             || getAddress(intent.targetToken) !== getAddress(config.targetTokenAddress)
+            || !/^0x[0-9a-f]{64}$/i.test(intent.policyHash)
+            || !/^0x[0-9a-f]{64}$/i.test(intent.intentNonce)
+            || /^0x0{64}$/i.test(intent.intentNonce)
             || intent.amountBnb <= BigInt(0)
             || intent.amountBnb > MAX_TRADE_BNB
             || intent.amountOutMin <= BigInt(0)
@@ -447,7 +546,7 @@ export class AgentExecutor {
             || intent.slippageBps > 500
             || !Number.isInteger(intent.maxPriceImpactBps)
             || intent.maxPriceImpactBps < 1
-            || intent.maxPriceImpactBps > 500
+            || intent.maxPriceImpactBps > 300
             || intent.priceImpactBps > intent.maxPriceImpactBps
         ) {
             throw new AgentExecutorError("INTENT_INVALID", "Execution intent failed validation")
@@ -467,8 +566,10 @@ export class AgentExecutor {
             policyHash?: Hex
             maxTradeValue?: bigint
             expiresAt?: bigint
+            intentSigner?: Address
         },
-        intent: AgentExecutionIntent
+        intent: AgentExecutionIntent,
+        signer: Address
     ) {
         const amountBnb = intent.amountBnb
         const policyExpired = validator.policyConfigured === true &&
@@ -480,6 +581,8 @@ export class AgentExecutor {
         const policyHashMismatch = validator.policyConfigured === true &&
             (!intent.policyHash || !validator.policyHash ||
                 intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase())
+        const intentSignerMismatch = !validator.intentSigner
+            || getAddress(validator.intentSigner) !== getAddress(signer)
         if (
             validator.paused
             || !validator.installed
@@ -490,10 +593,12 @@ export class AgentExecutor {
             || policyExpired
             || policyCapExceeded
             || policyHashMismatch
+            || intentSignerMismatch
+            || validator.policyConfigured !== true
         ) {
             throw new AgentExecutorError(
                 "VALIDATOR_PREFLIGHT_FAILED",
-                "Validator pause, session state, or rolling-cap check rejected the intent"
+                "Validator policy, signer, pause, session state, or rolling-cap check rejected the intent"
             )
         }
     }
@@ -501,6 +606,33 @@ export class AgentExecutor {
     private timestamp() {
         return new Date(this.now()).toISOString()
     }
+}
+
+async function signTradeIntent(
+    signer: Awaited<ReturnType<typeof toECDSASigner>>,
+    typedData: {
+        domain: {
+            name: string
+            version: string
+            chainId: number
+            verifyingContract: Address
+        }
+        types: typeof TRADE_INTENT_TYPES
+        primaryType: "TradeIntent"
+        message: {
+            smartAccount: Address
+            policyHash: Hex
+            targetToken: Address
+            amountIn: bigint
+            amountOutMin: bigint
+            slippageBps: number
+            maxPriceImpactBps: number
+            validUntil: bigint
+            nonce: Hex
+        }
+    }
+): Promise<Hex> {
+    return signer.account.signTypedData(typedData)
 }
 
 export function createWorkerFailureReporter(

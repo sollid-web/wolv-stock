@@ -16,6 +16,23 @@ const strategy = {
   slippageBps: 100,
   maxPriceImpactBps: 300,
 };
+const POLICY_HASH = `0x${"a".repeat(64)}`;
+const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
+
+function validPolicyState(overrides = {}) {
+  return {
+    paused: false,
+    installed: true,
+    revoked: false,
+    rollingVolume: parseEther("0.2"),
+    policyConfigured: true,
+    policyHash: POLICY_HASH,
+    maxTradeValue: parseEther("0.5"),
+    policyExpiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+    intentSigner: INTENT_SIGNER,
+    ...overrides,
+  };
+}
 
 function createHarness(overrides = {}, options = {}) {
   const telemetry = [];
@@ -31,12 +48,7 @@ function createHarness(overrides = {}, options = {}) {
       },
       observedAt: Date.now(),
     }),
-    readValidator: async () => ({
-      paused: false,
-      installed: true,
-      revoked: false,
-      rollingVolume: parseEther("0.2"),
-    }),
+    readValidator: async () => validPolicyState(),
     log: event => telemetry.push(event),
     alert: event => alerts.push(event),
     onIntent: intent => intents.push(intent),
@@ -71,6 +83,8 @@ test("passes preflight then publishes a bounded intent and capacity telemetry", 
   assert.equal(intents[0].amountOutMin > 0n, true);
   assert.equal(intents[0].slippageBps, strategy.slippageBps);
   assert.equal(intents[0].maxPriceImpactBps, strategy.maxPriceImpactBps);
+  assert.equal(intents[0].policyHash, POLICY_HASH);
+  assert.match(intents[0].intentNonce, /^0x[0-9a-f]{64}$/i);
   assert.equal(worker.hasPendingIntent, true);
 });
 
@@ -93,10 +107,7 @@ test("does not construct an intent when the price trigger is not met", async () 
 
 test("preflights cumulative and per-trade limits before creating an intent", async () => {
   const cumulative = createHarness({
-    readValidator: async () => ({
-      paused: false,
-      installed: true,
-      revoked: false,
+    readValidator: async () => validPolicyState({
       rollingVolume: MAX_ROLLING_VOLUME_BNB - parseEther("0.05"),
     }),
   });
@@ -120,13 +131,7 @@ test("refuses paused, revoked, or uninstalled accounts", async t => {
   ]) {
     await t.test(label, async () => {
       const harness = createHarness({
-        readValidator: async () => ({
-          paused: false,
-          installed: true,
-          revoked: false,
-          rollingVolume: 0n,
-          ...state,
-        }),
+        readValidator: async () => validPolicyState({ rollingVolume: 0n, ...state }),
       });
       await harness.worker.evaluateOnce();
       assert.equal(harness.telemetry[0].reasonCode, expectedReason);

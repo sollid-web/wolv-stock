@@ -25,6 +25,17 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
 
     bytes4 private constant EXECUTE_SELECTOR = bytes4(keccak256("execute(bytes32,bytes)"));
     bytes4 private constant FACTORY_SELECTOR = 0xc45a0155;
+    uint256 private constant ROUTER_BUY_CALL_LENGTH = 228;
+    uint256 private constant INTENT_ENVELOPE_LENGTH = 320;
+    uint256 private constant SECP256K1_HALF_ORDER =
+        0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+    bytes32 private constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant EIP712_NAME_HASH = keccak256("WolvTradingAgent");
+    bytes32 private constant EIP712_VERSION_HASH = keccak256("1");
+    bytes32 private constant TRADE_INTENT_TYPEHASH = keccak256(
+        "TradeIntent(address smartAccount,bytes32 policyHash,address targetToken,uint256 amountIn,uint256 amountOutMin,uint16 slippageBps,uint16 maxPriceImpactBps,uint64 validUntil,bytes32 nonce)"
+    );
     address private constant BSC_MAINNET_WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
     address private constant BSC_TESTNET_WBNB = 0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd;
 
@@ -52,6 +63,36 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         bytes32 policyHash;
         uint64 policyExpiresAt;
         uint192 maxTradeValue;
+        address intentSigner;
+        mapping(bytes32 => bool) consumedIntentNonces;
+    }
+
+    struct TradeIntent {
+        address smartAccount;
+        bytes32 policyHash;
+        address targetToken;
+        uint256 amountIn;
+        uint256 amountOutMin;
+        uint16 slippageBps;
+        uint16 maxPriceImpactBps;
+        uint64 validUntil;
+        bytes32 nonce;
+    }
+
+    struct DecodedTrade {
+        address target;
+        uint256 value;
+        bytes4 selector;
+        address pathStart;
+        address tokenOut;
+        address recipient;
+        uint256 amountOutMin;
+        bytes32 intentPolicyHash;
+        bytes32 intentNonce;
+        uint64 intentValidUntil;
+        uint16 slippageBps;
+        uint16 maxPriceImpactBps;
+        bytes intentSignature;
     }
 
     mapping(address => AccountState) private accountStates;
@@ -85,6 +126,13 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     error PolicyHashInvalid();
     error PolicyExpiryInvalid();
     error PolicyTradeCapInvalid(uint256 maximum);
+    error PolicyIntentSignerInvalid();
+    error PolicyIntentHashMismatch();
+    error PolicyIntentExpired();
+    error PolicyIntentNonceInvalid();
+    error PolicyIntentReplay(bytes32 nonce);
+    error PolicyIntentSignatureInvalid();
+    error PolicyIntentParametersInvalid();
 
     event CircuitBreakerUpdated(bool paused, address indexed guardian);
     event AgentAccountRevoked(address indexed smartAccount, address indexed guardian);
@@ -111,6 +159,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         bytes32 indexed policyHash,
         uint256 maxTradeValue,
         uint64 expiresAt,
+        address intentSigner,
         address indexed guardian
     );
     event AccountPolicyCleared(
@@ -145,6 +194,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     }
 
     function onInstall(bytes calldata data) external payable {
+        if (msg.value != 0) revert UnexpectedHookValue(msg.value);
         if (data.length != 32) revert InvalidHookData();
         address targetToken = abi.decode(data, (address));
         if (targetToken == address(0) || targetToken.code.length == 0) {
@@ -158,6 +208,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     }
 
     function onUninstall(bytes calldata data) external payable {
+        if (msg.value != 0) revert UnexpectedHookValue(msg.value);
         if (data.length != 0) revert InvalidHookData();
         AccountState storage state = accountStates[msg.sender];
         if (!state.installed) revert NotInitialized(msg.sender);
@@ -182,6 +233,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
 
     function setAccountPolicy(
         address smartAccount,
+        address intentSigner,
         bytes32 policyHash,
         uint192 maxTradeValue,
         uint64 expiresAt
@@ -189,6 +241,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
         AccountState storage state = accountStates[smartAccount];
         if (!state.installed) revert NotInitialized(smartAccount);
+        if (intentSigner == address(0)) revert PolicyIntentSignerInvalid();
         if (policyHash == bytes32(0)) revert PolicyHashInvalid();
         if (expiresAt <= block.timestamp || expiresAt > type(uint64).max) {
             revert PolicyExpiryInvalid();
@@ -200,11 +253,13 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         state.policyHash = policyHash;
         state.policyExpiresAt = expiresAt;
         state.maxTradeValue = maxTradeValue;
+        state.intentSigner = intentSigner;
         emit AccountPolicyConfigured(
             smartAccount,
             policyHash,
             maxTradeValue,
             expiresAt,
+            intentSigner,
             guardian
         );
     }
@@ -216,6 +271,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         state.policyHash = bytes32(0);
         state.policyExpiresAt = 0;
         state.maxTradeValue = 0;
+        state.intentSigner = address(0);
         emit AccountPolicyCleared(smartAccount, guardian);
     }
 
@@ -250,43 +306,28 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     {
         if (paused) revert AgentPaused();
         if (msgSender != entryPoint) revert OnlyEntryPoint(msgSender);
-        if (msg.value != 0 || msgValue != 0) {
-            revert UnexpectedHookValue(msg.value + msgValue);
-        }
+        if (msg.value != 0) revert UnexpectedHookValue(msg.value);
+        if (msgValue != 0) revert UnexpectedHookValue(msgValue);
 
         AccountState storage state = accountStates[msg.sender];
         if (!state.installed) revert NotInitialized(msg.sender);
         if (state.revoked) revert AccountRevoked(msg.sender);
 
-        (
-            address target,
-            uint256 value,
-            bytes4 selector,
-            address pathStart,
-            address tokenOut,
-            address recipient
-        ) = _decodeTrade(msgData);
-        if (target != approvedRouter) revert WrongTarget(target);
-        if (selector != BUY_SELECTOR) revert UnsupportedSelector(selector);
+        DecodedTrade memory trade = _decodeTrade(msgData);
+        if (trade.target != approvedRouter) revert WrongTarget(trade.target);
+        if (trade.selector != BUY_SELECTOR) revert UnsupportedSelector(trade.selector);
         if (
-            pathStart != wrappedNativeToken || tokenOut != state.targetToken
-                || recipient != msg.sender
+            trade.pathStart != wrappedNativeToken || trade.tokenOut != state.targetToken
+                || trade.recipient != msg.sender
         ) {
             revert InvalidSwapRoute();
         }
-        if (value == 0) revert ZeroTradeValue();
-        uint256 effectiveMaxTradeValue = MAX_TRADE_VALUE;
-        if (state.policyConfigured) {
-            if (state.policyExpiresAt <= block.timestamp) revert PolicyExpired(msg.sender);
-            effectiveMaxTradeValue = state.maxTradeValue;
-        }
-        if (value > effectiveMaxTradeValue) {
-            revert TradeValueTooHigh(value, effectiveMaxTradeValue);
-        }
+        if (trade.value == 0) revert ZeroTradeValue();
+        _validateTradeIntent(state, trade, msg.sender);
         if (block.timestamp > type(uint64).max) revert TimestampOverflow();
 
         _expireTrades(state);
-        uint256 attemptedVolume = state.rollingVolume + value;
+        uint256 attemptedVolume = state.rollingVolume + trade.value;
         if (attemptedVolume > MAX_ROLLING_VOLUME) {
             revert RollingWindowCapExceeded(attemptedVolume, MAX_ROLLING_VOLUME);
         }
@@ -295,21 +336,27 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         }
 
         state.trades[state.tail % MAX_ACTIVE_TRADES] =
-            Trade({timestamp: uint64(block.timestamp), value: uint192(value)});
+            Trade({timestamp: uint64(block.timestamp), value: uint192(trade.value)});
         state.tail += 1;
         state.rollingVolume = attemptedVolume;
-        emit AgentExecutionAttempt(msg.sender, state.targetToken, value, block.timestamp);
-        return abi.encode(state.targetToken, value);
+        state.consumedIntentNonces[trade.intentNonce] = true;
+        emit AgentExecutionAttempt(msg.sender, state.targetToken, trade.value, block.timestamp);
+        return abi.encode(state.targetToken, trade.value, trade.intentNonce);
     }
 
     function postCheck(bytes calldata hookData) external payable {
-        if (hookData.length != 64) revert InvalidHookData();
+        if (msg.value != 0) revert UnexpectedHookValue(msg.value);
+        if (hookData.length != 96) revert InvalidHookData();
         AccountState storage state = accountStates[msg.sender];
         if (!state.installed) {
             revert NotInitialized(msg.sender);
         }
-        (address targetToken, uint256 value) = abi.decode(hookData, (address, uint256));
-        if (targetToken != state.targetToken || value == 0) revert InvalidHookData();
+        (address targetToken, uint256 value, bytes32 nonce) =
+            abi.decode(hookData, (address, uint256, bytes32));
+        if (
+            targetToken != state.targetToken || value == 0
+                || !state.consumedIntentNonces[nonce]
+        ) revert InvalidHookData();
         emit AgentExecutionSucceeded(msg.sender, targetToken, value, block.timestamp);
     }
 
@@ -324,7 +371,8 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
             bool configured,
             bytes32 policyHash,
             uint192 maxTradeValue,
-            uint64 expiresAt
+            uint64 expiresAt,
+            address intentSigner
         )
     {
         AccountState storage state = accountStates[account];
@@ -332,8 +380,21 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
             state.policyConfigured,
             state.policyHash,
             state.maxTradeValue,
-            state.policyExpiresAt
+            state.policyExpiresAt,
+            state.intentSigner
         );
+    }
+
+    function hashTradeIntent(TradeIntent calldata intent) external view returns (bytes32) {
+        return _hashTradeIntent(intent);
+    }
+
+    function isIntentNonceConsumed(address account, bytes32 nonce)
+        external
+        view
+        returns (bool)
+    {
+        return accountStates[account].consumedIntentNonces[nonce];
     }
 
     function getEffectiveRollingVolume(address account) external view returns (uint256 volume) {
@@ -358,14 +419,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     function _decodeTrade(bytes calldata callData)
         private
         pure
-        returns (
-            address target,
-            uint256 value,
-            bytes4 selector,
-            address pathStart,
-            address tokenOut,
-            address recipient
-        )
+        returns (DecodedTrade memory trade)
     {
         if (callData.length < 4 || _selectorAt(callData, 0) != EXECUTE_SELECTOR) {
             revert InvalidKernelCallData();
@@ -391,42 +445,162 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         if (args.length != 96 + paddedLength) {
             revert InvalidKernelCallData();
         }
-        if (dataLength < 52 + 228) revert InvalidExecutionCalldata();
+        if (dataLength < 52 + ROUTER_BUY_CALL_LENGTH) revert InvalidExecutionCalldata();
 
         bytes calldata execution = args[96:96 + dataLength];
-        assembly {
-            target := shr(96, calldataload(execution.offset))
-            value := calldataload(add(execution.offset, 20))
-            selector := calldataload(add(execution.offset, 52))
-        }
-
+        trade = _decodeExecutionTarget(execution);
         bytes calldata routerCall = execution[52:];
-        if (selector != BUY_SELECTOR) return (target, value, selector, address(0), address(0), address(0));
-        if (routerCall.length != 228) revert InvalidSwapRoute();
+        return _decodeRouterCall(routerCall, trade);
+    }
+
+    function _decodeExecutionTarget(bytes calldata execution)
+        private
+        pure
+        returns (DecodedTrade memory trade)
+    {
+        if (execution.length < 52) revert InvalidExecutionCalldata();
+        assembly {
+            mstore(trade, shr(96, calldataload(execution.offset)))
+            mstore(add(trade, 32), calldataload(add(execution.offset, 20)))
+            mstore(add(trade, 64), calldataload(add(execution.offset, 52)))
+        }
+    }
+
+    function _decodeRouterCall(bytes calldata routerCall, DecodedTrade memory trade)
+        private
+        pure
+        returns (DecodedTrade memory)
+    {
+        if (trade.selector != BUY_SELECTOR) return trade;
+        if (routerCall.length < ROUTER_BUY_CALL_LENGTH + INTENT_ENVELOPE_LENGTH) {
+            revert InvalidExecutionCalldata();
+        }
+        if (routerCall.length != ROUTER_BUY_CALL_LENGTH + INTENT_ENVELOPE_LENGTH) revert InvalidSwapRoute();
         uint256 pathOffset;
         uint256 pathLength;
-        uint256 amountOutMin;
         assembly {
-            amountOutMin := calldataload(add(routerCall.offset, 4))
+            mstore(add(trade, 192), calldataload(add(routerCall.offset, 4)))
             pathOffset := calldataload(add(routerCall.offset, 36))
-            recipient := and(
+            mstore(add(trade, 160), and(
                 calldataload(add(routerCall.offset, 68)),
                 0xffffffffffffffffffffffffffffffffffffffff
-            )
+            ))
         }
-        if (amountOutMin == 0 || pathOffset != 128) revert InvalidSwapRoute();
+        if (trade.amountOutMin == 0 || pathOffset != 128) revert InvalidSwapRoute();
         assembly {
             pathLength := calldataload(add(routerCall.offset, 132))
-            pathStart := and(
+            mstore(add(trade, 96), and(
                 calldataload(add(routerCall.offset, 164)),
                 0xffffffffffffffffffffffffffffffffffffffff
-            )
-            tokenOut := and(
+            ))
+            mstore(add(trade, 128), and(
                 calldataload(add(routerCall.offset, 196)),
                 0xffffffffffffffffffffffffffffffffffffffff
-            )
+            ))
         }
         if (pathLength != 2) revert InvalidSwapRoute();
+        (
+            trade.intentPolicyHash,
+            trade.intentNonce,
+            trade.intentValidUntil,
+            trade.slippageBps,
+            trade.maxPriceImpactBps,
+            trade.intentSignature
+        ) = abi.decode(
+            routerCall[ROUTER_BUY_CALL_LENGTH:],
+            (bytes32, bytes32, uint64, uint16, uint16, bytes)
+        );
+        return trade;
+    }
+
+    function _validateTradeIntent(
+        AccountState storage state,
+        DecodedTrade memory trade,
+        address smartAccount
+    ) private view {
+        if (!state.policyConfigured || state.intentSigner == address(0)) {
+            revert PolicyNotConfigured(smartAccount);
+        }
+        if (state.policyExpiresAt <= block.timestamp) revert PolicyExpired(smartAccount);
+        if (trade.intentPolicyHash != state.policyHash) revert PolicyIntentHashMismatch();
+        if (
+            trade.intentValidUntil <= block.timestamp
+                || trade.intentValidUntil > state.policyExpiresAt
+        ) revert PolicyIntentExpired();
+        if (trade.intentNonce == bytes32(0)) revert PolicyIntentNonceInvalid();
+        if (state.consumedIntentNonces[trade.intentNonce]) {
+            revert PolicyIntentReplay(trade.intentNonce);
+        }
+        if (
+            trade.slippageBps == 0 || trade.slippageBps > 500
+                || trade.maxPriceImpactBps == 0 || trade.maxPriceImpactBps > 300
+                || trade.intentSignature.length != 65
+        ) revert PolicyIntentParametersInvalid();
+        if (trade.value > state.maxTradeValue) {
+            revert TradeValueTooHigh(trade.value, state.maxTradeValue);
+        }
+
+        TradeIntent memory intent = TradeIntent({
+            smartAccount: smartAccount,
+            policyHash: trade.intentPolicyHash,
+            targetToken: trade.tokenOut,
+            amountIn: trade.value,
+            amountOutMin: trade.amountOutMin,
+            slippageBps: trade.slippageBps,
+            maxPriceImpactBps: trade.maxPriceImpactBps,
+            validUntil: trade.intentValidUntil,
+            nonce: trade.intentNonce
+        });
+        if (_recoverSigner(_hashTradeIntent(intent), trade.intentSignature) != state.intentSigner) {
+            revert PolicyIntentSignatureInvalid();
+        }
+    }
+
+    function _hashTradeIntent(TradeIntent memory intent) private view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                TRADE_INTENT_TYPEHASH,
+                intent.smartAccount,
+                intent.policyHash,
+                intent.targetToken,
+                intent.amountIn,
+                intent.amountOutMin,
+                intent.slippageBps,
+                intent.maxPriceImpactBps,
+                intent.validUntil,
+                intent.nonce
+            )
+        );
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH,
+                EIP712_NAME_HASH,
+                EIP712_VERSION_HASH,
+                block.chainid,
+                address(this)
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+    }
+
+    function _recoverSigner(bytes32 digest, bytes memory signature)
+        private
+        pure
+        returns (address signer)
+    {
+        if (signature.length != 65) return address(0);
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
+        }
+        if (uint256(s) > SECP256K1_HALF_ORDER || (v != 27 && v != 28)) {
+            return address(0);
+        }
+        signer = ecrecover(digest, v, r, s);
     }
 
     function _expireTrades(AccountState storage state) private {
