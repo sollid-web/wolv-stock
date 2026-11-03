@@ -91,6 +91,41 @@ export type RiskPolicy = {
   emergencyStop: boolean;
 };
 
+export function createStrictAgentPolicyTemplate(input: {
+  approvedAssets: readonly string[];
+  now?: number;
+  version?: string;
+}): RiskPolicy {
+  const approvedAssets = input.approvedAssets.map((address) => address.trim().toLowerCase());
+  if (approvedAssets.length === 0 || approvedAssets.length > 500 ||
+    approvedAssets.some((address) => !/^0x[a-fA-F0-9]{40}$/.test(address)) ||
+    new Set(approvedAssets).size !== approvedAssets.length) {
+    throw new AgentControlPlaneError(
+      "INVALID_INPUT",
+      "Strict policy approval requires a non-empty list of unique asset addresses.",
+    );
+  }
+  const now = input.now ?? Date.now();
+  if (!Number.isSafeInteger(now) || now <= 0) {
+    throw new AgentControlPlaneError("INVALID_INPUT", "Strict policy timestamp is invalid.");
+  }
+  return {
+    version: input.version ?? "strict-testnet-1",
+    approvedAssets,
+    approvedDirections: ["BUY"],
+    maxOrderValue: "0.5",
+    maxDailyExposure: "1",
+    maxProposalsPerHour: 1,
+    maxSlippageBps: 100,
+    maxReferenceDeviationPercent: 1,
+    allowedSessions: ["US_REGULAR"],
+    minimumBalance: "0",
+    quoteTtlMs: 30_000,
+    permissionExpiresAt: now + 15 * 60_000,
+    emergencyStop: false,
+  };
+}
+
 export type PolicyDecision = {
   policyVersion: string;
   inputSnapshotHash: string;

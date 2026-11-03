@@ -77,6 +77,10 @@ export type AgentExecutorDependencies = {
         installed: boolean
         revoked: boolean
         rollingVolume: bigint
+        policyConfigured?: boolean
+        policyHash?: Hex
+        maxTradeValue?: bigint
+        expiresAt?: bigint
     }>
     buildBuyCall?: typeof buildAgentBuyCall
     encodeBuyCall?: typeof encodeAgentBuyCall
@@ -120,6 +124,18 @@ const VALIDATOR_ABI = [
         inputs: [{ name: "account", type: "address" }],
         outputs: [{ type: "uint256" }],
         stateMutability: "view"
+    },
+    {
+        type: "function",
+        name: "getAccountPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "configured", type: "bool" },
+            { name: "policyHash", type: "bytes32" },
+            { name: "maxTradeValue", type: "uint192" },
+            { name: "expiresAt", type: "uint64" }
+        ],
+        stateMutability: "view"
     }
 ] as const
 
@@ -133,9 +149,35 @@ export function isLiveUserOperationSubmissionEnabled(
     return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
 }
 
+export function resolveAgentExecutionNetwork(
+    configuredChainId: number,
+    env: NodeJS.ProcessEnv = process.env,
+):
+    | { allowed: true; chainId: 97 | 56 }
+    | { allowed: false; reason: string } {
+    if (configuredChainId === 97) {
+        return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
+            ? { allowed: true, chainId: 97 }
+            : { allowed: false, reason: "Live BSC Testnet submission is disabled." };
+    }
+    if (configuredChainId === 56) {
+        if (env.ENABLE_LIVE_USEROP_SUBMISSION !== "true") {
+            return { allowed: false, reason: "Live submission is disabled." };
+        }
+        if (env.ENABLE_MAINNET_AGENT_TRADING !== "true") {
+            return { allowed: false, reason: "Separate mainnet trading authorization is disabled." };
+        }
+        if (env.MAINNET_AGENT_TRADING_ACK !== "I_ACCEPT_AUTONOMOUS_MAINNET_RISK") {
+            return { allowed: false, reason: "Mainnet autonomous-trading acknowledgement is missing." };
+        }
+        return { allowed: true, chainId: 56 };
+    }
+    return { allowed: false, reason: `Unsupported agent execution chain ID: ${configuredChainId}.` };
+}
+
 export async function readAgentValidatorState(client: Client, account: Address) {
     const config = getAgentSmartAccountConfig()
-    const [paused, installed, revoked, rollingVolume] = await Promise.all([
+    const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
         readContract(client, {
             address: config.policyHookAddress,
             abi: VALIDATOR_ABI,
@@ -158,9 +200,25 @@ export async function readAgentValidatorState(client: Client, account: Address) 
             abi: VALIDATOR_ABI,
             functionName: "getEffectiveRollingVolume",
             args: [account]
+        }),
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: VALIDATOR_ABI,
+            functionName: "getAccountPolicy",
+            args: [account]
         })
     ])
-    return { paused, installed, revoked, rollingVolume }
+    const [policyConfigured, policyHash, maxTradeValue, expiresAt] = accountPolicy
+    return {
+        paused,
+        installed,
+        revoked,
+        rollingVolume,
+        policyConfigured,
+        policyHash,
+        maxTradeValue,
+        expiresAt
+    }
 }
 
 export class AgentExecutor {
@@ -208,10 +266,14 @@ export class AgentExecutor {
                 )
             }
             const config = this.dependencies.getConfig?.() ?? getAgentSmartAccountConfig()
-            if (config.chain.id !== 97) {
+            const networkGate = resolveAgentExecutionNetwork(config.chain.id, {
+                ...process.env,
+                ENABLE_LIVE_USEROP_SUBMISSION: "true",
+            })
+            if (!networkGate.allowed) {
                 throw new AgentExecutorError(
                     "MAINNET_SUBMISSION_BLOCKED",
-                    "This executor is restricted to BSC testnet (chain ID 97)"
+                    networkGate.reason
                 )
             }
             this.validateIntent(intent, config)
@@ -234,7 +296,7 @@ export class AgentExecutor {
             const validator = await (
                 this.dependencies.readValidator ?? readAgentValidatorState
             )(client.client, account.address)
-            this.validateValidatorState(validator, intent.amountBnb)
+            this.validateValidatorState(validator, intent)
 
             const call = await (this.dependencies.buildBuyCall ?? buildAgentBuyCall)(
                 client.client,
@@ -401,9 +463,23 @@ export class AgentExecutor {
             installed: boolean
             revoked: boolean
             rollingVolume: bigint
+            policyConfigured?: boolean
+            policyHash?: Hex
+            maxTradeValue?: bigint
+            expiresAt?: bigint
         },
-        amountBnb: bigint
+        intent: AgentExecutionIntent
     ) {
+        const amountBnb = intent.amountBnb
+        const policyExpired = validator.policyConfigured === true &&
+            (validator.expiresAt === undefined || validator.expiresAt === BigInt(0) ||
+                Number(validator.expiresAt) * 1000 <= this.now())
+        const policyCapExceeded = validator.policyConfigured === true &&
+            validator.maxTradeValue !== undefined &&
+            amountBnb > validator.maxTradeValue
+        const policyHashMismatch = validator.policyConfigured === true &&
+            (!intent.policyHash || !validator.policyHash ||
+                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase())
         if (
             validator.paused
             || !validator.installed
@@ -411,6 +487,9 @@ export class AgentExecutor {
             || validator.rollingVolume < BigInt(0)
             || validator.rollingVolume > MAX_ROLLING_VOLUME_BNB
             || amountBnb > MAX_ROLLING_VOLUME_BNB - validator.rollingVolume
+            || policyExpired
+            || policyCapExceeded
+            || policyHashMismatch
         ) {
             throw new AgentExecutorError(
                 "VALIDATOR_PREFLIGHT_FAILED",

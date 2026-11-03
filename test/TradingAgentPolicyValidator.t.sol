@@ -151,6 +151,63 @@ contract TradingAgentPolicyValidatorTest {
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, SELL_SELECTOR);
     }
 
+    function testGuardianCanConfigureAndClearAccountPolicy() public {
+        bytes32 policyHash = keccak256("WOLV-POLICY-V1");
+        uint64 expiresAt = uint64(block.timestamp + 1 hours);
+        hook.setAccountPolicy(SMART_ACCOUNT, policyHash, 0.25 ether, expiresAt);
+
+        (bool configured, bytes32 storedHash, uint192 maxTrade, uint64 storedExpiry) =
+            hook.getAccountPolicy(SMART_ACCOUNT);
+        require(configured);
+        require(storedHash == policyHash);
+        require(maxTrade == 0.25 ether);
+        require(storedExpiry == expiresAt);
+
+        vm.expectPartialRevert(TradingAgentPolicyValidator.TradeValueTooHigh.selector);
+        _check(SMART_ACCOUNT, address(entryPoint), 0.25 ether + 1, BUY_SELECTOR);
+
+        hook.clearAccountPolicy(SMART_ACCOUNT);
+        (configured, storedHash, maxTrade, storedExpiry) =
+            hook.getAccountPolicy(SMART_ACCOUNT);
+        require(!configured);
+        require(storedHash == bytes32(0));
+        require(maxTrade == 0);
+        require(storedExpiry == 0);
+        _check(SMART_ACCOUNT, address(entryPoint), 0.25 ether, BUY_SELECTOR);
+    }
+
+    function testConfiguredPolicyEnforcesExpiryAndTradeCap() public {
+        hook.setAccountPolicy(
+            SMART_ACCOUNT,
+            keccak256("WOLV-POLICY-V1"),
+            0.1 ether,
+            uint64(block.timestamp + 1 hours)
+        );
+        _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR);
+
+        vm.expectPartialRevert(TradingAgentPolicyValidator.TradeValueTooHigh.selector);
+        _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether + 1, BUY_SELECTOR);
+
+        vm.warp(block.timestamp + 1 hours);
+        vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyExpired.selector);
+        _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR);
+    }
+
+    function testPolicyConfigurationRejectsInvalidValuesAndNonGuardian() public {
+        vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyHashInvalid.selector);
+        hook.setAccountPolicy(SMART_ACCOUNT, bytes32(0), 0.1 ether, uint64(block.timestamp + 1 hours));
+
+        vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyTradeCapInvalid.selector);
+        hook.setAccountPolicy(SMART_ACCOUNT, keccak256("WOLV-POLICY-V1"), 0, uint64(block.timestamp + 1 hours));
+
+        vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyExpiryInvalid.selector);
+        hook.setAccountPolicy(SMART_ACCOUNT, keccak256("WOLV-POLICY-V1"), 0.1 ether, uint64(block.timestamp));
+
+        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlyGuardian.selector);
+        vm.prank(SMART_ACCOUNT);
+        hook.setAccountPolicy(SMART_ACCOUNT, keccak256("WOLV-POLICY-V1"), 0.1 ether, uint64(block.timestamp + 1 hours));
+    }
+
     function testRejectsWrongRouter() public {
         vm.expectPartialRevert(TradingAgentPolicyValidator.WrongTarget.selector);
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR, address(0x9999));

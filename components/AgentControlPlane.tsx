@@ -165,7 +165,15 @@ export default function AgentControlPlane() {
   const [runResult, setRunResult] = useState<Record<string, unknown> | null>(null);
   const [cursor, setCursor] = useState("");
   const [policyDraft, setPolicyDraft] = useState("");
+  const [policyApprovedAssets, setPolicyApprovedAssets] = useState("");
   const [agentStatus, setAgentStatus] = useState<AgentStatusSnapshot | null>(null);
+  const [dynamicResult, setDynamicResult] = useState<Record<string, unknown> | null>(null);
+  const [dynamicMetrics, setDynamicMetrics] = useState({
+    pancakeLiquidityUsd: "",
+    baselineLiquidityUsd: "",
+    gasPriceGwei: "",
+    atrBps: "",
+  });
 
   const loadDashboard = useCallback(async (nextCursor = "") => {
     const query = buildFilterQuery(filters, nextCursor);
@@ -365,6 +373,53 @@ export default function AgentControlPlane() {
     }
   }
 
+  async function evaluateDynamicStrategy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setDynamicResult(null);
+    try {
+      const result = await postJson("/api/agent/dynamic", {
+        metrics: {
+          observedAt: Date.now(),
+          pancakeLiquidityUsd: Number(dynamicMetrics.pancakeLiquidityUsd),
+          baselineLiquidityUsd: Number(dynamicMetrics.baselineLiquidityUsd),
+          gasPriceGwei: Number(dynamicMetrics.gasPriceGwei),
+          atrBps: Number(dynamicMetrics.atrBps),
+        },
+      });
+      setDynamicResult(result as Record<string, unknown>);
+      setNotice("Dynamic strategy state evaluated. No state switch transaction, signature, or order was submitted.");
+      await loadDashboard();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Dynamic strategy evaluation failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function evaluateLiveDynamicStrategy() {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setDynamicResult(null);
+    try {
+      const result = await postJson("/api/agent/dynamic", { source: "live" });
+      const historyResponse = await fetch("/api/agent/dynamic", { cache: "no-store" });
+      const history = historyResponse.ok
+        ? await historyResponse.json() as Record<string, unknown>
+        : { error: "Dynamic strategy history was unavailable.", cycles: [] };
+      setDynamicResult({ evaluation: result, history } as Record<string, unknown>);
+      setNotice("Live providers evaluated. No state switch transaction, signature, or order was submitted.");
+      await loadDashboard();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Live dynamic strategy evaluation failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function savePolicy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -381,6 +436,36 @@ export default function AgentControlPlane() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function loadStrictPolicyTemplate() {
+    const approvedAssets = policyApprovedAssets.split(/[\s,]+/)
+      .map((address) => address.trim().toLowerCase())
+      .filter(Boolean);
+    const invalid = approvedAssets.find((address) => !/^0x[a-fA-F0-9]{40}$/.test(address));
+    if (!approvedAssets.length || invalid) {
+      setError("Enter at least one valid approved token contract address.");
+      return;
+    }
+    const now = Date.now();
+    const template = {
+      version: "strict-testnet-1",
+      approvedAssets,
+      approvedDirections: ["BUY"],
+      maxOrderValue: "0.5",
+      maxDailyExposure: "1",
+      maxProposalsPerHour: 1,
+      maxSlippageBps: 100,
+      maxReferenceDeviationPercent: 1,
+      allowedSessions: ["US_REGULAR"],
+      minimumBalance: "0",
+      quoteTtlMs: 30_000,
+      permissionExpiresAt: now + 15 * 60_000,
+      emergencyStop: false,
+    };
+    setPolicyDraft(JSON.stringify(template, null, 2));
+    setError("");
+    setNotice("Strict testnet policy template loaded. Review and activate it explicitly; execution remains disabled.");
   }
 
   async function applyFilters(event: FormEvent<HTMLFormElement>) {
@@ -435,6 +520,22 @@ export default function AgentControlPlane() {
           {dashboard?.activePolicy ? JSON.stringify(dashboard.activePolicy, null, 2) : "No active policy is stored."}
         </pre>
         <form onSubmit={(event) => void savePolicy(event)} className="mt-3 space-y-3">
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
+            <p className="text-xs font-bold text-slate-200">Strict testnet policy preset</p>
+            <p className="mt-1 text-[10px] leading-5 text-slate-400">
+              BSC testnet intent only · BUY-only · one proposal/hour · 0.5 maximum order · 100 bps slippage cap · 30-second quote TTL · 15-minute permission window.
+              This preset does not enable signing or execution.
+            </p>
+            <label className="mt-3 block text-xs text-slate-300">Approved token contract addresses
+              <input className={`${inputClass} mt-2`} value={policyApprovedAssets}
+                onChange={(event) => setPolicyApprovedAssets(event.target.value)}
+                placeholder="0x... , 0x..." />
+            </label>
+            <button type="button" disabled={busy || !policyApprovedAssets.trim()} onClick={loadStrictPolicyTemplate}
+              className="mt-3 min-h-10 rounded-xl border border-sky-300/30 px-4 text-xs font-bold text-sky-200 disabled:opacity-50">
+              Load strict testnet policy template
+            </button>
+          </div>
           <label className="block text-xs text-slate-300">New policy JSON
             <textarea className={`${inputClass} mt-2 min-h-48 font-mono text-[10px]`} value={policyDraft}
               onChange={(event) => setPolicyDraft(event.target.value)} />
@@ -512,6 +613,55 @@ export default function AgentControlPlane() {
               </button>
             </form>
             {runResult && <pre className="mt-4 max-h-72 overflow-auto rounded-xl bg-black/20 p-3 text-[10px] leading-5 text-slate-300">{JSON.stringify(runResult, null, 2)}</pre>}
+          </section>
+
+          <section className={`${cardClass} mb-5`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-white">Dynamic strategy state</h2>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">
+                  Evaluates US regular-market hours, verified PancakeSwap liquidity change, gas, and ATR volatility.
+                  State output is proof-only until a separately authorized execution mode is connected.
+                </p>
+              </div>
+              <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-xs font-bold text-slate-300">
+                Monitoring
+              </span>
+            </div>
+            <form onSubmit={(event) => void evaluateDynamicStrategy(event)} className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button type="button" disabled={busy || !authenticated} onClick={() => void evaluateLiveDynamicStrategy()}
+                className="min-h-11 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-4 text-xs font-black text-emerald-300 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2">
+                {busy ? "Reading live providers…" : "Evaluate with live BSC providers"}
+              </button>
+              <label className="text-xs text-slate-300">Current PancakeSwap liquidity (USD)
+                <input className={`${inputClass} mt-2`} inputMode="decimal" value={dynamicMetrics.pancakeLiquidityUsd}
+                  onChange={(event) => setDynamicMetrics((current) => ({ ...current, pancakeLiquidityUsd: event.target.value }))} />
+              </label>
+              <label className="text-xs text-slate-300">Baseline liquidity (USD)
+                <input className={`${inputClass} mt-2`} inputMode="decimal" value={dynamicMetrics.baselineLiquidityUsd}
+                  onChange={(event) => setDynamicMetrics((current) => ({ ...current, baselineLiquidityUsd: event.target.value }))} />
+              </label>
+              <label className="text-xs text-slate-300">Gas price (gwei)
+                <input className={`${inputClass} mt-2`} inputMode="decimal" value={dynamicMetrics.gasPriceGwei}
+                  onChange={(event) => setDynamicMetrics((current) => ({ ...current, gasPriceGwei: event.target.value }))} />
+              </label>
+              <label className="text-xs text-slate-300">ATR volatility (bps)
+                <input className={`${inputClass} mt-2`} inputMode="decimal" value={dynamicMetrics.atrBps}
+                  onChange={(event) => setDynamicMetrics((current) => ({ ...current, atrBps: event.target.value }))} />
+              </label>
+              <button type="submit" disabled={busy || !authenticated}
+                className="min-h-11 rounded-xl border border-[#FFC700]/30 bg-[#FFC700]/10 px-4 text-xs font-black text-[#FFC700] disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2">
+                {busy ? "Evaluating…" : "Evaluate dynamic strategy"}
+              </button>
+            </form>
+            {dynamicResult && (
+              <div className="mt-4 rounded-xl border border-white/[0.08] bg-black/20 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Execution reasoning feed</p>
+                <pre className="mt-2 max-h-72 overflow-auto text-[10px] leading-5 text-slate-300">
+                  {JSON.stringify(dynamicResult, null, 2)}
+                </pre>
+              </div>
+            )}
           </section>
 
           {dashboard && (

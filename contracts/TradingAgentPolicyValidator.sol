@@ -48,6 +48,10 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         uint256 head;
         uint256 tail;
         mapping(uint256 => Trade) trades;
+        bool policyConfigured;
+        bytes32 policyHash;
+        uint64 policyExpiresAt;
+        uint192 maxTradeValue;
     }
 
     mapping(address => AccountState) private accountStates;
@@ -76,6 +80,11 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     error AgentPaused();
     error AccountRevoked(address smartAccount);
     error InvalidTelemetryReason();
+    error PolicyNotConfigured(address smartAccount);
+    error PolicyExpired(address smartAccount);
+    error PolicyHashInvalid();
+    error PolicyExpiryInvalid();
+    error PolicyTradeCapInvalid(uint256 maximum);
 
     event CircuitBreakerUpdated(bool paused, address indexed guardian);
     event AgentAccountRevoked(address indexed smartAccount, address indexed guardian);
@@ -96,6 +105,17 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         bytes32 indexed reasonCode,
         bytes32 contextHash,
         uint256 timestamp
+    );
+    event AccountPolicyConfigured(
+        address indexed smartAccount,
+        bytes32 indexed policyHash,
+        uint256 maxTradeValue,
+        uint64 expiresAt,
+        address indexed guardian
+    );
+    event AccountPolicyCleared(
+        address indexed smartAccount,
+        address indexed guardian
     );
 
     constructor(address approvedRouter_, address entryPoint_) {
@@ -160,6 +180,45 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         emit AgentAccountRevoked(smartAccount, guardian);
     }
 
+    function setAccountPolicy(
+        address smartAccount,
+        bytes32 policyHash,
+        uint192 maxTradeValue,
+        uint64 expiresAt
+    ) external {
+        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
+        AccountState storage state = accountStates[smartAccount];
+        if (!state.installed) revert NotInitialized(smartAccount);
+        if (policyHash == bytes32(0)) revert PolicyHashInvalid();
+        if (expiresAt <= block.timestamp || expiresAt > type(uint64).max) {
+            revert PolicyExpiryInvalid();
+        }
+        if (maxTradeValue == 0 || maxTradeValue > MAX_TRADE_VALUE) {
+            revert PolicyTradeCapInvalid(maxTradeValue);
+        }
+        state.policyConfigured = true;
+        state.policyHash = policyHash;
+        state.policyExpiresAt = expiresAt;
+        state.maxTradeValue = maxTradeValue;
+        emit AccountPolicyConfigured(
+            smartAccount,
+            policyHash,
+            maxTradeValue,
+            expiresAt,
+            guardian
+        );
+    }
+
+    function clearAccountPolicy(address smartAccount) external {
+        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
+        AccountState storage state = accountStates[smartAccount];
+        state.policyConfigured = false;
+        state.policyHash = bytes32(0);
+        state.policyExpiresAt = 0;
+        state.maxTradeValue = 0;
+        emit AccountPolicyCleared(smartAccount, guardian);
+    }
+
     function recordPolicyViolation(
         address smartAccount,
         bytes32 reasonCode,
@@ -216,8 +275,13 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
             revert InvalidSwapRoute();
         }
         if (value == 0) revert ZeroTradeValue();
-        if (value > MAX_TRADE_VALUE) {
-            revert TradeValueTooHigh(value, MAX_TRADE_VALUE);
+        uint256 effectiveMaxTradeValue = MAX_TRADE_VALUE;
+        if (state.policyConfigured) {
+            if (state.policyExpiresAt <= block.timestamp) revert PolicyExpired(msg.sender);
+            effectiveMaxTradeValue = state.maxTradeValue;
+        }
+        if (value > effectiveMaxTradeValue) {
+            revert TradeValueTooHigh(value, effectiveMaxTradeValue);
         }
         if (block.timestamp > type(uint64).max) revert TimestampOverflow();
 
@@ -251,6 +315,25 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
 
     function getRollingVolume(address account) external view returns (uint256) {
         return accountStates[account].rollingVolume;
+    }
+
+    function getAccountPolicy(address account)
+        external
+        view
+        returns (
+            bool configured,
+            bytes32 policyHash,
+            uint192 maxTradeValue,
+            uint64 expiresAt
+        )
+    {
+        AccountState storage state = accountStates[account];
+        return (
+            state.policyConfigured,
+            state.policyHash,
+            state.maxTradeValue,
+            state.policyExpiresAt
+        );
     }
 
     function getEffectiveRollingVolume(address account) external view returns (uint256 volume) {

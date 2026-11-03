@@ -626,8 +626,17 @@ export async function executeAgentBuy(
             "Live UserOperation submission is disabled; set ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
         )
     }
-    if (config.chain.id !== 97) {
-        throw new Error("Agent UserOperation submission is restricted to BSC testnet")
+    if (config.chain.id !== 97 && config.chain.id !== bsc.id) {
+        throw new Error("Agent UserOperation submission supports only BSC Testnet or BSC Mainnet")
+    }
+    if (
+        config.chain.id === bsc.id &&
+        (
+            process.env.ENABLE_MAINNET_AGENT_TRADING !== "true"
+            || process.env.MAINNET_AGENT_TRADING_ACK !== "I_ACCEPT_AUTONOMOUS_MAINNET_RISK"
+        )
+    ) {
+        throw new Error("Mainnet autonomous trading is not separately authorized")
     }
     const account = accountClient.account
     return runAgentExecutionWithTelemetry(

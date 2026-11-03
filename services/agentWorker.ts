@@ -74,6 +74,7 @@ export type AgentExecutionIntent = {
     maxPriceImpactBps: number
     sourcePriceMicros: bigint
     createdAt: string
+    policyHash?: `0x${string}`
 }
 
 export type AgentWorkerDependencies = {

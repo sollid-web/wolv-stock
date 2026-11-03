@@ -1,5 +1,36 @@
 # WOLV Spot Lens: Current Architecture
 
+## Dynamic Strategy Switching
+
+WOLV has an initial dynamic-state evaluator in `lib/dynamicStrategy.ts` and an authenticated
+`POST /api/agent/dynamic` endpoint. The evaluator supports two modes:
+
+- `PEAK_DEFENSE` for verified US regular-session time, with 30-bps profile slippage and a 0.5-BNB order cap.
+- `OFF_HOURS_ALPHA` for closed-session periods, with a 100-bps hard-capped profile and monitoring-only behavior.
+
+The evaluator rejects stale, future, missing, unrealistic, or contradictory liquidity metrics. It also
+rejects peak-session volatility above 300 bps and peak-session liquidity collapse below the normal baseline.
+The current implementation never invents liquidity, gas, ATR, timestamps, oracle data, or exchange status;
+callers must supply the metrics, and execution remains `false` in the returned evidence.
+
+The `/agent` control plane displays the evaluated mode, liquidity change, profile, warnings, refusal reasons,
+and transaction receipt boundary as an execution-reasoning feed. It does not submit a transaction, set an
+on-chain mode, sign a message, broadcast a swap, or start a background worker.
+
+Live dynamic cycles can be requested with `POST /api/agent/dynamic { "source": "live" }`. The provider reads
+gas from the configured BSC RPC, total USDT-side liquidity from a configured PancakeSwap USDT pair, and
+ATR from the Binance Web3 1-hour candle endpoint. It requires a verified liquidity baseline from the most
+recent persisted cycle for that owner, or an explicit `WOLV_DYNAMIC_LIQUIDITY_BASELINE_USD` fallback. Missing
+provider configuration, stale metrics, unavailable baselines, or malformed provider data fail closed. Cycle
+evidence is owner-scoped in PostgreSQL and replayable through `GET /api/agent/dynamic`; it remains
+`executionEnabled: false`, and the current US-session approximation does not claim verified exchange-holiday
+or half-day coverage.
+
+Live runs use owner-scoped idempotency and a PostgreSQL run lifecycle. A live request creates a
+`RUNNING` run once per authenticated owner per minute, rejects duplicates, recovers stale running records,
+and transitions the run to `COMPLETED` or `FAILED`. Terminal run records are immutable. The UI exposes
+cycle and run history, while no external scheduler or automatic trade worker is started by this endpoint.
+
 ## Product Scope
 
 The main-track product is a BSC spot cross-venue monitor for tokenized equities. It compares Binance RWA issuer/reference fields with current aggregator quotes for Ondo and bStocks, then offers a user-approved spot trade. The `/agent` surface adds local strategy drafts and mock trigger evaluation; it does not run perps or autonomous execution.
@@ -52,3 +83,39 @@ The hackathon and Binance Web3 developer product have restricted-region and sanc
 ## Before Public Mainnet Use
 
 Verify the complete supported-token metadata against the official spot-only track requirement; validate aggregator router and spender destinations against current official contract data before allowlisting; decide whether to fetch fresh swap calldata immediately before signing; configure persistent edge/API rate limits and monitoring; test quote expiry, account/chain switching, approval and reverted transactions with small amounts; and run the production build and browser wallet tests on the deployment target.
+
+## Durable Autonomy Foundation
+
+PostgreSQL migration 6 adds owner-scoped schedules, execution claims, delegated-custody records,
+alerts, and verified market-calendar snapshots. `POST /api/agent/schedules` stores a bounded
+monitoring schedule against a SHA-256 policy snapshot hash. `POST /api/agent/worker` is an
+authenticated external worker entry point that atomically claims due schedules and creates replayable
+execution claims. The worker is monitoring-only and sets no transaction-simulation or submission state.
+
+US exchange-calendar evidence is provider-backed: `WOLV_US_MARKET_CALENDAR_URL` must be an HTTPS
+endpoint returning exact dates, session state, UTC session minutes, and fresh provider timestamps.
+Missing, malformed, stale, or unavailable calendar evidence fails closed; no holiday data is invented.
+
+Policy execution intents use canonical, versioned JSON, owner and smart-account address validation,
+a testnet-only chain restriction, 0.5-BNB and 100-bps caps, a policy hash, nonce, and short expiry.
+Owner signatures are recoverable and verified before use. This is authorization framing only; it does
+not provision credentials, grant a wallet session, submit a UserOperation, or bypass transaction simulation.
+
+`POST /api/agent/intents` binds an authenticated wallet session to a signed, canonical testnet intent
+and atomically consumes its nonce in PostgreSQL migration 7. A repeated owner/nonce pair is rejected with
+`INTENT_REPLAY_REJECTED`. This route only records replay-bound authorization; it does not submit a
+UserOperation, sign a transaction, or enable execution.
+
+## On-Chain Policy Enforcement
+
+The ERC-7579 `TradingAgentPolicyValidator` is the final execution boundary. It supports
+guardian-configured, account-scoped policy records containing a policy hash, maximum trade value, and
+expiration. Configured accounts must match the policy hash, respect the policy cap and expiry, and still
+pass router, token, rolling-volume, pause, and revocation checks. Clearing a policy restores the existing
+global 0.5-BNB fallback for backward-compatible accounts; newly enabled accounts should configure an
+explicit policy hash and cap.
+
+The server reads the account policy state before UserOperation dispatch and rejects missing or mismatched
+intent policy hashes, expired policies, and account-specific trade caps. Slippage, market freshness,
+calendars, and strategy evidence remain off-chain. Route, token, trade cap, custody, pause, revoke, and
+rolling-volume constraints remain on-chain.

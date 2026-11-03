@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { AgentExecutor, createWorkerFailureReporter } from "../services/agentExecutor.ts";
+import {
+  AgentExecutor,
+  createWorkerFailureReporter,
+  resolveAgentExecutionNetwork,
+} from "../services/agentExecutor.ts";
 import { AgentWorker } from "../services/agentWorker.ts";
 import { parseEther } from "viem";
 
@@ -159,6 +163,22 @@ test("blocks mainnet submission even when live submission is enabled", async () 
   );
   assert.equal(accountCalls, 0);
   assert.equal(harness.sentCalls.length, 0);
+});
+
+test("network resolver requires separate acknowledgement for mainnet", () => {
+  assert.deepEqual(resolveAgentExecutionNetwork(97, {
+    ENABLE_LIVE_USEROP_SUBMISSION: "true",
+  }), { allowed: true, chainId: 97 });
+  assert.equal(resolveAgentExecutionNetwork(56, {
+    ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    ENABLE_MAINNET_AGENT_TRADING: "false",
+  }).allowed, false);
+  assert.deepEqual(resolveAgentExecutionNetwork(56, {
+    ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    ENABLE_MAINNET_AGENT_TRADING: "true",
+    MAINNET_AGENT_TRADING_ACK: "I_ACCEPT_AUTONOMOUS_MAINNET_RISK",
+  }), { allowed: true, chainId: 56 });
+  assert.equal(resolveAgentExecutionNetwork(1, {}).allowed, false);
 });
 
 test("submits a signed UserOperation and returns final receipt and gas accounting", async () => {
@@ -331,4 +351,61 @@ test("worker failure reporter trips the worker panic stop on repeated dispatch f
   assert.equal(events.at(-1).reasonCode, "WORKER_PANIC_STOP");
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0].priority, "high");
+});
+
+test("onchain account policy rejects missing, expired, capped, and mismatched intent bindings", async () => {
+  const policyHash = `0x${"a".repeat(64)}`;
+  const expiredHarness = createHarness({
+    readValidator: async () => ({
+      paused: false,
+      installed: true,
+      revoked: false,
+      rollingVolume: parseEther("0.2"),
+      policyConfigured: true,
+      policyHash,
+      maxTradeValue: parseEther("0.5"),
+      expiresAt: 1n,
+    }),
+  });
+  await assert.rejects(
+    expiredHarness.executor.executeUserOperation({ ...expiredHarness.intent, policyHash }),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
+
+  const mismatchHarness = createHarness({
+    readValidator: async () => ({
+      paused: false,
+      installed: true,
+      revoked: false,
+      rollingVolume: parseEther("0.2"),
+      policyConfigured: true,
+      policyHash,
+      maxTradeValue: parseEther("0.5"),
+      expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+    }),
+  });
+  await assert.rejects(
+    mismatchHarness.executor.executeUserOperation({
+      ...mismatchHarness.intent,
+      policyHash: `0x${"b".repeat(64)}`,
+    }),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
+
+  const capHarness = createHarness({
+    readValidator: async () => ({
+      paused: false,
+      installed: true,
+      revoked: false,
+      rollingVolume: parseEther("0.2"),
+      policyConfigured: true,
+      policyHash,
+      maxTradeValue: parseEther("0.05"),
+      expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+    }),
+  });
+  await assert.rejects(
+    capHarness.executor.executeUserOperation({ ...capHarness.intent, policyHash }),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
 });

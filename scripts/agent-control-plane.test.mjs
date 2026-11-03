@@ -6,10 +6,12 @@ import { POST as postLegacyApproval } from "../app/api/agent/approve/route.ts";
 import { GET as getLegacyExecutionStatus } from "../app/api/agent/executions/route.ts";
 import {
   canTransitionAgentState,
+  createStrictAgentPolicyTemplate,
   evaluateRiskPolicy,
   validateRiskPolicy,
   validateMarketObservation,
 } from "../lib/agentControlPlane.ts";
+import { evaluateAutonomousTradingGate } from "../services/autonomousTradingGate.ts";
 import { validateAnalysis, ConfiguredAgentAnalysisProvider } from "../services/agentAnalysis.ts";
 import {
   handleAgentControlGet,
@@ -77,6 +79,78 @@ test("risk policy rejects threshold, freshness, permission, and evidence failure
     "Quote is missing, expired, or outside the permitted freshness window.",
     "Available balance is unavailable or below the policy minimum.",
   ]);
+});
+
+test("strict policy template is conservative, time-bounded, and execution-independent", () => {
+  const now = 1_000;
+  const policy = createStrictAgentPolicyTemplate({
+    approvedAssets: [ADDRESSES[0]],
+    now,
+  });
+  assert.deepEqual(validateRiskPolicy(policy, now), []);
+  assert.deepEqual(policy.approvedDirections, ["BUY"]);
+  assert.equal(policy.maxOrderValue, "0.5");
+  assert.equal(policy.maxDailyExposure, "1");
+  assert.equal(policy.maxProposalsPerHour, 1);
+  assert.equal(policy.maxSlippageBps, 100);
+  assert.equal(policy.maxReferenceDeviationPercent, 1);
+  assert.equal(policy.quoteTtlMs, 30_000);
+  assert.equal(policy.permissionExpiresAt, now + 15 * 60_000);
+  assert.equal(policy.emergencyStop, false);
+  assert.throws(
+    () => createStrictAgentPolicyTemplate({ approvedAssets: [], now }),
+    /Strict policy approval/,
+  );
+});
+
+test("autonomous trading gate fails closed before policy or network submission", () => {
+  const now = 1_700_000_000_000;
+  const policy = createStrictAgentPolicyTemplate({
+    approvedAssets: [ADDRESSES[0]],
+    now,
+  });
+  const intent = {
+    ownerAddress: ADDRESSES[0],
+    assetAddress: ADDRESSES[0],
+    direction: "BUY",
+    notional: "0.1",
+    dailyExposure: "0.1",
+    recentProposalCount: 0,
+    slippageBps: 100,
+    referenceDeviationPercent: 0.5,
+    dataFresh: true,
+    quoteExpiresAt: now + 30_000,
+    availableBalance: "1",
+    session: "US_REGULAR",
+    chainId: 97,
+  };
+  assert.deepEqual(
+    evaluateAutonomousTradingGate(policy, intent, now, {
+      WOLV_AUTONOMOUS_TRADING_ENABLED: "false",
+      ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    }),
+    { allowed: false, reasons: ["Autonomous trading is disabled."] },
+  );
+  assert.deepEqual(
+    evaluateAutonomousTradingGate(policy, intent, now, {
+      WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
+      ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    }),
+    { allowed: true, policyVersion: policy.version },
+  );
+  assert.equal(
+    evaluateAutonomousTradingGate(
+      policy,
+      { ...intent, chainId: 56 },
+      now,
+      {
+        WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
+        ENABLE_LIVE_USEROP_SUBMISSION: "true",
+        ENABLE_MAINNET_AGENT_TRADING: "false",
+      },
+    ).allowed,
+    false,
+  );
 });
 
 test("risk policy uses exact decimal arithmetic at daily exposure boundaries", () => {

@@ -381,6 +381,165 @@ const MIGRATIONS = [{
     `CREATE INDEX wolv_agent_session_plans_owner_status
       ON wolv_agent_session_plans (owner_address, status, expires_at DESC)`,
   ],
+}, {
+  version: 4,
+  statements: [
+    `CREATE TABLE wolv_dynamic_strategy_cycles (
+      cycle_id uuid PRIMARY KEY,
+      owner_address text NOT NULL,
+      chain_id integer NOT NULL CHECK (chain_id IN (56,97)),
+      observed_at timestamptz NOT NULL,
+      metrics jsonb NOT NULL,
+      provenance jsonb NOT NULL,
+      mode text NOT NULL CHECK (mode IN ('PEAK_DEFENSE','OFF_HOURS_ALPHA')),
+      market_session text NOT NULL CHECK (market_session IN ('US_REGULAR','US_CLOSED')),
+      action text NOT NULL CHECK (action IN ('MONITOR','PROPOSE')),
+      accepted boolean NOT NULL,
+      reasons jsonb NOT NULL,
+      warnings jsonb NOT NULL,
+      liquidity_change_percent numeric NOT NULL,
+      execution_enabled boolean NOT NULL DEFAULT false CHECK (execution_enabled = false),
+      idempotency_key char(64) NOT NULL,
+      evaluated_at timestamptz NOT NULL,
+      UNIQUE (owner_address, idempotency_key)
+    )`,
+    `CREATE INDEX wolv_dynamic_strategy_cycles_owner_time
+      ON wolv_dynamic_strategy_cycles (owner_address, observed_at DESC, cycle_id DESC)`,
+    `CREATE INDEX wolv_dynamic_strategy_cycles_owner_chain
+      ON wolv_dynamic_strategy_cycles (owner_address, chain_id, evaluated_at DESC)`,
+  ],
+}, {
+  version: 5,
+  statements: [
+    `CREATE TABLE wolv_dynamic_strategy_runs (
+      run_id uuid PRIMARY KEY,
+      owner_address text NOT NULL,
+      chain_id integer NOT NULL CHECK (chain_id IN (56,97)),
+      run_key char(64) NOT NULL,
+      status text NOT NULL CHECK (status IN ('RUNNING','COMPLETED','FAILED')),
+      started_at timestamptz NOT NULL,
+      completed_at timestamptz,
+      last_error text,
+      UNIQUE (owner_address, chain_id, run_key)
+    )`,
+    `CREATE INDEX wolv_dynamic_strategy_runs_owner_status_time
+      ON wolv_dynamic_strategy_runs (owner_address, chain_id, status, started_at DESC)`,
+    `CREATE OR REPLACE FUNCTION wolv_dynamic_strategy_runs_no_terminal_update()
+      RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD.status <> 'RUNNING' THEN
+          RAISE EXCEPTION 'terminal dynamic strategy runs are immutable';
+        END IF;
+        RETURN NEW;
+      END;
+      $$`,
+    `CREATE TRIGGER wolv_dynamic_strategy_runs_terminal_immutable
+      BEFORE UPDATE ON wolv_dynamic_strategy_runs
+      FOR EACH ROW EXECUTE FUNCTION wolv_dynamic_strategy_runs_no_terminal_update()`,
+  ],
+}, {
+  version: 6,
+  statements: [
+    `CREATE TABLE wolv_agent_schedules (
+      schedule_id uuid PRIMARY KEY,
+      owner_address text NOT NULL,
+      name text NOT NULL CHECK (length(name) BETWEEN 1 AND 64),
+      enabled boolean NOT NULL DEFAULT true,
+      interval_seconds integer NOT NULL CHECK (interval_seconds BETWEEN 60 AND 86400),
+      policy_version text NOT NULL,
+      policy_hash char(64) NOT NULL,
+      next_run_at timestamptz NOT NULL,
+      last_run_at timestamptz,
+      created_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL,
+      UNIQUE (owner_address, name)
+    )`,
+    `CREATE INDEX wolv_agent_schedules_due
+      ON wolv_agent_schedules (enabled, next_run_at, owner_address)`,
+    `CREATE TABLE wolv_agent_execution_claims (
+      claim_id uuid PRIMARY KEY,
+      schedule_id uuid NOT NULL REFERENCES wolv_agent_schedules(schedule_id),
+      owner_address text NOT NULL,
+      run_key char(64) NOT NULL,
+      status text NOT NULL CHECK (status IN ('CLAIMED','SIMULATED','SUBMITTED','CONFIRMED','FAILED','STOPPED')),
+      policy_hash char(64) NOT NULL,
+      intent_hash char(64),
+      simulated_at timestamptz,
+      submitted_at timestamptz,
+      receipt_hash text,
+      confirmed_at timestamptz,
+      failed_at timestamptz,
+      failure_code text,
+      failure_detail text,
+      created_at timestamptz NOT NULL,
+      updated_at timestamptz NOT NULL,
+      UNIQUE (owner_address, run_key),
+      CHECK (policy_hash ~ '^[a-f0-9]{64}$')
+    )`,
+    `CREATE INDEX wolv_agent_execution_claims_owner_status
+      ON wolv_agent_execution_claims (owner_address, status, created_at DESC)`,
+    `CREATE TABLE wolv_agent_delegated_custody (
+      custody_id uuid PRIMARY KEY,
+      owner_address text NOT NULL,
+      provider text NOT NULL CHECK (provider = 'zerodev'),
+      chain_id integer NOT NULL CHECK (chain_id = 97),
+      smart_account_address text NOT NULL,
+      owner_validator_address text NOT NULL,
+      session_key_address text NOT NULL,
+      status text NOT NULL CHECK (status IN ('PENDING','ACTIVE','REVOKED','EXPIRED')),
+      policy_hash char(64) NOT NULL,
+      grant_signature text,
+      granted_at timestamptz,
+      expires_at timestamptz NOT NULL,
+      revoked_at timestamptz,
+      created_at timestamptz NOT NULL,
+      UNIQUE (owner_address, smart_account_address)
+    )`,
+    `CREATE INDEX wolv_agent_delegated_custody_owner_status
+      ON wolv_agent_delegated_custody (owner_address, status, expires_at DESC)`,
+    `CREATE TABLE wolv_agent_alerts (
+      alert_id uuid PRIMARY KEY,
+      owner_address text NOT NULL,
+      claim_id uuid REFERENCES wolv_agent_execution_claims(claim_id),
+      severity text NOT NULL CHECK (severity IN ('INFO','WARNING','CRITICAL')),
+      kind text NOT NULL,
+      message text NOT NULL,
+      delivered boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL,
+      delivered_at timestamptz
+    )`,
+    `CREATE INDEX wolv_agent_alerts_owner_pending
+      ON wolv_agent_alerts (owner_address, delivered, created_at DESC)`,
+    `CREATE TABLE wolv_agent_market_calendar (
+      calendar_id uuid PRIMARY KEY,
+      source_name text NOT NULL,
+      source_url text NOT NULL,
+      calendar_date date NOT NULL,
+      market_session text NOT NULL CHECK (market_session IN ('OPEN','CLOSED','EARLY_CLOSE')),
+      session_start_ms integer,
+      session_end_ms integer,
+      provider_timestamp timestamptz NOT NULL,
+      provenance jsonb NOT NULL,
+      UNIQUE (source_name, calendar_date)
+    )`,
+    `CREATE INDEX wolv_agent_market_calendar_date
+      ON wolv_agent_market_calendar (calendar_date DESC, source_name)`,
+  ],
+}, {
+  version: 7,
+  statements: [
+    `CREATE TABLE wolv_agent_intent_nonces (
+      owner_address text NOT NULL,
+      smart_account_address text NOT NULL,
+      nonce text NOT NULL CHECK (length(nonce) BETWEEN 16 AND 128),
+      intent_hash char(64) NOT NULL CHECK (intent_hash ~ '^[a-f0-9]{64}$'),
+      expires_at timestamptz NOT NULL,
+      consumed_at timestamptz NOT NULL,
+      PRIMARY KEY (owner_address, nonce)
+    )`,
+    `CREATE INDEX wolv_agent_intent_nonces_expiry
+      ON wolv_agent_intent_nonces (expires_at DESC)`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -527,10 +686,77 @@ export interface AgentMemoryStorePort {
   listOpportunities(input: { ownerAddress: string; limit?: number; status?: string; assetId?: string }): Promise<Array<Record<string, unknown>>>;
   listAnalyses(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   getStrategyEvaluations(input: { ownerAddress: string; strategyId?: string; limit?: number }): Promise<Array<Record<string, unknown>>>;
+  recordDynamicStrategyCycle(input: {
+    ownerAddress: string;
+    chainId: number;
+    observedAt: number;
+    metrics: Record<string, unknown>;
+    provenance: Record<string, unknown>;
+    mode: string;
+    marketSession: string;
+    action: string;
+    accepted: boolean;
+    reasons: string[];
+    warnings: string[];
+    liquidityChangePercent: number;
+    evaluatedAt: number;
+  }): Promise<{ cycleId: string; created: boolean }>;
+  listDynamicStrategyCycles(ownerAddress: string, limit?: number, chainId?: number): Promise<Array<Record<string, unknown>>>;
+  claimDynamicStrategyRun(ownerAddress: string, chainId: number, runKey: string, startedAt: number): Promise<{ runId: string | null }>;
+  completeDynamicStrategyRun(runId: string, ownerAddress: string, status: "COMPLETED" | "FAILED", completedAt: number, error?: string): Promise<void>;
+  recoverStaleDynamicStrategyRuns(ownerAddress: string, chainId: number, staleBefore: number, failedAt: number): Promise<number>;
+  listDynamicStrategyRuns(ownerAddress: string, chainId?: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   updateOpportunityOutcome(opportunityId: string, ownerAddress: string, outcome: Record<string, unknown>): Promise<void>;
   getDailyExposure(ownerAddress: string, since: number): Promise<string>;
   getRecentProposalCount(ownerAddress: string, since: number): Promise<number>;
   getActivePolicy(ownerAddress: string, name: string): Promise<RiskPolicy | null>;
+  saveSchedule(input: {
+    ownerAddress: string;
+    scheduleId: string;
+    name: string;
+    intervalSeconds: number;
+    policyVersion: string;
+    policyHash: string;
+    nextRunAt: number;
+    enabled?: boolean;
+    createdAt?: number;
+    updatedAt?: number;
+  }): Promise<{ scheduleId: string }>;
+  listSchedules(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
+  setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
+  claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
+  claimExecution(input: {
+    claimId: string;
+    scheduleId: string;
+    ownerAddress: string;
+    runKey: string;
+    policyHash: string;
+    createdAt: number;
+  }): Promise<{ claimId: string | null }>;
+  updateExecutionClaim(claimId: string, ownerAddress: string, update: {
+    status: "CLAIMED" | "SIMULATED" | "SUBMITTED" | "CONFIRMED" | "FAILED" | "STOPPED";
+    intentHash?: string;
+    receiptHash?: string;
+    failureCode?: string;
+    failureDetail?: string;
+    at: number;
+  }): Promise<void>;
+  consumeIntentNonce(input: {
+    ownerAddress: string;
+    smartAccountAddress: string;
+    nonce: string;
+    intentHash: string;
+    expiresAt: number;
+    consumedAt: number;
+  }): Promise<{ consumed: boolean }>;
+  recordAlert(input: {
+    ownerAddress: string;
+    claimId?: string;
+    severity: "INFO" | "WARNING" | "CRITICAL";
+    kind: string;
+    message: string;
+    createdAt: number;
+  }): Promise<string>;
 }
 
 export class AgentMemoryStoreError extends Error {
@@ -1807,6 +2033,147 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     return rows.map(normalizeRow);
   }
 
+  async recordDynamicStrategyCycle(
+    input: Parameters<AgentMemoryStorePort["recordDynamicStrategyCycle"]>[0],
+  ): Promise<{ cycleId: string; created: boolean }> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    if (!Number.isSafeInteger(input.chainId) || ![56, 97].includes(input.chainId)) {
+      throw new AgentMemoryStoreError("NOT_CONFIGURED");
+    }
+    const cycleId = randomUUID();
+    const idempotencyKey = createHash("sha256").update(hashJson({
+      ownerAddress: owner,
+      chainId: input.chainId,
+      observedAt: input.observedAt,
+      metrics: input.metrics,
+      evaluatedAt: input.evaluatedAt,
+    })).digest("hex");
+    const rows = await this.sql`
+      INSERT INTO wolv_dynamic_strategy_cycles (
+        cycle_id, owner_address, chain_id, observed_at, metrics, provenance, mode, market_session,
+        action, accepted, reasons, warnings, liquidity_change_percent, execution_enabled,
+        idempotency_key, evaluated_at
+      ) VALUES (
+        ${cycleId}, ${owner}, ${input.chainId}, to_timestamp(${input.observedAt} / 1000.0),
+        ${JSON.stringify(input.metrics)}::jsonb, ${JSON.stringify(input.provenance)}::jsonb,
+        ${input.mode}, ${input.marketSession}, ${input.action}, ${input.accepted},
+        ${JSON.stringify(input.reasons)}::jsonb, ${JSON.stringify(input.warnings)}::jsonb,
+        ${input.liquidityChangePercent}, false, ${idempotencyKey}, to_timestamp(${input.evaluatedAt} / 1000.0)
+      )
+      ON CONFLICT (owner_address, idempotency_key) DO NOTHING
+      RETURNING cycle_id
+    `;
+    if (rows[0]) return { cycleId: String(rows[0].cycle_id), created: true };
+    const existing = await this.sql`
+      SELECT cycle_id FROM wolv_dynamic_strategy_cycles
+      WHERE owner_address = ${owner} AND idempotency_key = ${idempotencyKey}
+    `;
+    return { cycleId: existing[0] ? String(existing[0].cycle_id) : cycleId, created: false };
+  }
+
+  async listDynamicStrategyCycles(
+    ownerAddress: string,
+    limit?: number,
+    chainId?: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const rows = await this.sql`
+      SELECT * FROM wolv_dynamic_strategy_cycles
+      WHERE owner_address = ${owner}
+        AND (${chainId ?? null}::integer IS NULL OR chain_id = ${chainId ?? null})
+      ORDER BY evaluated_at DESC, cycle_id DESC
+      LIMIT ${boundedLimit(limit)}
+    `;
+    return rows.map(normalizeRow);
+  }
+
+  async claimDynamicStrategyRun(
+    ownerAddress: string,
+    chainId: number,
+    runKey: string,
+    startedAt: number,
+  ): Promise<{ runId: string | null }> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    if (!Number.isSafeInteger(chainId) || ![56, 97].includes(chainId) ||
+      !/^[a-f0-9]{64}$/.test(runKey)) {
+      throw new AgentMemoryStoreError("NOT_CONFIGURED");
+    }
+    const runId = randomUUID();
+    const rows = await this.sql`
+      INSERT INTO wolv_dynamic_strategy_runs (
+        run_id, owner_address, chain_id, run_key, status, started_at
+      ) VALUES (
+        ${runId}, ${owner}, ${chainId}, ${runKey}, 'RUNNING',
+        to_timestamp(${startedAt} / 1000.0)
+      )
+      ON CONFLICT (owner_address, chain_id, run_key) DO NOTHING
+      RETURNING run_id
+    `;
+    return { runId: rows[0] ? String(rows[0].run_id) : null };
+  }
+
+  async completeDynamicStrategyRun(
+    runId: string,
+    ownerAddress: string,
+    status: "COMPLETED" | "FAILED",
+    completedAt: number,
+    error?: string,
+  ): Promise<void> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    await this.sql`
+      UPDATE wolv_dynamic_strategy_runs
+      SET status = ${status},
+          completed_at = to_timestamp(${completedAt} / 1000.0),
+          last_error = ${error?.slice(0, 500) ?? null}
+      WHERE run_id = ${runId}::uuid
+        AND owner_address = ${owner}
+        AND status = 'RUNNING'
+    `;
+  }
+
+  async recoverStaleDynamicStrategyRuns(
+    ownerAddress: string,
+    chainId: number,
+    staleBefore: number,
+    failedAt: number,
+  ): Promise<number> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const rows = await this.sql`
+      UPDATE wolv_dynamic_strategy_runs
+      SET status = 'FAILED',
+          completed_at = to_timestamp(${failedAt} / 1000.0),
+          last_error = 'Recovered stale dynamic strategy run.'
+      WHERE owner_address = ${owner}
+        AND chain_id = ${chainId}
+        AND status = 'RUNNING'
+        AND started_at < to_timestamp(${staleBefore} / 1000.0)
+      RETURNING run_id
+    `;
+    return rows.length;
+  }
+
+  async listDynamicStrategyRuns(
+    ownerAddress: string,
+    chainId?: number,
+    limit?: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const rows = await this.sql`
+      SELECT * FROM wolv_dynamic_strategy_runs
+      WHERE owner_address = ${owner}
+        AND (${chainId ?? null}::integer IS NULL OR chain_id = ${chainId ?? null})
+      ORDER BY started_at DESC, run_id DESC
+      LIMIT ${boundedLimit(limit)}
+    `;
+    return rows.map(normalizeRow);
+  }
+
   async updateOpportunityOutcome(opportunityId: string, ownerAddress: string, outcome: Record<string, unknown>): Promise<void> {
     await this.ready;
     const owner = requireOwnerAddress(ownerAddress);
@@ -1866,6 +2233,158 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       ORDER BY created_at DESC LIMIT 1
     `;
     return rows[0] ? parseJson<RiskPolicy>(rows[0].policy_document) : null;
+  }
+
+  async saveSchedule(input: Parameters<AgentMemoryStorePort["saveSchedule"]>[0]): Promise<{ scheduleId: string }> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    const createdAt = input.createdAt ?? input.nextRunAt;
+    const updatedAt = input.updatedAt ?? createdAt;
+    if (!/^[a-zA-Z0-9._-]{1,64}$/.test(input.name) || !Number.isSafeInteger(input.intervalSeconds) ||
+      input.intervalSeconds < 60 || input.intervalSeconds > 86400 ||
+      !/^[a-f0-9]{64}$/.test(input.policyHash)) throw new TypeError("Schedule configuration is invalid.");
+    const rows = await this.sql`
+      INSERT INTO wolv_agent_schedules (
+        schedule_id, owner_address, name, enabled, interval_seconds, policy_version, policy_hash,
+        next_run_at, created_at, updated_at
+      ) VALUES (
+        ${input.scheduleId}, ${owner}, ${input.name}, ${input.enabled ?? true}, ${input.intervalSeconds},
+        ${input.policyVersion}, ${input.policyHash}, ${new Date(input.nextRunAt)},
+        ${new Date(createdAt)}, ${new Date(updatedAt)}
+      )
+      ON CONFLICT (owner_address, name) DO UPDATE SET
+        enabled = EXCLUDED.enabled,
+        interval_seconds = EXCLUDED.interval_seconds,
+        policy_version = EXCLUDED.policy_version,
+        policy_hash = EXCLUDED.policy_hash,
+        next_run_at = EXCLUDED.next_run_at,
+        updated_at = EXCLUDED.updated_at
+      RETURNING schedule_id
+    `;
+    return { scheduleId: String(rows[0].schedule_id) };
+  }
+
+  async listSchedules(ownerAddress: string, limit = 20): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const rows = await this.sql`
+      SELECT schedule_id, name, enabled, interval_seconds, policy_version, policy_hash,
+             next_run_at, last_run_at, created_at, updated_at
+      FROM wolv_agent_schedules WHERE owner_address = ${owner}
+      ORDER BY updated_at DESC LIMIT ${safeLimit}
+    `;
+    return rows.map((row) => ({
+      scheduleId: String(row.schedule_id), name: String(row.name), enabled: Boolean(row.enabled),
+      intervalSeconds: Number(row.interval_seconds), policyVersion: String(row.policy_version),
+      policyHash: String(row.policy_hash), nextRunAt: Number(row.next_run_at),
+      lastRunAt: row.last_run_at ? Number(row.last_run_at) : null,
+      createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
+    }));
+  }
+
+  async setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const result = await this.sql`
+      UPDATE wolv_agent_schedules SET enabled = ${enabled}, updated_at = ${new Date(updatedAt)}
+      WHERE owner_address = ${owner} AND schedule_id = ${scheduleId}
+    `;
+    if (result.count !== 1) throw new AgentMemoryStoreError("NOT_FOUND");
+  }
+
+  async claimDueSchedules(ownerAddress: string, now: number, limit = 20): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const rows = await this.sql`
+      UPDATE wolv_agent_schedules SET last_run_at = ${new Date(now)},
+        next_run_at = ${new Date(now)} + interval_seconds * interval '1 second',
+        updated_at = ${new Date(now)}
+      WHERE schedule_id IN (
+        SELECT schedule_id FROM wolv_agent_schedules
+        WHERE owner_address = ${owner} AND enabled = true AND next_run_at <= ${new Date(now)}
+        ORDER BY next_run_at ASC LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING schedule_id, name, interval_seconds, policy_version, policy_hash, next_run_at, last_run_at
+    `;
+    return rows.map((row) => ({
+      scheduleId: String(row.schedule_id), name: String(row.name),
+      intervalSeconds: Number(row.interval_seconds), policyVersion: String(row.policy_version),
+      policyHash: String(row.policy_hash), nextRunAt: Number(row.next_run_at),
+      lastRunAt: Number(row.last_run_at),
+    }));
+  }
+
+  async claimExecution(input: Parameters<AgentMemoryStorePort["claimExecution"]>[0]): Promise<{ claimId: string | null }> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    const rows = await this.sql`
+      INSERT INTO wolv_agent_execution_claims (
+        claim_id, schedule_id, owner_address, run_key, status, policy_hash, created_at, updated_at
+      ) VALUES (
+        ${input.claimId}, ${input.scheduleId}, ${owner}, ${input.runKey}, 'CLAIMED',
+        ${input.policyHash}, ${new Date(input.createdAt)}, ${new Date(input.createdAt)}
+      )
+      ON CONFLICT (owner_address, run_key) DO NOTHING RETURNING claim_id
+    `;
+    return { claimId: rows[0] ? String(rows[0].claim_id) : null };
+  }
+
+  async updateExecutionClaim(claimId: string, ownerAddress: string, update: Parameters<AgentMemoryStorePort["updateExecutionClaim"]>[2]): Promise<void> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const result = await this.sql`
+      UPDATE wolv_agent_execution_claims SET status = ${update.status},
+        intent_hash = COALESCE(${update.intentHash ?? null}, intent_hash),
+        receipt_hash = COALESCE(${update.receiptHash ?? null}, receipt_hash),
+        failure_code = COALESCE(${update.failureCode ?? null}, failure_code),
+        failure_detail = COALESCE(${update.failureDetail ?? null}, failure_detail),
+        simulated_at = CASE WHEN ${update.status} = 'SIMULATED' THEN ${new Date(update.at)} ELSE simulated_at END,
+        submitted_at = CASE WHEN ${update.status} = 'SUBMITTED' THEN ${new Date(update.at)} ELSE submitted_at END,
+        confirmed_at = CASE WHEN ${update.status} = 'CONFIRMED' THEN ${new Date(update.at)} ELSE confirmed_at END,
+        failed_at = CASE WHEN ${update.status} IN ('FAILED','STOPPED') THEN ${new Date(update.at)} ELSE failed_at END,
+        updated_at = ${new Date(update.at)}
+      WHERE claim_id = ${claimId} AND owner_address = ${owner}
+    `;
+    if (result.count !== 1) throw new AgentMemoryStoreError("NOT_FOUND");
+  }
+
+  async consumeIntentNonce(input: Parameters<AgentMemoryStorePort["consumeIntentNonce"]>[0]): Promise<{ consumed: boolean }> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    const smartAccount = requireOwnerAddress(input.smartAccountAddress);
+    if (!/^[a-zA-Z0-9_-]{16,128}$/.test(input.nonce) ||
+      !/^[a-f0-9]{64}$/.test(input.intentHash)) {
+      throw new TypeError("Intent nonce binding is invalid.");
+    }
+    const rows = await this.sql`
+      INSERT INTO wolv_agent_intent_nonces (
+        owner_address, smart_account_address, nonce, intent_hash, expires_at, consumed_at
+      ) VALUES (
+        ${owner}, ${smartAccount}, ${input.nonce}, ${input.intentHash},
+        ${new Date(input.expiresAt)}, ${new Date(input.consumedAt)}
+      )
+      ON CONFLICT (owner_address, nonce) DO NOTHING
+      RETURNING nonce
+    `;
+    return { consumed: rows.length === 1 };
+  }
+
+  async recordAlert(input: Parameters<AgentMemoryStorePort["recordAlert"]>[0]): Promise<string> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    const alertId = randomUUID();
+    await this.sql`
+      INSERT INTO wolv_agent_alerts (
+        alert_id, owner_address, claim_id, severity, kind, message, delivered, created_at
+      ) VALUES (
+        ${alertId}, ${owner}, ${input.claimId ?? null}, ${input.severity},
+        ${input.kind.slice(0, 64)}, ${input.message.slice(0, 2000)}, false, ${new Date(input.createdAt)}
+      )
+    `;
+    return alertId;
   }
 
   private async runMigrations(): Promise<void> {
