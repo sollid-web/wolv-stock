@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type IconName = "home" | "markets" | "trade" | "wallet" | "ai";
+type IconName = "home" | "markets" | "trade" | "wallet" | "ai" | "agent";
 
 function NavIcon({ name }: { name: IconName }) {
   const props = {
@@ -21,6 +21,7 @@ function NavIcon({ name }: { name: IconName }) {
   if (name === "markets") return <svg {...props}><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="5" rx="1.5" /><rect x="13" y="10" width="8" height="11" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" /></svg>;
   if (name === "trade") return <svg {...props}><path d="M4 7h15l-3-3" /><path d="m19 7-3 3" /><path d="M20 17H5l3 3" /><path d="m5 17 3-3" /></svg>;
   if (name === "wallet") return <svg {...props}><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 9h18" /><path d="M16 14h.01" /><path d="M7 5V3h10v2" /></svg>;
+  if (name === "agent") return <svg {...props}><path d="M12 3v3" /><rect x="5" y="7" width="14" height="13" rx="3" /><path d="M9 12h.01M15 12h.01M9 16h6" /><path d="M3 11v4M21 11v4" /></svg>;
   return <svg {...props}><path d="m12 3 1.5 6.2L20 11l-6.5 1.8L12 19l-1.5-6.2L4 11l6.5-1.8L12 3Z" /><path d="m19 4 .5 2.2L22 7l-2.5.8L19 10l-.5-2.2L16 7l2.5-.8L19 4Z" /></svg>;
 }
 
@@ -49,6 +50,9 @@ export default function GlobalNav() {
         </Link>
         <Link href="/trade" aria-current={isActive("/trade") || pathname.startsWith("/trade/") ? "page" : undefined} aria-label="Trade" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/trade") || pathname.startsWith("/trade/") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="trade" /><span>Trade</span>
+        </Link>
+        <Link href="/agent" aria-current={isActive("/agent") ? "page" : undefined} aria-label="Agent" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/agent") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
+          <NavIcon name="agent" /><span>Agent</span>
         </Link>
         <Link href="/wallet" aria-current={isActive("/wallet") ? "page" : undefined} aria-label="Portfolio and wallet" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/wallet") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="wallet" /><span>Portfolio</span>

@@ -25,7 +25,7 @@ type AgentSetupFormProps = {
 
 const DAY_SECONDS = 24 * 60 * 60
 const MAX_TRADE_VALUE = parseEther("0.5")
-const inputClass = "wolv-glass-control w-full rounded-xl px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-[#FFC700]/60"
+const inputClass = "w-full rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#d9a80a]/60 focus:bg-white/[0.06]"
 
 class AgentPolicyValidationError extends Error {}
 
@@ -140,9 +140,9 @@ export default function AgentSetupForm({
     }
 
     return (
-        <form className="wolv-glass rounded-2xl p-5 space-y-4" onSubmit={submit}>
+        <form className="space-y-4 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5" onSubmit={submit}>
             <div>
-                <h3 className="text-lg font-semibold text-slate-100">Configure Agent Policy</h3>
+                <h3 className="text-lg font-bold text-white">Configure agent policy</h3>
                 <p className="mt-1 text-sm text-slate-400">
                     The connected owner wallet authorizes hook installation and policy configuration as separate Kernel UserOperations.
                 </p>
@@ -218,7 +218,7 @@ export default function AgentSetupForm({
             {policyHash && <p className="break-all text-xs text-slate-400">Policy hash: {policyHash}</p>}
 
             <button
-                className="rounded-xl bg-[#FFC700] px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl bg-[#d9a80a] px-4 py-3 text-sm font-black text-[#101010] transition hover:bg-[#f2c94c] disabled:cursor-not-allowed disabled:opacity-50"
                 type="submit"
                 disabled={!canSubmit || busy}
             >

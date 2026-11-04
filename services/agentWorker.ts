@@ -22,6 +22,7 @@ export type MarketSnapshot = {
     priceMicros: bigint
     reserves: PoolReserves
     observedAt: number
+    receivedAt?: number
 }
 
 export type ValidatorSnapshot = {
@@ -429,7 +430,7 @@ export class AgentWorker {
                 slippageBps: strategy.slippageBps,
                 maxPriceImpactBps: strategy.maxPriceImpactBps,
                 sourcePriceMicros: market.priceMicros,
-                createdAt: this.timestamp(),
+                createdAt: new Date(market.receivedAt ?? market.observedAt).toISOString(),
                 policyHash: validator.policyHash
             }
             if (generation !== this.generation || this.halted) return

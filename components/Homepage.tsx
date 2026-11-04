@@ -7,8 +7,6 @@ import { quoteAgeSeconds } from "@/lib/quotes";
 import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import MarketAnalysis from "@/components/MarketAnalysis";
 import AIInsightStrip from "@/components/AIInsightStrip";
-import AgentDashboard from '@/components/AgentDashboard'; // Adjust path if it's in a subfolder
-
 import ParticleCanvas from "@/components/ParticleCanvas";
 type HomepageProps = {
   rows: OpportunityRow[];
@@ -89,6 +87,7 @@ function Navigation() {
           <Link href="/markets" className="text-xs font-semibold text-slate-400 transition hover:text-white">Markets</Link>
           <a href="#opportunities" className="text-xs font-semibold text-slate-400 transition hover:text-white">Opportunities</a>
           <Link href="/trade" className="text-xs font-semibold text-slate-400 transition hover:text-white">Trade</Link>
+          <Link href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Agent</Link>
           <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -434,10 +433,6 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
               {feedUnavailable ? "Opportunity cards will return when the validated live asset feed is available." : "No cross-listed comparisons are available in this snapshot."}
             </div>
           )}
-        </section>
-
-        <section className="scroll-mt-24">
-          <AgentDashboard />
         </section>
 
         <Intelligence row={featured} feedUnavailable={feedUnavailable} />

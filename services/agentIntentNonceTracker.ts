@@ -72,3 +72,17 @@ export async function getNextIntentNonce(smartAccount: Address): Promise<Hex> {
     }
     return createIntentNonceAllocator(key => client.incr(key))(smartAccount)
 }
+
+export async function closeIntentNonceTracker(): Promise<void> {
+    const client = redisClient
+    if (!client) return
+
+    redisClient = undefined
+    redisUrl = undefined
+    redisConnection = undefined
+    if (client.status === "ready") {
+        await client.quit()
+    } else {
+        client.disconnect()
+    }
+}

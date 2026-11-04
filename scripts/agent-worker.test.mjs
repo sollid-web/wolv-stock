@@ -88,6 +88,25 @@ test("passes preflight then publishes a bounded intent and capacity telemetry", 
   assert.equal(worker.hasPendingIntent, true);
 });
 
+test("anchors intent age to local market-data receipt time", async () => {
+  const receivedAt = Date.now() - 3_000;
+  const { worker, intents } = createHarness({
+    readMarket: async () => ({
+      priceMicros: 90_000_000n,
+      reserves: {
+        reserveIn: parseEther("1000"),
+        reserveOut: parseEther("1000000"),
+      },
+      observedAt: Date.now(),
+      receivedAt,
+    }),
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(intents.length, 1);
+  assert.equal(intents[0].createdAt, new Date(receivedAt).toISOString());
+});
+
 test("does not construct an intent when the price trigger is not met", async () => {
   const { worker, telemetry, intents } = createHarness({
     readMarket: async () => ({

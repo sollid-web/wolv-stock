@@ -45,8 +45,13 @@ function formatExpiration(timestamp: bigint): string {
     return new Date(Number(timestamp) * 1000).toLocaleString()
 }
 
-function statusClass(active: boolean): string {
-    return active ? "text-emerald-300" : "text-slate-400"
+function StatusIndicator({ label, active }: { label: string; active: boolean }) {
+    return (
+        <span className={`inline-flex items-center gap-2 text-sm font-medium ${active ? "text-emerald-300" : "text-slate-400"}`}>
+            <span className={`size-2 rounded-full ${active ? "bg-emerald-400" : "bg-slate-600"}`} aria-hidden="true" />
+            {label}
+        </span>
+    )
 }
 
 function getFriendlyError(error: unknown): string {
@@ -211,17 +216,27 @@ export default function AgentPolicyPanel() {
     return (
         <section className="mx-auto w-full max-w-6xl px-4 py-8">
             <div className="mb-5">
-                <h1 className="text-2xl font-semibold text-slate-100">On-chain Agent Policy</h1>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">WOLV · BNB Chain</p>
+                <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">Agent policy</h1>
                 <p className="mt-1 text-sm text-slate-400">
                     Policy permissions are enforced by the BNB Chain smart account hook. Every setup or revocation step requires owner authorization.
                 </p>
             </div>
 
-            <div className="wolv-glass mb-5 rounded-2xl p-5">
-                <div className="grid gap-3 sm:grid-cols-3">
-                    <p className={statusClass(policyActive)}>Policy Active: {policyActive ? "Yes" : "No"}</p>
-                    <p className={statusClass(Boolean(currentSnapshot?.installed))}>Hook Installed: {currentSnapshot ? (currentSnapshot.installed ? "Yes" : "No") : "Checking"}</p>
-                    <p className={statusClass(readyForExecution)}>Ready for Execution: {readyForExecution ? "Yes" : "No"}</p>
+            <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
+                <div className="flex flex-wrap gap-x-6 gap-y-3">
+                    <StatusIndicator
+                        label={policyActive ? "Policy active" : "Policy inactive"}
+                        active={policyActive}
+                    />
+                    <StatusIndicator
+                        label={currentSnapshot?.installed ? "Hook installed" : "Hook not installed"}
+                        active={Boolean(currentSnapshot?.installed)}
+                    />
+                    <StatusIndicator
+                        label={readyForExecution ? "Ready for execution" : "Execution unavailable"}
+                        active={readyForExecution}
+                    />
                 </div>
                 {currentSnapshot?.paused && <p className="mt-3 text-sm text-amber-300">The validator guardian has paused execution.</p>}
                 {currentSnapshot?.revoked && (
@@ -235,7 +250,7 @@ export default function AgentPolicyPanel() {
             {!isConnected && <p className="mb-5 text-sm text-slate-400">Connect your owner wallet to load or configure its on-chain policy.</p>}
             {isConnected && !correctChain && (
                 <p className="mb-5 text-sm text-amber-300">
-                    Switch your wallet to {configuredChainId === 97 ? "BNB Smart Chain Testnet" : "BNB Smart Chain"} to continue.
+                    Switch your wallet to BNB Smart Chain mainnet to continue.
                 </p>
             )}
             {!chainConfigured && <p className="mb-5 text-sm text-rose-300">NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet).</p>}
@@ -249,27 +264,27 @@ export default function AgentPolicyPanel() {
             )}
 
             {currentSnapshot?.configured && (
-                <div className="wolv-glass mb-5 rounded-2xl p-5">
-                    <h2 className="mb-3 text-lg font-semibold text-slate-100">Current Policy</h2>
+                <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
+                    <h2 className="mb-4 text-lg font-bold text-white">Current policy</h2>
                     <dl className="grid gap-3 text-sm sm:grid-cols-2">
                         <div><dt className="text-slate-500">Target Token</dt><dd className="break-all text-slate-200">{currentSnapshot.targetToken}</dd></div>
                         <div><dt className="text-slate-500">Maximum Trade Value</dt><dd className="text-slate-200">{formatEther(currentSnapshot.maxTradeValue)} BNB</dd></div>
                         <div><dt className="text-slate-500">Expiration</dt><dd className="text-slate-200">{formatExpiration(currentSnapshot.expiresAt)}</dd></div>
                         <div><dt className="text-slate-500">Intent Signer</dt><dd className="break-all text-slate-200">{currentSnapshot.intentSigner}</dd></div>
                     </dl>
-                </div>
-            )}
-
-            {currentSnapshot?.installed && (
-                <div className="mb-5">
-                    <button
-                        className="rounded-xl border border-rose-400/40 px-4 py-2.5 text-sm font-semibold text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
-                        type="button"
-                        disabled={!walletReady || !activeKernelClient || busy || currentSnapshot.revoked}
-                        onClick={() => void revokeAgent()}
-                    >
-                        {busy ? "Revoking..." : currentSnapshot.revoked ? "Agent Revoked" : "Revoke Agent"}
-                    </button>
+                    {currentSnapshot.installed && (
+                        <div className="mt-5 border-t border-slate-800 pt-4">
+                            <button
+                                className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm font-bold text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                type="button"
+                                disabled={!walletReady || !activeKernelClient || busy || currentSnapshot.revoked}
+                                onClick={() => void revokeAgent()}
+                            >
+                                {busy ? "Revoking..." : currentSnapshot.revoked ? "Agent Revoked" : "Emergency Revoke"}
+                            </button>
+                            <p className="mt-2 text-xs text-slate-500">Immediately disables agent execution for this smart account.</p>
+                        </div>
+                    )}
                 </div>
             )}
 

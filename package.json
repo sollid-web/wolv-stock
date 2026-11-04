@@ -6,6 +6,7 @@
     "dev": "next dev --webpack",
     "build": "next build  --webpack",
     "start": "next start",
+    "agent:worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types worker/agentWorker.ts",
     "lint": "eslint",
     "deploy:testnet-policy": "node scripts/deploy-policy-validator.mjs",
     "configure:testnet-policy": "node --experimental-strip-types scripts/configure-policy-account.mjs",
@@ -35,7 +36,7 @@
     "postgres": "^3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "viem": "^2.21.0",
+    "viem": "^2.56.8",
     "wagmi": "^2.14.0"
   },
   "devDependencies": {

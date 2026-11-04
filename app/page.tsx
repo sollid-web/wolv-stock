@@ -20,6 +20,7 @@ function HomepageLoading() {
           <div className="hidden items-center gap-7 md:flex">
             <Link href="/markets" className="text-xs font-semibold text-slate-400">Markets</Link>
             <Link href="/trade" className="text-xs font-semibold text-slate-400">Trade</Link>
+            <Link href="/agent" className="text-xs font-semibold text-slate-400">Agent</Link>
             <Link href="/wallet" className="text-xs font-semibold text-slate-400">Portfolio</Link>
           </div>
           <Link href="/wallet" className="wolv-connect-button rounded-lg px-3 py-2 text-[11px] font-black sm:px-4">Connect wallet</Link>
