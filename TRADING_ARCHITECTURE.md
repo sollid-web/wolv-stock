@@ -109,28 +109,70 @@ UserOperation, sign a transaction, or enable execution.
 ## On-Chain Policy Enforcement
 
 The ERC-7579 `TradingAgentPolicyValidator` is the final execution boundary. It supports
-guardian-configured, account-scoped policy records containing a policy hash, delegated intent signer,
+smart-account-configured, account-scoped policy records containing a policy hash, delegated intent signer,
 maximum trade value, and expiration. No trade is accepted until an explicit policy is configured.
 Clearing a policy therefore disables execution for that account.
 
 Each BUY call carries an ABI-encoded EIP-712 authorization envelope appended after the standard
 PancakeSwap `swapExactETHForTokens` arguments. The delegated signer is recovered and checked against
-the signer configured for that account. The signature binds the smart account, policy hash, target token,
-input value, minimum output, slippage and price-impact limits, expiration, and a unique bytes32 nonce.
-The hook checks the policy hash, expiry, trade cap, signature and nonce on-chain, consumes the nonce,
-then applies router, route, recipient, rolling-volume, pause, and revocation checks. Replays and edits to
-the signed swap parameters are rejected by the hook. The router's ABI accepts the trailing envelope;
-this must remain covered by fork/integration tests for each approved router.
+the signer configured for that account. The signature binds the smart account, policy hash, router,
+input and output tokens, recipient, input value, minimum output, 15-second router deadline, slippage
+and price-impact limits, intent expiry, and a unique bytes32 nonce. The hook decodes those values from
+the actual Kernel execution payload and compares them with the signature; it never trusts a separate
+caller-declared spend amount. It also checks the fixed router and WBNB-to-approved-token route, the
+account recipient, per-trade cap, rolling seven-day volume, pause, and revocation before execution.
+The router's ABI accepts the trailing envelope; this must remain covered by fork/integration tests for
+each approved router.
+
+The BSC mainnet router fork regressions live in `test/TradingAgentPolicyValidatorFork.t.sol`; run them
+with `BSC_MAINNET_RPC_URL=<rpc-url> forge test --match-contract TradingAgentPolicyValidatorForkTest`.
+They exercise the current PancakeSwap V2 router and require Foundry plus a reachable BSC mainnet RPC.
+
+The account integration uses ZeroDev Kernel v3.1 with EntryPoint 0.7. The validator is registered as
+a `KernelValidatorHook`; Kernel invokes its `preCheck` and `postCheck` around account execution.
+Policy configuration, clearing, and account revocation are callable only by the smart account itself.
+The hook narrowly permits those exact calls through its pre-execution check so the account owner can
+submit them with the Kernel owner validator; session-key permissions remain restricted to the approved
+router BUY call. The guardian can only control the global pause switch.
+
+Market quote age is capped at 20 seconds off-chain. The executor checks the intent age again immediately
+before UserOperation submission and aborts expired work. The on-chain swap deadline is at most 15 seconds
+from intent construction and is signed and validated against the router calldata. Market freshness,
+calendars, and strategy evidence remain off-chain; they are not represented as on-chain proofs.
 
 The worker now requires a configured policy and signer before creating an execution intent. The
-executor re-reads on-chain policy, requires the delegated signer to match, signs the exact transaction
-parameters with EIP-712, and appends the envelope before UserOperation submission. Submission remains
-disabled by default and the existing separate mainnet authorization gates remain in force. Market
-freshness, calendars, and strategy evidence remain off-chain; they are not represented as on-chain
-proofs.
+executor re-reads on-chain policy, requires the delegated signer to match, atomically allocates a
+per-account nonce with Redis `INCR`, signs the exact transaction parameters with EIP-712, and appends
+the envelope before UserOperation submission. The worker does not choose nonces. Redis failure blocks
+signing and submission; counters are never decremented, reset, or expired, so failed attempts burn
+their nonce. Production Redis must have durable persistence and must not evict nonce keys. Submission
+remains disabled by default and the existing separate mainnet authorization gates remain in force.
+
+The browser helper `configureAgentPolicy` in `lib/setupAgentPolicy.ts` accepts a connected,
+ZeroDev Kernel account client configured with the owner's sudo validator and a matching public client. It installs the hook with
+`installModule(4, validator, 0x00 || abi.encode(targetToken))` when needed, waits for that
+UserOperation, verifies the installation and token, then sends a separate owner-signed
+`setAccountPolicy` UserOperation. These must be separate calls: the hook currently accepts only
+Kernel's single-call execution mode and would reject a batched install-plus-policy operation. The
+helper computes the fixed-width `abi.encodePacked` policy hash and confirms both receipts. This is a
+callable frontend integration helper; no policy transaction has been submitted from this repository.
 
 The previously deployed testnet hook predates this signed-envelope enforcement and cannot be upgraded
 in place. It must not be used for agent execution. Deploy the updated implementation, configure each
-account's policy hash, delegated signer, cap, and expiry through the guardian, and verify those values
-against the account's approved ZeroDev session before enabling any testnet execution. A successful
-contract deployment alone is not production readiness.
+account's policy hash, delegated signer, cap, and expiry through a UserOperation signed by that
+account's owner, and verify those values against the account's approved ZeroDev session before
+enabling any testnet execution. The guardian cannot set or alter account policy. A successful contract
+deployment alone is not production readiness.
+
+For a new testnet deployment, `npm run deploy:testnet-policy` reads `PRIVATE_KEY` and
+`BSC_TESTNET_RPC_URL` locally, verifies chain ID 97 and the router/EntryPoint contracts, and deploys
+the new hook. After installation, `npm run configure:testnet-policy -- --hook <hook> --account
+<smart-account> --target-token <installed-token> --intent-signer <approved-session-key>
+--max-trade-wei <integer> --expires-at <unix-seconds> --confirm-testnet` computes
+`keccak256(abi.encodePacked(targetToken, maxTradeValue, expiresAt, intentSigner))`, verifies the token
+against the installed hook configuration, and only builds the Kernel execution calldata; it does not
+broadcast or sign. Since these fields are all fixed-width, this packed encoding is unambiguous. The
+same hash is available to the frontend through `hashAgentPolicy` in
+`lib/agentPolicyHash.ts`. Submit the generated call through the smart account using its owner
+validator. The signer must be the same EOA as the authorized ZeroDev session key. Never put private
+keys in chat or source control.

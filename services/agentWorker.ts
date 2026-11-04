@@ -1,5 +1,4 @@
 import type { Address, Client, Hex } from "viem"
-import { toHex } from "viem"
 import { readContract } from "viem/actions"
 import {
     calculateDynamicQuote,
@@ -83,7 +82,6 @@ export type AgentExecutionIntent = {
     sourcePriceMicros: bigint
     createdAt: string
     policyHash: Hex
-    intentNonce: Hex
 }
 
 export type AgentWorkerDependencies = {
@@ -107,10 +105,11 @@ export type AgentWorkerOptions = {
     maxMarketAgeMs: number
 }
 
+const MAX_MARKET_AGE_MS = 20_000
 const DEFAULT_OPTIONS: AgentWorkerOptions = {
     intervalMs: 5_000,
     maxConsecutiveFailures: 3,
-    maxMarketAgeMs: 30_000
+    maxMarketAgeMs: MAX_MARKET_AGE_MS
 }
 
 const validatorAbi = [
@@ -235,8 +234,12 @@ export class AgentWorker {
         ) {
             throw new Error("maxConsecutiveFailures must be a positive integer")
         }
-        if (!Number.isSafeInteger(this.options.maxMarketAgeMs) || this.options.maxMarketAgeMs < 1) {
-            throw new Error("maxMarketAgeMs must be a positive integer")
+        if (
+            !Number.isSafeInteger(this.options.maxMarketAgeMs)
+            || this.options.maxMarketAgeMs < 1
+            || this.options.maxMarketAgeMs > MAX_MARKET_AGE_MS
+        ) {
+            throw new Error("maxMarketAgeMs must be between 1 and 20000")
         }
     }
 
@@ -332,7 +335,7 @@ export class AgentWorker {
             detail
         })
 
-        if (market.observedAt > this.now() || this.now() - market.observedAt > this.options.maxMarketAgeMs) {
+        if (market.observedAt > this.now() || this.now() - market.observedAt >= this.options.maxMarketAgeMs) {
             await this.failCycle(
                 strategy,
                 timestamp,
@@ -427,8 +430,7 @@ export class AgentWorker {
                 maxPriceImpactBps: strategy.maxPriceImpactBps,
                 sourcePriceMicros: market.priceMicros,
                 createdAt: this.timestamp(),
-                policyHash: validator.policyHash,
-                intentNonce: toHex(globalThis.crypto.getRandomValues(new Uint8Array(32)))
+                policyHash: validator.policyHash
             }
             if (generation !== this.generation || this.halted) return
             this.pendingIntent = intent

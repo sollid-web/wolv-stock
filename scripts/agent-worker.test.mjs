@@ -58,7 +58,7 @@ function createHarness(overrides = {}, options = {}) {
     worker: new AgentWorker(dependencies, {
       intervalMs: 1000,
       maxConsecutiveFailures: 2,
-      maxMarketAgeMs: 30_000,
+      maxMarketAgeMs: 20_000,
       ...options,
     }),
     telemetry,
@@ -84,7 +84,7 @@ test("passes preflight then publishes a bounded intent and capacity telemetry", 
   assert.equal(intents[0].slippageBps, strategy.slippageBps);
   assert.equal(intents[0].maxPriceImpactBps, strategy.maxPriceImpactBps);
   assert.equal(intents[0].policyHash, POLICY_HASH);
-  assert.match(intents[0].intentNonce, /^0x[0-9a-f]{64}$/i);
+  assert.equal("intentNonce" in intents[0], false);
   assert.equal(worker.hasPendingIntent, true);
 });
 
@@ -103,6 +103,25 @@ test("does not construct an intent when the price trigger is not met", async () 
 
   assert.equal(telemetry[0].reasonCode, "TRIGGER_NOT_MET");
   assert.equal(intents.length, 0);
+});
+
+test("fails closed when market data reaches the 20-second age limit", async () => {
+  const now = Date.now();
+  const harness = createHarness({
+    now: () => now,
+    readMarket: async () => ({
+      priceMicros: 90_000_000n,
+      reserves: {
+        reserveIn: parseEther("1000"),
+        reserveOut: parseEther("1000000"),
+      },
+      observedAt: now - 20_000,
+    }),
+  });
+  await harness.worker.evaluateOnce();
+
+  assert.equal(harness.telemetry[0].reasonCode, "RPC_FAILURE");
+  assert.equal(harness.intents.length, 0);
 });
 
 test("preflights cumulative and per-trade limits before creating an intent", async () => {

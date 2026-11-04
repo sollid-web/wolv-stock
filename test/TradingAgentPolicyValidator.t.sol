@@ -41,6 +41,13 @@ contract TradingAgentPolicyValidatorTest {
     address private constant OTHER_ACCOUNT = address(0xB0B);
     uint256 private constant INTENT_SIGNER_PRIVATE_KEY = 0xA11CE;
     bytes32 private constant POLICY_HASH = keccak256("WOLV-POLICY-V1");
+    bytes32 private constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant EIP712_NAME_HASH = keccak256("WolvTradingAgent");
+    bytes32 private constant EIP712_VERSION_HASH = keccak256("1");
+    bytes32 private constant TRADE_INTENT_TYPEHASH = keccak256(
+        "TradeIntent(address smartAccount,bytes32 policyHash,address router,address tokenIn,address tokenOut,address recipient,uint256 amountIn,uint256 amountOutMin,uint64 deadline,uint16 slippageBps,uint16 maxPriceImpactBps,uint64 validUntil,bytes32 nonce)"
+    );
     bytes4 private constant BUY_SELECTOR = 0x7ff36ab5;
     bytes4 private constant SELL_SELECTOR = 0x18cbafe5;
     bytes4 private constant EXECUTE_SELECTOR = bytes4(keccak256("execute(bytes32,bytes)"));
@@ -58,13 +65,6 @@ contract TradingAgentPolicyValidatorTest {
         uint256 value,
         uint256 timestamp
     );
-    event PolicyViolationRejected(
-        address indexed smartAccount,
-        bytes32 indexed reasonCode,
-        bytes32 contextHash,
-        uint256 timestamp
-    );
-
     MockFactory private factory;
     MockRouter private router;
     MockEntryPoint private entryPoint;
@@ -83,7 +83,8 @@ contract TradingAgentPolicyValidatorTest {
         targetToken = new MockToken();
         hook = new TradingAgentPolicyValidator(address(router), address(entryPoint));
         vm.prank(SMART_ACCOUNT);
-        hook.onInstall(abi.encode(address(targetToken)));
+        hook.onInstall(abi.encodePacked(bytes1(0), abi.encode(address(targetToken))));
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(
             SMART_ACCOUNT,
             intentSigner,
@@ -156,7 +157,15 @@ contract TradingAgentPolicyValidatorTest {
     function testVolumeIsTrackedPerSmartAccount() public {
         _check(SMART_ACCOUNT, address(entryPoint), 0.5 ether, BUY_SELECTOR);
         vm.prank(OTHER_ACCOUNT);
-        hook.onInstall(abi.encode(address(targetToken)));
+        hook.onInstall(abi.encodePacked(bytes1(0), abi.encode(address(targetToken))));
+        vm.prank(OTHER_ACCOUNT);
+        hook.setAccountPolicy(
+            OTHER_ACCOUNT,
+            intentSigner,
+            POLICY_HASH,
+            0.5 ether,
+            uint64(block.timestamp + 365 days)
+        );
         _check(OTHER_ACCOUNT, address(entryPoint), 0.5 ether, BUY_SELECTOR);
 
         require(hook.getRollingVolume(SMART_ACCOUNT) == 0.5 ether);
@@ -168,9 +177,10 @@ contract TradingAgentPolicyValidatorTest {
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, SELL_SELECTOR);
     }
 
-    function testGuardianCanConfigureAndClearAccountPolicy() public {
+    function testSmartAccountCanConfigureAndClearItsPolicy() public {
         bytes32 policyHash = keccak256("WOLV-POLICY-V1");
         uint64 expiresAt = uint64(block.timestamp + 1 hours);
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(SMART_ACCOUNT, intentSigner, policyHash, 0.25 ether, expiresAt);
 
         (bool configured, bytes32 storedHash, uint192 maxTrade, uint64 storedExpiry, address storedSigner) =
@@ -184,6 +194,7 @@ contract TradingAgentPolicyValidatorTest {
         vm.expectPartialRevert(TradingAgentPolicyValidator.TradeValueTooHigh.selector);
         _check(SMART_ACCOUNT, address(entryPoint), 0.25 ether + 1, BUY_SELECTOR);
 
+        vm.prank(SMART_ACCOUNT);
         hook.clearAccountPolicy(SMART_ACCOUNT);
         (configured, storedHash, maxTrade, storedExpiry, storedSigner) =
             hook.getAccountPolicy(SMART_ACCOUNT);
@@ -197,6 +208,7 @@ contract TradingAgentPolicyValidatorTest {
     }
 
     function testConfiguredPolicyEnforcesExpiryAndTradeCap() public {
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(
             SMART_ACCOUNT,
             intentSigner,
@@ -214,22 +226,61 @@ contract TradingAgentPolicyValidatorTest {
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR);
     }
 
-    function testPolicyConfigurationRejectsInvalidValuesAndNonGuardian() public {
+    function testPolicyConfigurationRejectsInvalidValuesAndNonAccount() public {
         vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyHashInvalid.selector);
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(SMART_ACCOUNT, intentSigner, bytes32(0), 0.1 ether, uint64(block.timestamp + 1 hours));
 
         vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyTradeCapInvalid.selector);
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(SMART_ACCOUNT, intentSigner, keccak256("WOLV-POLICY-V1"), 0, uint64(block.timestamp + 1 hours));
 
         vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyExpiryInvalid.selector);
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(SMART_ACCOUNT, intentSigner, keccak256("WOLV-POLICY-V1"), 0.1 ether, uint64(block.timestamp));
 
-        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlyGuardian.selector);
-        vm.prank(SMART_ACCOUNT);
+        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlySmartAccount.selector);
         hook.setAccountPolicy(SMART_ACCOUNT, intentSigner, keccak256("WOLV-POLICY-V1"), 0.1 ether, uint64(block.timestamp + 1 hours));
 
+        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlySmartAccount.selector);
+        hook.clearAccountPolicy(SMART_ACCOUNT);
+
         vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyIntentSignerInvalid.selector);
+        vm.prank(SMART_ACCOUNT);
         hook.setAccountPolicy(SMART_ACCOUNT, address(0), keccak256("WOLV-POLICY-V1"), 0.1 ether, uint64(block.timestamp + 1 hours));
+    }
+
+    function testPolicyManagementCallsPassThroughTheExecutionHook() public {
+        bytes memory policyCall = abi.encodeWithSelector(
+            hook.setAccountPolicy.selector,
+            SMART_ACCOUNT,
+            intentSigner,
+            keccak256("WOLV-POLICY-V2"),
+            0.25 ether,
+            uint64(block.timestamp + 1 hours)
+        );
+        bytes memory execution = abi.encodePacked(address(hook), bytes32(0), policyCall);
+        bytes memory callData = abi.encodeWithSelector(EXECUTE_SELECTOR, bytes32(0), execution);
+        vm.prank(SMART_ACCOUNT);
+        bytes memory hookData = hook.preCheck(address(entryPoint), 0, callData);
+        require(hookData.length == 0);
+
+        vm.prank(SMART_ACCOUNT);
+        hook.postCheck(hookData);
+
+        vm.prank(SMART_ACCOUNT);
+        hook.setAccountPolicy(
+            SMART_ACCOUNT,
+            intentSigner,
+            keccak256("WOLV-POLICY-V2"),
+            0.25 ether,
+            uint64(block.timestamp + 1 hours)
+        );
+        (bool configured, bytes32 storedHash, uint192 maxTrade,,) =
+            hook.getAccountPolicy(SMART_ACCOUNT);
+        require(configured);
+        require(storedHash == keccak256("WOLV-POLICY-V2"));
+        require(maxTrade == 0.25 ether);
     }
 
     function testRejectsWrongRouter() public {
@@ -333,17 +384,18 @@ contract TradingAgentPolicyValidatorTest {
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR);
     }
 
-    function testNonGuardianCannotPauseOrRevoke() public {
+    function testGuardianPauseAndAccountRevocationHaveSeparateAuthority() public {
         vm.expectPartialRevert(TradingAgentPolicyValidator.OnlyGuardian.selector);
         vm.prank(SMART_ACCOUNT);
         hook.setPaused(true);
 
-        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlyGuardian.selector);
-        vm.prank(SMART_ACCOUNT);
+        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlySmartAccount.selector);
+        vm.prank(OTHER_ACCOUNT);
         hook.revokeAccount(SMART_ACCOUNT);
     }
 
-    function testGuardianCanImmediatelyRevokeAccountUntilReinstalled() public {
+    function testSmartAccountCanImmediatelyRevokeUntilReinstalled() public {
+        vm.prank(SMART_ACCOUNT);
         hook.revokeAccount(SMART_ACCOUNT);
         vm.expectPartialRevert(TradingAgentPolicyValidator.AccountRevoked.selector);
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR);
@@ -351,19 +403,21 @@ contract TradingAgentPolicyValidatorTest {
         vm.prank(SMART_ACCOUNT);
         hook.onUninstall(bytes(""));
         vm.prank(SMART_ACCOUNT);
-        hook.onInstall(abi.encode(address(targetToken)));
+        hook.onInstall(abi.encodePacked(bytes1(0), abi.encode(address(targetToken))));
         _check(SMART_ACCOUNT, address(entryPoint), 0.1 ether, BUY_SELECTOR);
     }
 
     function testExecutionEventsAreEmittedOnlyForSuccessfulHookLifecycle() public {
         vm.expectEmit(true, true, false, true, address(hook));
         emit AgentExecutionAttempt(SMART_ACCOUNT, address(targetToken), 0.1 ether, block.timestamp);
-        vm.prank(SMART_ACCOUNT);
-        bytes memory hookData = hook.preCheck(
-            address(entryPoint),
-            0,
-            _encodeCall(SMART_ACCOUNT, address(router), 0.1 ether, BUY_SELECTOR)
+        bytes memory callData = _encodeCall(
+            SMART_ACCOUNT,
+            address(router),
+            0.1 ether,
+            BUY_SELECTOR
         );
+        vm.prank(SMART_ACCOUNT);
+        bytes memory hookData = hook.preCheck(address(entryPoint), 0, callData);
 
         vm.expectEmit(true, true, false, true, address(hook));
         emit AgentExecutionSucceeded(SMART_ACCOUNT, address(targetToken), 0.1 ether, block.timestamp);
@@ -408,22 +462,38 @@ contract TradingAgentPolicyValidatorTest {
 
     function testRejectsTradeParametersNotBoundBySignature() public {
         bytes memory callData = _encodeCall(SMART_ACCOUNT, address(router), 0.1 ether, BUY_SELECTOR);
-        callData[187] = bytes1(uint8(callData[187]) ^ 1);
+        callData[187] = bytes1(0x02);
         vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyIntentSignatureInvalid.selector);
         vm.prank(SMART_ACCOUNT);
         hook.preCheck(address(entryPoint), 0, callData);
     }
 
-    function testGuardianCanRecordRejectedPolicyTelemetry() public {
-        bytes32 reasonCode = keccak256("PRICE_IMPACT_EXCEEDED");
-        bytes32 contextHash = keccak256("test-context");
-        vm.expectEmit(true, true, false, true, address(hook));
-        emit PolicyViolationRejected(SMART_ACCOUNT, reasonCode, contextHash, block.timestamp);
-        hook.recordPolicyViolation(SMART_ACCOUNT, reasonCode, contextHash);
-
-        vm.expectPartialRevert(TradingAgentPolicyValidator.OnlyGuardian.selector);
+    function testRejectsExpiredIntentEnvelope() public {
+        bytes memory callData = _encodeCall(SMART_ACCOUNT, address(router), 0.1 ether, BUY_SELECTOR);
+        uint64 expiredAt = uint64(block.timestamp - 1);
+        assembly {
+            mstore(add(add(callData, 32), 444), expiredAt)
+        }
+        vm.expectPartialRevert(TradingAgentPolicyValidator.PolicyIntentExpired.selector);
         vm.prank(SMART_ACCOUNT);
-        hook.recordPolicyViolation(SMART_ACCOUNT, reasonCode, contextHash);
+        hook.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsExpiredRouterDeadline() public {
+        bytes memory callData = _encodeCall(SMART_ACCOUNT, address(router), 0.1 ether, BUY_SELECTOR);
+        uint64 expiredDeadline = uint64(block.timestamp);
+        assembly {
+            mstore(add(add(callData, 32), 252), expiredDeadline)
+        }
+        vm.expectPartialRevert(TradingAgentPolicyValidator.SwapDeadlineInvalid.selector);
+        vm.prank(SMART_ACCOUNT);
+        hook.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsInstallPayloadWithoutKernelHookPrefix() public {
+        vm.expectPartialRevert(TradingAgentPolicyValidator.InvalidHookData.selector);
+        vm.prank(OTHER_ACCOUNT);
+        hook.onInstall(abi.encode(address(targetToken)));
     }
 
     function testRejectsZeroMinimumOutput() public {
@@ -449,8 +519,9 @@ contract TradingAgentPolicyValidatorTest {
     }
 
     function _check(address account, address msgSender, uint256 value, bytes4 selector, address target) private {
+        bytes memory callData = _encodeCall(account, target, value, selector);
         vm.prank(account);
-        hook.preCheck(msgSender, 0, _encodeCall(account, target, value, selector));
+        hook.preCheck(msgSender, 0, callData);
     }
 
     function _checkWithRoute(
@@ -469,21 +540,18 @@ contract TradingAgentPolicyValidatorTest {
         address recipient,
         address pathStart
     ) private {
-        vm.prank(account);
-        hook.preCheck(
-            msgSender,
-            0,
-            _encodeCall(
-                account,
-                address(router),
-                0.1 ether,
-                BUY_SELECTOR,
-                tokenOut,
-                recipient,
-                1,
-                pathStart
-            )
+        bytes memory callData = _encodeCall(
+            account,
+            address(router),
+            0.1 ether,
+            BUY_SELECTOR,
+            tokenOut,
+            recipient,
+            1,
+            pathStart
         );
+        vm.prank(account);
+        hook.preCheck(msgSender, 0, callData);
     }
 
     function _encodeCall(address account, address target, uint256 value, bytes4 selector)
@@ -524,6 +592,7 @@ contract TradingAgentPolicyValidatorTest {
         uint256 minimumOutput,
         address pathStart
     ) private returns (bytes memory) {
+        uint64 deadline = uint64(block.timestamp + hook.MAX_SWAP_DEADLINE_SECONDS());
         bytes memory execution = _encodeExecution(
             pathStart,
             target,
@@ -531,12 +600,22 @@ contract TradingAgentPolicyValidatorTest {
             selector,
             tokenOut,
             recipient,
-            minimumOutput
+            minimumOutput,
+            deadline
         );
         if (selector == BUY_SELECTOR) {
             execution = abi.encodePacked(
                 execution,
-                _encodeIntentEnvelope(account, value, tokenOut, minimumOutput)
+                _encodeIntentEnvelope(
+                    account,
+                    target,
+                    pathStart,
+                    value,
+                    tokenOut,
+                    recipient,
+                    minimumOutput,
+                    deadline
+                )
             );
         }
         return abi.encodeWithSelector(
@@ -548,9 +627,13 @@ contract TradingAgentPolicyValidatorTest {
 
     function _encodeIntentEnvelope(
         address account,
+        address routerAddress,
+        address tokenIn,
         uint256 amountIn,
         address tokenOut,
-        uint256 amountOutMin
+        address recipient,
+        uint256 amountOutMin,
+        uint64 deadline
     ) private returns (bytes memory) {
         bytes32 nonce = keccak256(abi.encode(++intentNonce, account, block.timestamp));
         lastIntentNonce = nonce;
@@ -559,15 +642,19 @@ contract TradingAgentPolicyValidatorTest {
             TradingAgentPolicyValidator.TradeIntent({
                 smartAccount: account,
                 policyHash: POLICY_HASH,
-                targetToken: tokenOut,
+                router: routerAddress,
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                recipient: recipient,
                 amountIn: amountIn,
                 amountOutMin: amountOutMin,
+                deadline: deadline,
                 slippageBps: 100,
                 maxPriceImpactBps: 300,
                 validUntil: validUntil,
                 nonce: nonce
             });
-        bytes32 digest = hook.hashTradeIntent(intent);
+        bytes32 digest = _hashTradeIntent(intent);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(INTENT_SIGNER_PRIVATE_KEY, digest);
         return abi.encode(
             POLICY_HASH,
@@ -577,6 +664,41 @@ contract TradingAgentPolicyValidatorTest {
             uint16(300),
             abi.encodePacked(r, s, v)
         );
+    }
+
+    function _hashTradeIntent(TradingAgentPolicyValidator.TradeIntent memory intent)
+        private
+        view
+        returns (bytes32)
+    {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                TRADE_INTENT_TYPEHASH,
+                intent.smartAccount,
+                intent.policyHash,
+                intent.router,
+                intent.tokenIn,
+                intent.tokenOut,
+                intent.recipient,
+                intent.amountIn,
+                intent.amountOutMin,
+                intent.deadline,
+                intent.slippageBps,
+                intent.maxPriceImpactBps,
+                intent.validUntil,
+                intent.nonce
+            )
+        );
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH,
+                EIP712_NAME_HASH,
+                EIP712_VERSION_HASH,
+                block.chainid,
+                address(hook)
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
     }
 
     function _encodeExecution(
@@ -605,11 +727,33 @@ contract TradingAgentPolicyValidatorTest {
         address recipient,
         uint256 minimumOutput
     ) private view returns (bytes memory) {
+        return _encodeExecution(
+            pathStart,
+            target,
+            value,
+            selector,
+            tokenOut,
+            recipient,
+            minimumOutput,
+            uint64(block.timestamp + hook.MAX_SWAP_DEADLINE_SECONDS())
+        );
+    }
+
+    function _encodeExecution(
+        address pathStart,
+        address target,
+        uint256 value,
+        bytes4 selector,
+        address tokenOut,
+        address recipient,
+        uint256 minimumOutput,
+        uint64 deadline
+    ) private pure returns (bytes memory) {
         address[] memory path = new address[](2);
         path[0] = pathStart;
         path[1] = tokenOut;
         bytes memory routerCall =
-            abi.encodeWithSelector(selector, minimumOutput, path, recipient, block.timestamp + 300);
+            abi.encodeWithSelector(selector, minimumOutput, path, recipient, deadline);
         return abi.encodePacked(target, bytes32(value), routerCall);
     }
 }

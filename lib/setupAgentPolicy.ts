@@ -1,0 +1,229 @@
+import type { KernelAccountClient } from "@zerodev/sdk"
+import {
+    concatHex,
+    encodeAbiParameters,
+    encodeFunctionData,
+    getAddress,
+    type Address,
+    type Chain,
+    type Hex,
+    type PublicClient,
+    type Transport
+} from "viem"
+import type { SmartAccount } from "viem/account-abstraction"
+import { hashAgentPolicy } from "./agentPolicyHash.ts"
+
+const HOOK_MODULE_TYPE = BigInt(4)
+const MAX_TRADE_VALUE = BigInt("500000000000000000")
+
+export const AGENT_POLICY_HOOK_ABI = [
+    {
+        type: "function",
+        name: "paused",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "bool" }]
+    },
+    {
+        type: "function",
+        name: "isInitialized",
+        stateMutability: "view",
+        inputs: [{ name: "smartAccount", type: "address" }],
+        outputs: [{ type: "bool" }]
+    },
+    {
+        type: "function",
+        name: "isRevoked",
+        stateMutability: "view",
+        inputs: [{ name: "smartAccount", type: "address" }],
+        outputs: [{ type: "bool" }]
+    },
+    {
+        type: "function",
+        name: "getTargetToken",
+        stateMutability: "view",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [{ type: "address" }]
+    },
+    {
+        type: "function",
+        name: "getAccountPolicy",
+        stateMutability: "view",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "configured", type: "bool" },
+            { name: "policyHash", type: "bytes32" },
+            { name: "maxTradeValue", type: "uint192" },
+            { name: "expiresAt", type: "uint64" },
+            { name: "intentSigner", type: "address" }
+        ]
+    },
+    {
+        type: "function",
+        name: "revokeAccount",
+        stateMutability: "nonpayable",
+        inputs: [{ name: "smartAccount", type: "address" }],
+        outputs: []
+    },
+    {
+        type: "function",
+        name: "setAccountPolicy",
+        stateMutability: "nonpayable",
+        inputs: [
+            { name: "smartAccount", type: "address" },
+            { name: "intentSigner", type: "address" },
+            { name: "policyHash", type: "bytes32" },
+            { name: "maxTradeValue", type: "uint192" },
+            { name: "expiresAt", type: "uint64" }
+        ],
+        outputs: []
+    }
+] as const
+
+const kernelModuleInstallAbi = [{
+    type: "function",
+    name: "installModule",
+    stateMutability: "payable",
+    inputs: [
+        { name: "moduleType", type: "uint256" },
+        { name: "module", type: "address" },
+        { name: "initData", type: "bytes" }
+    ],
+    outputs: []
+}] as const
+
+type PolicyKernelAccount = SmartAccount
+type PolicyKernelClient = KernelAccountClient<Transport, Chain, PolicyKernelAccount>
+
+export type ConfigureAgentPolicyInput = {
+    ownerKernelClient: PolicyKernelClient
+    publicClient: PublicClient
+    validatorAddress: Address
+    targetToken: Address
+    intentSigner: Address
+    maxTradeValue: bigint
+    expiresAt: bigint
+    onUserOperationSubmitted?: (step: "install" | "policy", hash: Hex) => void
+}
+
+export type ConfigureAgentPolicyResult = {
+    account: Address
+    policyHash: Hex
+    installUserOperationHash?: Hex
+    policyUserOperationHash: Hex
+}
+
+export async function configureAgentPolicy(
+    input: ConfigureAgentPolicyInput
+): Promise<ConfigureAgentPolicyResult> {
+    const account = getAddress(input.ownerKernelClient.account.address)
+    const validatorAddress = getAddress(input.validatorAddress)
+    const targetToken = getAddress(input.targetToken)
+    const intentSigner = getAddress(input.intentSigner)
+    const chainId = input.publicClient.chain?.id
+    if (chainId !== 56 && chainId !== 97) {
+        throw new Error("Agent policy configuration supports only BSC or BSC testnet.")
+    }
+    if (input.ownerKernelClient.chain?.id !== chainId) {
+        throw new Error("Kernel account client and public client must use the same chain.")
+    }
+    if (input.maxTradeValue <= BigInt(0) || input.maxTradeValue > MAX_TRADE_VALUE) {
+        throw new RangeError("Policy maximum trade value must be between 1 wei and 0.5 BNB.")
+    }
+    const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
+    if (input.expiresAt <= nowSeconds || input.expiresAt > (BigInt(1) << BigInt(64)) - BigInt(1)) {
+        throw new RangeError("Policy expiry must be a future Unix timestamp that fits uint64.")
+    }
+
+    const policyHash = hashAgentPolicy({
+        targetToken,
+        maxTradeValue: input.maxTradeValue,
+        expiresAt: input.expiresAt,
+        intentSigner
+    })
+    let installed = await input.publicClient.readContract({
+        address: validatorAddress,
+        abi: AGENT_POLICY_HOOK_ABI,
+        functionName: "isInitialized",
+        args: [account]
+    })
+    let installUserOperationHash: Hex | undefined
+    if (!installed) {
+        const hookData = concatHex([
+            "0x00",
+            encodeAbiParameters([{ type: "address" }], [targetToken])
+        ])
+        const installCall = encodeFunctionData({
+            abi: kernelModuleInstallAbi,
+            functionName: "installModule",
+            args: [HOOK_MODULE_TYPE, validatorAddress, hookData]
+        })
+        installUserOperationHash = await input.ownerKernelClient.sendUserOperation({
+            calls: [{ to: account, value: BigInt(0), data: installCall }]
+        })
+        input.onUserOperationSubmitted?.("install", installUserOperationHash)
+        const installReceipt = await input.ownerKernelClient.waitForUserOperationReceipt({
+            hash: installUserOperationHash
+        })
+        if (!installReceipt.success) {
+            throw new Error(`Hook installation UserOperation reverted: ${installUserOperationHash}`)
+        }
+        installed = await input.publicClient.readContract({
+            address: validatorAddress,
+            abi: AGENT_POLICY_HOOK_ABI,
+            functionName: "isInitialized",
+            args: [account]
+        })
+        if (!installed) {
+            throw new Error("Hook installation UserOperation succeeded but the hook is not initialized.")
+        }
+    }
+
+    const installedTarget = await input.publicClient.readContract({
+        address: validatorAddress,
+        abi: AGENT_POLICY_HOOK_ABI,
+        functionName: "getTargetToken",
+        args: [account]
+    })
+    if (getAddress(installedTarget) !== targetToken) {
+        throw new Error("Configured target token does not match the installed policy hook.")
+    }
+
+    const policyCall = encodeFunctionData({
+        abi: AGENT_POLICY_HOOK_ABI,
+        functionName: "setAccountPolicy",
+        args: [account, intentSigner, policyHash, input.maxTradeValue, input.expiresAt]
+    })
+    const policyUserOperationHash = await input.ownerKernelClient.sendUserOperation({
+        calls: [{ to: validatorAddress, value: BigInt(0), data: policyCall }]
+    })
+    input.onUserOperationSubmitted?.("policy", policyUserOperationHash)
+    const policyReceipt = await input.ownerKernelClient.waitForUserOperationReceipt({
+        hash: policyUserOperationHash
+    })
+    if (!policyReceipt.success) {
+        throw new Error(`Policy configuration UserOperation reverted: ${policyUserOperationHash}`)
+    }
+    const policyState = await input.publicClient.readContract({
+        address: validatorAddress,
+        abi: AGENT_POLICY_HOOK_ABI,
+        functionName: "getAccountPolicy",
+        args: [account]
+    })
+    if (
+        !policyState[0]
+        || policyState[1].toLowerCase() !== policyHash.toLowerCase()
+        || policyState[2] !== input.maxTradeValue
+        || policyState[3] !== input.expiresAt
+        || getAddress(policyState[4]) !== intentSigner
+    ) {
+        throw new Error("On-chain policy readback did not match the requested configuration.")
+    }
+
+    return {
+        account,
+        policyHash,
+        installUserOperationHash,
+        policyUserOperationHash
+    }
+}

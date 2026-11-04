@@ -8,6 +8,7 @@ import {
     buildAgentBuyCall,
     createAgentSmartAccountClient,
     encodeAgentBuyCall,
+    AGENT_SWAP_DEADLINE_SECONDS,
     getAgentSmartAccountConfig,
     type AgentSmartAccountConfig
 } from "../lib/smartAccount.ts"
@@ -16,12 +17,17 @@ import {
     MAX_TRADE_BNB,
     type AgentExecutionIntent
 } from "./agentWorker.ts"
+import {
+    AgentIntentNonceError,
+    getNextIntentNonce
+} from "./agentIntentNonceTracker.ts"
 
 export type AgentExecutorErrorCode =
     | "LIVE_SUBMISSION_DISABLED"
     | "MAINNET_SUBMISSION_BLOCKED"
     | "INTENT_INVALID"
     | "INTENT_STALE"
+    | "INTENT_NONCE_UNAVAILABLE"
     | "VALIDATOR_PREFLIGHT_FAILED"
     | "BUNDLER_MEMPOOL_REJECTED"
     | "ONCHAIN_EXECUTION_REVERTED"
@@ -96,6 +102,7 @@ export type AgentExecutorDependencies = {
         error: Error
     ) => void
     now?: () => number
+    getNextIntentNonce?: (smartAccount: Address) => Promise<Hex>
     maxIntentAgeMs?: number
     receiptTimeoutMs?: number
     receiptPollingIntervalMs?: number
@@ -149,9 +156,13 @@ const TRADE_INTENT_TYPES = {
     TradeIntent: [
         { name: "smartAccount", type: "address" },
         { name: "policyHash", type: "bytes32" },
-        { name: "targetToken", type: "address" },
+        { name: "router", type: "address" },
+        { name: "tokenIn", type: "address" },
+        { name: "tokenOut", type: "address" },
+        { name: "recipient", type: "address" },
         { name: "amountIn", type: "uint256" },
         { name: "amountOutMin", type: "uint256" },
+        { name: "deadline", type: "uint64" },
         { name: "slippageBps", type: "uint16" },
         { name: "maxPriceImpactBps", type: "uint16" },
         { name: "validUntil", type: "uint64" },
@@ -159,7 +170,8 @@ const TRADE_INTENT_TYPES = {
     ]
 } as const
 
-const DEFAULT_MAX_INTENT_AGE_MS = 30_000
+const DEFAULT_MAX_INTENT_AGE_MS = 20_000
+const INTENT_VALIDITY_SECONDS = 20
 const DEFAULT_RECEIPT_TIMEOUT_MS = 120_000
 const DEFAULT_RECEIPT_POLLING_INTERVAL_MS = 2_000
 
@@ -265,6 +277,9 @@ export class AgentExecutor {
                 throw new Error(`${name} must be a positive safe integer`)
             }
         }
+        if (this.maxIntentAgeMs > DEFAULT_MAX_INTENT_AGE_MS) {
+            throw new Error("maxIntentAgeMs cannot exceed 20000ms")
+        }
     }
 
     async executeUserOperation(intent: AgentExecutionIntent) {
@@ -323,13 +338,39 @@ export class AgentExecutor {
             const intentSigner = getAddress(delegatedSigner.getSignerData())
             this.validateValidatorState(validator, intent, intentSigner)
 
+            const expiresAt = validator.expiresAt
+            if (expiresAt === undefined) {
+                throw new AgentExecutorError(
+                    "VALIDATOR_PREFLIGHT_FAILED",
+                    "On-chain policy expiry is unavailable."
+                )
+            }
+            const nowSeconds = Math.floor(this.now() / 1000)
+            const validUntil = Math.min(nowSeconds + INTENT_VALIDITY_SECONDS, Number(expiresAt))
+            const deadline = Math.min(
+                nowSeconds + AGENT_SWAP_DEADLINE_SECONDS,
+                validUntil
+            )
+            if (!Number.isSafeInteger(validUntil) || validUntil <= nowSeconds) {
+                throw new AgentExecutorError(
+                    "INTENT_STALE",
+                    "On-chain policy expires before this intent can be submitted."
+                )
+            }
+            if (!Number.isSafeInteger(deadline) || deadline <= nowSeconds) {
+                throw new AgentExecutorError(
+                    "INTENT_STALE",
+                    "On-chain policy expires before the swap deadline."
+                )
+            }
             const call = await (this.dependencies.buildBuyCall ?? buildAgentBuyCall)(
                 client.client,
                 {
                     accountAddress: account.address,
                     amountBnb: intent.amountBnb,
                     slippageBps: intent.slippageBps,
-                    maxPriceImpactBps: intent.maxPriceImpactBps
+                    maxPriceImpactBps: intent.maxPriceImpactBps,
+                    deadline
                 },
                 config
             )
@@ -344,38 +385,42 @@ export class AgentExecutor {
                     ...(this.dependencies.encodeBuyCall ?? encodeAgentBuyCall)(
                         {
                             accountAddress: account.address,
-                            amountBnb: intent.amountBnb
+                            amountBnb: intent.amountBnb,
+                            deadline
                         },
                         amountOutMin,
                         config
                     ),
                     quote: { ...call.quote, amountOutMin }
                 }
-            const expiresAt = validator.expiresAt
-            if (expiresAt === undefined) {
-                throw new AgentExecutorError(
-                    "VALIDATOR_PREFLIGHT_FAILED",
-                    "On-chain policy expiry is unavailable."
+            let intentNonce: Hex
+            try {
+                intentNonce = await (this.dependencies.getNextIntentNonce ?? getNextIntentNonce)(
+                    account.address
                 )
-            }
-            const nowSeconds = Math.floor(this.now() / 1000)
-            const validUntil = Math.min(nowSeconds + 30, Number(expiresAt))
-            if (!Number.isSafeInteger(validUntil) || validUntil <= nowSeconds) {
+            } catch (error) {
                 throw new AgentExecutorError(
-                    "INTENT_STALE",
-                    "On-chain policy expires before this intent can be submitted."
+                    "INTENT_NONCE_UNAVAILABLE",
+                    error instanceof AgentIntentNonceError
+                        ? error.message
+                        : "Persistent intent nonce allocation failed.",
+                    error
                 )
             }
             const signedIntent = {
                 smartAccount: getAddress(account.address),
                 policyHash: intent.policyHash,
-                targetToken: getAddress(intent.targetToken),
+                router: getAddress(config.routerAddress),
+                tokenIn: getAddress(config.wrappedNativeAddress),
+                tokenOut: getAddress(intent.targetToken),
+                recipient: getAddress(account.address),
                 amountIn: intent.amountBnb,
                 amountOutMin: safeCall.quote.amountOutMin,
+                deadline: BigInt(deadline),
                 slippageBps: intent.slippageBps,
                 maxPriceImpactBps: intent.maxPriceImpactBps,
                 validUntil: BigInt(validUntil),
-                nonce: intent.intentNonce
+                nonce: intentNonce
             }
             let intentSignature: Hex
             try {
@@ -400,6 +445,14 @@ export class AgentExecutor {
                     error
                 )
             }
+            this.validateIntent(intent, config)
+            const submissionTimeSeconds = Math.floor(this.now() / 1000)
+            if (submissionTimeSeconds >= validUntil || submissionTimeSeconds >= deadline) {
+                throw new AgentExecutorError(
+                    "INTENT_STALE",
+                    "Execution intent expired before UserOperation submission."
+                )
+            }
             const intentEnvelope = encodeAbiParameters(
                 [
                     { type: "bytes32" },
@@ -411,7 +464,7 @@ export class AgentExecutor {
                 ],
                 [
                     intent.policyHash,
-                    intent.intentNonce,
+                    intentNonce,
                     BigInt(validUntil),
                     intent.slippageBps,
                     intent.maxPriceImpactBps,
@@ -534,8 +587,6 @@ export class AgentExecutor {
             || !/^0x[0-9a-f]{40}$/i.test(intent.targetToken)
             || getAddress(intent.targetToken) !== getAddress(config.targetTokenAddress)
             || !/^0x[0-9a-f]{64}$/i.test(intent.policyHash)
-            || !/^0x[0-9a-f]{64}$/i.test(intent.intentNonce)
-            || /^0x0{64}$/i.test(intent.intentNonce)
             || intent.amountBnb <= BigInt(0)
             || intent.amountBnb > MAX_TRADE_BNB
             || intent.amountOutMin <= BigInt(0)
@@ -551,7 +602,7 @@ export class AgentExecutor {
         ) {
             throw new AgentExecutorError("INTENT_INVALID", "Execution intent failed validation")
         }
-        if (createdAt > this.now() || this.now() - createdAt > this.maxIntentAgeMs) {
+        if (createdAt > this.now() || this.now() - createdAt >= this.maxIntentAgeMs) {
             throw new AgentExecutorError("INTENT_STALE", "Execution intent is stale")
         }
     }
@@ -623,9 +674,13 @@ async function signTradeIntent(
         message: {
             smartAccount: Address
             policyHash: Hex
-            targetToken: Address
+            router: Address
+            tokenIn: Address
+            tokenOut: Address
+            recipient: Address
             amountIn: bigint
             amountOutMin: bigint
+            deadline: bigint
             slippageBps: number
             maxPriceImpactBps: number
             validUntil: bigint
@@ -655,8 +710,13 @@ export function createWorkerFailureReporter(
             || code === "ONCHAIN_EXECUTION_REVERTED"
             || code === "USEROP_RECEIPT_TIMEOUT"
             || code === "RPC_FAILURE"
+            || code === "INTENT_NONCE_UNAVAILABLE"
         ) {
-            worker.reportExecutionFailure(intent.strategyId, code, error.message)
+            worker.reportExecutionFailure(
+                intent.strategyId,
+                code === "INTENT_NONCE_UNAVAILABLE" ? "RPC_FAILURE" : code,
+                error.message
+            )
         }
     }
 }

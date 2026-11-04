@@ -21,10 +21,17 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     uint256 public constant MAX_ROLLING_VOLUME = 1 ether;
     uint256 public constant ROLLING_WINDOW = 604_800;
     uint256 public constant MAX_ACTIVE_TRADES = 128;
+    uint256 public constant MAX_SWAP_DEADLINE_SECONDS = 15;
     bytes4 public constant BUY_SELECTOR = 0x7ff36ab5;
 
     bytes4 private constant EXECUTE_SELECTOR = bytes4(keccak256("execute(bytes32,bytes)"));
     bytes4 private constant FACTORY_SELECTOR = 0xc45a0155;
+    bytes4 private constant SET_ACCOUNT_POLICY_SELECTOR =
+        bytes4(keccak256("setAccountPolicy(address,address,bytes32,uint192,uint64)"));
+    bytes4 private constant CLEAR_ACCOUNT_POLICY_SELECTOR =
+        bytes4(keccak256("clearAccountPolicy(address)"));
+    bytes4 private constant REVOKE_ACCOUNT_SELECTOR =
+        bytes4(keccak256("revokeAccount(address)"));
     uint256 private constant ROUTER_BUY_CALL_LENGTH = 228;
     uint256 private constant INTENT_ENVELOPE_LENGTH = 320;
     uint256 private constant SECP256K1_HALF_ORDER =
@@ -34,7 +41,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     bytes32 private constant EIP712_NAME_HASH = keccak256("WolvTradingAgent");
     bytes32 private constant EIP712_VERSION_HASH = keccak256("1");
     bytes32 private constant TRADE_INTENT_TYPEHASH = keccak256(
-        "TradeIntent(address smartAccount,bytes32 policyHash,address targetToken,uint256 amountIn,uint256 amountOutMin,uint16 slippageBps,uint16 maxPriceImpactBps,uint64 validUntil,bytes32 nonce)"
+        "TradeIntent(address smartAccount,bytes32 policyHash,address router,address tokenIn,address tokenOut,address recipient,uint256 amountIn,uint256 amountOutMin,uint64 deadline,uint16 slippageBps,uint16 maxPriceImpactBps,uint64 validUntil,bytes32 nonce)"
     );
     address private constant BSC_MAINNET_WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
     address private constant BSC_TESTNET_WBNB = 0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd;
@@ -70,9 +77,13 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     struct TradeIntent {
         address smartAccount;
         bytes32 policyHash;
-        address targetToken;
+        address router;
+        address tokenIn;
+        address tokenOut;
+        address recipient;
         uint256 amountIn;
         uint256 amountOutMin;
+        uint64 deadline;
         uint16 slippageBps;
         uint16 maxPriceImpactBps;
         uint64 validUntil;
@@ -87,6 +98,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         address tokenOut;
         address recipient;
         uint256 amountOutMin;
+        uint256 deadline;
         bytes32 intentPolicyHash;
         bytes32 intentNonce;
         uint64 intentValidUntil;
@@ -111,6 +123,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     error InvalidExecutionCalldata();
     error WrongTarget(address target);
     error UnsupportedSelector(bytes4 selector);
+    error OnlySmartAccount(address caller);
     error ZeroTradeValue();
     error TradeValueTooHigh(uint256 value, uint256 maximum);
     error RollingWindowCapExceeded(uint256 attemptedVolume, uint256 maximum);
@@ -120,7 +133,6 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     error OnlyGuardian(address caller);
     error AgentPaused();
     error AccountRevoked(address smartAccount);
-    error InvalidTelemetryReason();
     error PolicyNotConfigured(address smartAccount);
     error PolicyExpired(address smartAccount);
     error PolicyHashInvalid();
@@ -133,9 +145,10 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     error PolicyIntentReplay(bytes32 nonce);
     error PolicyIntentSignatureInvalid();
     error PolicyIntentParametersInvalid();
+    error SwapDeadlineInvalid(uint256 deadline);
 
     event CircuitBreakerUpdated(bool paused, address indexed guardian);
-    event AgentAccountRevoked(address indexed smartAccount, address indexed guardian);
+    event AgentAccountRevoked(address indexed smartAccount);
     event AgentExecutionAttempt(
         address indexed smartAccount,
         address indexed targetToken,
@@ -148,24 +161,14 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         uint256 value,
         uint256 timestamp
     );
-    event PolicyViolationRejected(
-        address indexed smartAccount,
-        bytes32 indexed reasonCode,
-        bytes32 contextHash,
-        uint256 timestamp
-    );
     event AccountPolicyConfigured(
         address indexed smartAccount,
         bytes32 indexed policyHash,
         uint256 maxTradeValue,
         uint64 expiresAt,
-        address intentSigner,
-        address indexed guardian
+        address intentSigner
     );
-    event AccountPolicyCleared(
-        address indexed smartAccount,
-        address indexed guardian
-    );
+    event AccountPolicyCleared(address indexed smartAccount);
 
     constructor(address approvedRouter_, address entryPoint_) {
         if (block.chainid != BSC_MAINNET_CHAIN_ID && block.chainid != BSC_TESTNET_CHAIN_ID) {
@@ -195,8 +198,8 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
 
     function onInstall(bytes calldata data) external payable {
         if (msg.value != 0) revert UnexpectedHookValue(msg.value);
-        if (data.length != 32) revert InvalidHookData();
-        address targetToken = abi.decode(data, (address));
+        if (data.length != 33 || data[0] != bytes1(0)) revert InvalidHookData();
+        address targetToken = abi.decode(data[1:], (address));
         if (targetToken == address(0) || targetToken.code.length == 0) {
             revert InvalidHookData();
         }
@@ -224,11 +227,12 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
     }
 
     function revokeAccount(address smartAccount) external {
-        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
+        if (msg.sender != smartAccount) revert OnlySmartAccount(msg.sender);
         if (smartAccount == address(0)) revert ZeroAddress();
         AccountState storage state = accountStates[smartAccount];
+        if (!state.installed) revert NotInitialized(smartAccount);
         state.revoked = true;
-        emit AgentAccountRevoked(smartAccount, guardian);
+        emit AgentAccountRevoked(smartAccount);
     }
 
     function setAccountPolicy(
@@ -238,7 +242,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         uint192 maxTradeValue,
         uint64 expiresAt
     ) external {
-        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
+        if (msg.sender != smartAccount) revert OnlySmartAccount(msg.sender);
         AccountState storage state = accountStates[smartAccount];
         if (!state.installed) revert NotInitialized(smartAccount);
         if (intentSigner == address(0)) revert PolicyIntentSignerInvalid();
@@ -259,32 +263,19 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
             policyHash,
             maxTradeValue,
             expiresAt,
-            intentSigner,
-            guardian
+            intentSigner
         );
     }
 
     function clearAccountPolicy(address smartAccount) external {
-        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
+        if (msg.sender != smartAccount) revert OnlySmartAccount(msg.sender);
         AccountState storage state = accountStates[smartAccount];
         state.policyConfigured = false;
         state.policyHash = bytes32(0);
         state.policyExpiresAt = 0;
         state.maxTradeValue = 0;
         state.intentSigner = address(0);
-        emit AccountPolicyCleared(smartAccount, guardian);
-    }
-
-    function recordPolicyViolation(
-        address smartAccount,
-        bytes32 reasonCode,
-        bytes32 contextHash
-    ) external {
-        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
-        if (smartAccount == address(0) || reasonCode == bytes32(0)) {
-            revert InvalidTelemetryReason();
-        }
-        emit PolicyViolationRejected(smartAccount, reasonCode, contextHash, block.timestamp);
+        emit AccountPolicyCleared(smartAccount);
     }
 
     function isModuleType(uint256 moduleTypeId) external pure returns (bool) {
@@ -314,6 +305,12 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         if (state.revoked) revert AccountRevoked(msg.sender);
 
         DecodedTrade memory trade = _decodeTrade(msgData);
+        if (
+            trade.target == address(this) && trade.value == 0
+                && _isPolicyManagementSelector(trade.selector)
+        ) {
+            return bytes("");
+        }
         if (trade.target != approvedRouter) revert WrongTarget(trade.target);
         if (trade.selector != BUY_SELECTOR) revert UnsupportedSelector(trade.selector);
         if (
@@ -346,6 +343,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
 
     function postCheck(bytes calldata hookData) external payable {
         if (msg.value != 0) revert UnexpectedHookValue(msg.value);
+        if (hookData.length == 0) return;
         if (hookData.length != 96) revert InvalidHookData();
         AccountState storage state = accountStates[msg.sender];
         if (!state.installed) {
@@ -445,7 +443,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         if (args.length != 96 + paddedLength) {
             revert InvalidKernelCallData();
         }
-        if (dataLength < 52 + ROUTER_BUY_CALL_LENGTH) revert InvalidExecutionCalldata();
+        if (dataLength < 56) revert InvalidExecutionCalldata();
 
         bytes calldata execution = args[96:96 + dataLength];
         trade = _decodeExecutionTarget(execution);
@@ -480,6 +478,7 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         uint256 pathLength;
         assembly {
             mstore(add(trade, 192), calldataload(add(routerCall.offset, 4)))
+            mstore(add(trade, 224), calldataload(add(routerCall.offset, 100)))
             pathOffset := calldataload(add(routerCall.offset, 36))
             mstore(add(trade, 160), and(
                 calldataload(add(routerCall.offset, 68)),
@@ -527,6 +526,12 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
             trade.intentValidUntil <= block.timestamp
                 || trade.intentValidUntil > state.policyExpiresAt
         ) revert PolicyIntentExpired();
+        if (
+            trade.deadline <= block.timestamp
+                || trade.deadline > block.timestamp + MAX_SWAP_DEADLINE_SECONDS
+                || trade.deadline > trade.intentValidUntil
+                || trade.deadline > type(uint64).max
+        ) revert SwapDeadlineInvalid(trade.deadline);
         if (trade.intentNonce == bytes32(0)) revert PolicyIntentNonceInvalid();
         if (state.consumedIntentNonces[trade.intentNonce]) {
             revert PolicyIntentReplay(trade.intentNonce);
@@ -543,9 +548,13 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
         TradeIntent memory intent = TradeIntent({
             smartAccount: smartAccount,
             policyHash: trade.intentPolicyHash,
-            targetToken: trade.tokenOut,
+            router: trade.target,
+            tokenIn: trade.pathStart,
+            tokenOut: trade.tokenOut,
+            recipient: trade.recipient,
             amountIn: trade.value,
             amountOutMin: trade.amountOutMin,
+            deadline: uint64(trade.deadline),
             slippageBps: trade.slippageBps,
             maxPriceImpactBps: trade.maxPriceImpactBps,
             validUntil: trade.intentValidUntil,
@@ -562,9 +571,13 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
                 TRADE_INTENT_TYPEHASH,
                 intent.smartAccount,
                 intent.policyHash,
-                intent.targetToken,
+                intent.router,
+                intent.tokenIn,
+                intent.tokenOut,
+                intent.recipient,
                 intent.amountIn,
                 intent.amountOutMin,
+                intent.deadline,
                 intent.slippageBps,
                 intent.maxPriceImpactBps,
                 intent.validUntil,
@@ -623,6 +636,12 @@ contract TradingAgentPolicyValidator is IERC7579Hook {
 
         address factory = abi.decode(result, (address));
         return factory != address(0) && factory.code.length > 0;
+    }
+
+    function _isPolicyManagementSelector(bytes4 selector) private pure returns (bool) {
+        return selector == SET_ACCOUNT_POLICY_SELECTOR
+            || selector == CLEAR_ACCOUNT_POLICY_SELECTOR
+            || selector == REVOKE_ACCOUNT_SELECTOR;
     }
 
     function _selectorAt(bytes calldata data, uint256 offset) private pure returns (bytes4 selector) {

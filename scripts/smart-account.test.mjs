@@ -143,6 +143,7 @@ test("encodes only a one-hop WBNB-to-target-token buy for the smart account", ()
   process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS =
     "0x0000000000000000000000000000000000000456";
   const config = getAgentSmartAccountConfig();
+  const buildTime = Math.floor(Date.now() / 1000);
 
   const call = encodeAgentBuyCall(
     {
@@ -177,6 +178,8 @@ test("encodes only a one-hop WBNB-to-target-token buy for the smart account", ()
   ]);
   assert.equal(decoded.args[2], "0x0000000000000000000000000000000000000789");
   assert.equal(decoded.args[0], 100n);
+  assert.ok(decoded.args[3] > BigInt(buildTime));
+  assert.ok(decoded.args[3] <= BigInt(buildTime + 15));
 });
 
 test("rejects trade calls outside the on-chain cap or without minimum output", () => {
@@ -208,6 +211,18 @@ test("rejects trade calls outside the on-chain cap or without minimum output", (
       config,
     ),
     /amountOutMin must be greater than zero/,
+  );
+  assert.throws(
+    () => encodeAgentBuyCall(
+      {
+        accountAddress,
+        amountBnb: 1n,
+        deadline: Math.floor(Date.now() / 1000) + 16,
+      },
+      1n,
+      config,
+    ),
+    /15 seconds/,
   );
 });
 

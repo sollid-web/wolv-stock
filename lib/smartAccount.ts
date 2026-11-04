@@ -44,7 +44,8 @@ const BUY_SELECTOR = "0x7ff36ab5" as const
 const ENTRY_POINT = getEntryPoint("0.7")
 const MAX_TRADE_VALUE = parseEther("0.5")
 const SESSION_VALIDITY_SECONDS = 7 * 24 * 60 * 60
-const SWAP_DEADLINE_SECONDS = 5 * 60
+export const AGENT_SWAP_DEADLINE_SECONDS = 15
+const SWAP_DEADLINE_SECONDS = AGENT_SWAP_DEADLINE_SECONDS
 const DEFAULT_SLIPPAGE_BPS = 100
 const MAX_SLIPPAGE_BPS = 500
 const DEFAULT_MAX_PRICE_IMPACT_BPS = 300
@@ -359,7 +360,7 @@ export function encodeAgentBuyCall(
         || deadline <= now
         || deadline > now + SWAP_DEADLINE_SECONDS
     ) {
-        throw new Error("deadline must be within the next five minutes")
+        throw new Error("deadline must be within the next 15 seconds")
     }
 
     return {

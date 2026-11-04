@@ -6,7 +6,16 @@ import {
   resolveAgentExecutionNetwork,
 } from "../services/agentExecutor.ts";
 import { AgentWorker } from "../services/agentWorker.ts";
-import { parseEther } from "viem";
+import {
+  decodeAbiParameters,
+  decodeFunctionData,
+  encodeFunctionData,
+  parseAbiParameters,
+  parseEther,
+  recoverTypedDataAddress,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { encodeAgentBuyCall } from "../lib/smartAccount.ts";
 
 const HASH = `0x${"a".repeat(64)}`;
 const TX_HASH = `0x${"b".repeat(64)}`;
@@ -16,8 +25,30 @@ const router = "0x0000000000000000000000000000000000000123";
 const hook = "0x0000000000000000000000000000000000000321";
 const POLICY_HASH = `0x${"c".repeat(64)}`;
 const INTENT_NONCE = `0x${"d".repeat(64)}`;
-const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
-const INTENT_SIGNATURE = `0x${"11".repeat(65)}`;
+const intentSigningAccount = privateKeyToAccount(`0x${"01".padStart(64, "0")}`);
+const INTENT_SIGNER = intentSigningAccount.address;
+const ROUTER_BUY_ABI = [{
+  type: "function",
+  name: "swapExactETHForTokens",
+  stateMutability: "payable",
+  inputs: [
+    { name: "amountOutMin", type: "uint256" },
+    { name: "path", type: "address[]" },
+    { name: "to", type: "address" },
+    { name: "deadline", type: "uint256" },
+  ],
+  outputs: [{ name: "amounts", type: "uint256[]" }],
+}];
+const KERNEL_EXECUTE_ABI = [{
+  type: "function",
+  name: "execute",
+  stateMutability: "payable",
+  inputs: [
+    { name: "mode", type: "bytes32" },
+    { name: "executionCalldata", type: "bytes" },
+  ],
+  outputs: [],
+}];
 const bundlerFlag = process.env.ENABLE_LIVE_USEROP_SUBMISSION;
 
 afterEach(() => {
@@ -32,6 +63,7 @@ function createHarness(overrides = {}) {
   const sentCalls = [];
   const waitOptions = [];
   const signedTypedData = [];
+  let intentSignature;
   const config = {
     chain: { id: 97 },
     rpcUrl: "https://rpc.test",
@@ -68,14 +100,19 @@ function createHarness(overrides = {}) {
     }),
     createIntentSigner: async () => ({
       account: {
-        address: INTENT_SIGNER,
+        ...intentSigningAccount,
         signTypedData: async typedData => {
           signedTypedData.push(typedData);
-          return INTENT_SIGNATURE;
+          intentSignature = await intentSigningAccount.signTypedData(typedData);
+          return intentSignature;
         },
       },
       getSignerData: () => INTENT_SIGNER,
     }),
+    getNextIntentNonce: async account => {
+      assert.equal(account, ACCOUNT);
+      return INTENT_NONCE;
+    },
     createAccountClient: async () => ({ account: accountClient.account, client: accountClient }),
     readValidator: async () => ({
       paused: false,
@@ -124,7 +161,6 @@ function createHarness(overrides = {}) {
     sourcePriceMicros: 90_000_000n,
     createdAt: new Date(now).toISOString(),
     policyHash: POLICY_HASH,
-    intentNonce: INTENT_NONCE,
   };
 
   return {
@@ -136,6 +172,9 @@ function createHarness(overrides = {}) {
     sentCalls,
     waitOptions,
     signedTypedData,
+    get intentSignature() {
+      return intentSignature;
+    },
     receipt,
     setNow(value) {
       now = value;
@@ -243,10 +282,22 @@ test("submits a signed UserOperation and returns final receipt and gas accountin
   assert.equal(harness.signedTypedData[0].primaryType, "TradeIntent");
   assert.equal(harness.signedTypedData[0].message.smartAccount, ACCOUNT);
   assert.equal(harness.signedTypedData[0].message.policyHash, POLICY_HASH);
-  assert.equal(harness.signedTypedData[0].message.targetToken, TARGET);
+  assert.equal(harness.signedTypedData[0].message.router, router);
+  assert.equal(harness.signedTypedData[0].message.tokenIn, harness.dependencies.getConfig().wrappedNativeAddress);
+  assert.equal(harness.signedTypedData[0].message.tokenOut, TARGET);
+  assert.equal(harness.signedTypedData[0].message.recipient, ACCOUNT);
+  assert.ok(harness.signedTypedData[0].message.deadline > BigInt(Math.floor(Date.now() / 1000)));
   assert.equal(harness.signedTypedData[0].message.amountIn, harness.intent.amountBnb);
   assert.equal(harness.signedTypedData[0].message.amountOutMin, 110n);
   assert.equal(harness.signedTypedData[0].message.nonce, INTENT_NONCE);
+  assert.equal(BigInt(quoteRequests[0].deadline), harness.signedTypedData[0].message.deadline);
+  assert.equal(
+    await recoverTypedDataAddress({
+      ...harness.signedTypedData[0],
+      signature: harness.intentSignature,
+    }),
+    INTENT_SIGNER,
+  );
   assert.equal(quoteRequests[0].slippageBps, harness.intent.slippageBps);
   assert.equal(quoteRequests[0].maxPriceImpactBps, harness.intent.maxPriceImpactBps);
   assert.equal(harness.waitOptions[0].hash, HASH);
@@ -257,6 +308,101 @@ test("submits a signed UserOperation and returns final receipt and gas accountin
     "userop_confirmed",
   ]);
   assert.equal(harness.failures.length, 0);
+});
+
+test("constructs the exact Kernel router call and 320-byte signed intent envelope", async () => {
+  const harness = createHarness({
+    buildBuyCall: async (_client, request, config) => {
+      const call = encodeAgentBuyCall({
+        accountAddress: ACCOUNT,
+        amountBnb: parseEther("0.1"),
+        deadline: request.deadline,
+      }, 100n, config);
+      return {
+        ...call,
+        quote: {
+          amountOutMin: 100n,
+          expectedAmountOut: 120n,
+          priceImpactBps: 35,
+          slippageBps: request.slippageBps,
+          poolAddress: "0x0000000000000000000000000000000000000999",
+        },
+      };
+    },
+    encodeBuyCall: (request, amountOutMin, config) => encodeAgentBuyCall({
+      accountAddress: request.accountAddress,
+      amountBnb: request.amountBnb,
+      deadline: request.deadline,
+    }, amountOutMin, config),
+  });
+  await harness.executor.executeUserOperation(harness.intent);
+
+  const call = harness.sentCalls[0][0];
+  const routerCalldata = call.data.slice(0, 2 + 228 * 2);
+  const envelope = `0x${call.data.slice(2 + 228 * 2)}`;
+  assert.equal((call.data.length - 2) / 2, 228 + 320);
+  assert.equal(routerCalldata.slice(0, 10), "0x7ff36ab5");
+  assert.equal((envelope.length - 2) / 2, 320);
+
+  const routerCall = decodeFunctionData({
+    abi: ROUTER_BUY_ABI,
+    data: routerCalldata,
+  });
+  assert.equal(routerCall.functionName, "swapExactETHForTokens");
+  assert.equal(routerCall.args[0], 110n);
+  assert.deepEqual(routerCall.args[1], [
+    harness.dependencies.getConfig().wrappedNativeAddress,
+    TARGET,
+  ]);
+  assert.equal(routerCall.args[2], ACCOUNT);
+  assert.equal(BigInt(routerCall.args[3]), harness.signedTypedData[0].message.deadline);
+
+  const wordAt = (hex, byteOffset) =>
+    BigInt(`0x${hex.slice(2 + byteOffset * 2, 2 + (byteOffset + 32) * 2)}`);
+  assert.equal(wordAt(routerCalldata, 36), 128n);
+  assert.equal(wordAt(routerCalldata, 132), 2n);
+
+  const [policyHash, nonce, validUntil, slippageBps, maxPriceImpactBps, signature] =
+    decodeAbiParameters(
+      parseAbiParameters("bytes32, bytes32, uint64, uint16, uint16, bytes"),
+      envelope,
+    );
+  assert.equal(policyHash, POLICY_HASH);
+  assert.equal(nonce, INTENT_NONCE);
+  assert.equal(validUntil, harness.signedTypedData[0].message.validUntil);
+  assert.equal(slippageBps, harness.intent.slippageBps);
+  assert.equal(maxPriceImpactBps, harness.intent.maxPriceImpactBps);
+  assert.equal((signature.length - 2) / 2, 65);
+  assert.equal(signature, harness.intentSignature);
+
+  const executionCalldata = `0x${call.to.slice(2).padStart(40, "0")}${call.value.toString(16).padStart(64, "0")}${call.data.slice(2)}`;
+  const kernelCallData = encodeFunctionData({
+    abi: KERNEL_EXECUTE_ABI,
+    functionName: "execute",
+    args: [`0x${"00".repeat(32)}`, executionCalldata],
+  });
+  const kernelCall = decodeFunctionData({
+    abi: KERNEL_EXECUTE_ABI,
+    data: kernelCallData,
+  });
+  assert.equal(kernelCall.functionName, "execute");
+  assert.equal(kernelCall.args[0], `0x${"00".repeat(32)}`);
+  assert.equal(kernelCall.args[1].slice(2, 42), router.slice(2));
+  assert.equal(BigInt(`0x${kernelCall.args[1].slice(42, 106)}`), call.value);
+  assert.equal(kernelCall.args[1].slice(106), call.data.slice(2));
+  assert.equal((kernelCall.args[1].length - 2) / 2, 52 + 228 + 320);
+  const kernelArguments = `0x${kernelCallData.slice(10)}`;
+  assert.equal(wordAt(kernelArguments, 0), 0n);
+  assert.equal(wordAt(kernelArguments, 32), 64n);
+  assert.equal(wordAt(kernelArguments, 64), 52n + 228n + 320n);
+
+  assert.equal(
+    await recoverTypedDataAddress({
+      ...harness.signedTypedData[0],
+      signature,
+    }),
+    INTENT_SIGNER,
+  );
 });
 
 test("labels bundler validation rejections and feeds them into worker failure reporting", async () => {
@@ -340,6 +486,36 @@ test("rechecks validator limits and rejects stale or malformed intents before di
     );
     assert.equal(harness.sentCalls.length, 0);
   });
+
+  await t.test("intent expires while building the quote", async () => {
+    const harness = createHarness();
+    const buildBuyCall = harness.dependencies.buildBuyCall;
+    harness.dependencies.buildBuyCall = async (...args) => {
+      const call = await buildBuyCall(...args);
+      harness.setNow(Date.now() + 20_001);
+      return call;
+    };
+    await assert.rejects(
+      harness.executor.executeUserOperation(harness.intent),
+      error => error.code === "INTENT_STALE",
+    );
+    assert.equal(harness.sentCalls.length, 0);
+  });
+});
+
+test("fails closed when persistent nonce allocation is unavailable", async () => {
+  const harness = createHarness({
+    getNextIntentNonce: async () => {
+      throw new Error("Redis unavailable");
+    },
+  });
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "INTENT_NONCE_UNAVAILABLE" && /nonce allocation failed/i.test(error.message),
+  );
+  assert.equal(harness.signedTypedData.length, 0);
+  assert.equal(harness.sentCalls.length, 0);
+  assert.equal(harness.failures[0].code, "INTENT_NONCE_UNAVAILABLE");
 });
 
 test("worker failure reporter trips the worker panic stop on repeated dispatch failures", async () => {
