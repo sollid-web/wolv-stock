@@ -16,7 +16,7 @@ import {
     type WalletClient
 } from "viem"
 import { toAccount } from "viem/accounts"
-import { bsc } from "viem/chains"
+import { bsc, bscTestnet } from "viem/chains"
 
 const BSC_ENTRY_POINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 const ENTRY_POINT = getEntryPoint("0.7")
@@ -28,7 +28,8 @@ if (ENTRY_POINT.address.toLowerCase() !== BSC_ENTRY_POINT_ADDRESS.toLowerCase())
 function getConfiguredChain() {
     const chainId = Number(process.env.NEXT_PUBLIC_BSC_CHAIN_ID ?? "56")
     if (chainId === 56) return bsc
-    throw new Error("NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet).")
+    if (chainId === 97) return bsc
+    throw new Error("NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet) or 97 (BSC testnet).")
 }
 
 export function getAgentPublicClient() {
