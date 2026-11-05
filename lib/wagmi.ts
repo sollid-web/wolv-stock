@@ -1,17 +1,15 @@
 import { http, createConfig } from "wagmi";
-import { bsc as wagmiBsc } from "wagmi/chains";
+import { bsc as wagmiBsc, bscTestnet as wagmiBscTestnet } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
-import { bsc } from "@reown/appkit/networks";
-import { resolvePublicRpcUrl } from "./publicRpcUrl";
+import { bsc, bscTestnet } from "@reown/appkit/networks";
+import { getBscRpcUrl, getConfiguredBscChain } from "./bscChain.ts";
 
 export const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLET_PROJECT_ID;
-const bscRpcUrl = resolvePublicRpcUrl(
-  process.env.NEXT_PUBLIC_BSC_RPC_URL,
-  "https://bsc-dataseed.binance.org/",
-  "NEXT_PUBLIC_BSC_RPC_URL",
-);
-export const appKitNetworks = [bsc] as const;
+const mainnetRpcUrl = getBscRpcUrl(56);
+const testnetRpcUrl = getBscRpcUrl(97);
+const configuredChain = getConfiguredBscChain();
+export const appKitNetworks = [bsc, bscTestnet] as const;
 
 if (!walletConnectProjectId) {
   console.warn(
@@ -25,16 +23,20 @@ export const wagmiAdapter = walletConnectProjectId
       projectId: walletConnectProjectId,
       ssr: true,
       transports: {
-        [bsc.id]: http(bscRpcUrl),
+        [wagmiBsc.id]: http(mainnetRpcUrl),
+        [wagmiBscTestnet.id]: http(testnetRpcUrl),
       },
     })
   : null;
 
 export const wagmiConfig = wagmiAdapter?.wagmiConfig ?? createConfig({
-  chains: [wagmiBsc],
+  chains: [wagmiBsc, wagmiBscTestnet],
   connectors: [injected()],
   transports: {
-    [wagmiBsc.id]: http(bscRpcUrl),
+    [wagmiBsc.id]: http(mainnetRpcUrl),
+    [wagmiBscTestnet.id]: http(testnetRpcUrl),
   },
   ssr: true,
 });
+
+export const defaultAppKitNetwork = configuredChain.id === 97 ? bscTestnet : bsc;

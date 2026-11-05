@@ -93,7 +93,26 @@ test("rejects bundler URLs containing embedded credentials", () => {
 
   assert.throws(
     () => getAgentSmartAccountConfig(),
-    /must be a public HTTP\(S\) URL without credentials/,
+    /must be a public HTTP\(S\) URL without embedded credentials/,
+  );
+});
+
+test("accepts bundler URLs with query parameters", () => {
+  process.env.NEXT_PUBLIC_CHAIN_ID = "97";
+  process.env.NEXT_PUBLIC_BSC_TESTNET_RPC_URL = "https://rpc.example";
+  process.env.NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL =
+    "https://bundler.example.test/rpc?api-key=public-test-key";
+  process.env.NEXT_PUBLIC_ROUTER_ADDRESS =
+    "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3";
+  process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS =
+    "0x0000000000000000000000000000000000000123";
+  process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS =
+    "0x0000000000000000000000000000000000000456";
+
+  const config = getAgentSmartAccountConfig();
+  assert.equal(
+    config.bundlerRpcUrl,
+    "https://bundler.example.test/rpc?api-key=public-test-key",
   );
 });
 

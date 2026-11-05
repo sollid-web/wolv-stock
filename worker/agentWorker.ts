@@ -19,6 +19,7 @@ import {
     type MarketSnapshot
 } from "../services/agentWorker.ts"
 import { closeIntentNonceTracker } from "../services/agentIntentNonceTracker.ts"
+import { loadWorkerEnvironment } from "./workerEnvironment.ts"
 import {
     getAddress,
     isAddress,
@@ -318,8 +319,14 @@ const isDirectExecution = process.argv[1] !== undefined
     && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 
 if (isDirectExecution) {
-    void main().catch(error => {
-        console.error("Agent worker failed to start:", error instanceof Error ? error.message : String(error))
+    try {
+        loadWorkerEnvironment()
+        void main().catch(error => {
+            console.error("Agent worker failed to start:", error instanceof Error ? error.message : String(error))
+            process.exitCode = 1
+        })
+    } catch (error) {
+        console.error("Agent worker failed to load environment:", error instanceof Error ? error.message : String(error))
         process.exitCode = 1
-    })
+    }
 }

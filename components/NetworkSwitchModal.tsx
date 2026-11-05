@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 type NetworkSwitchModalProps = {
   open: boolean;
   isSwitching: boolean;
   onSwitch: () => Promise<void> | void;
+  showAgentTestnetLink?: boolean;
 };
 
 export default function NetworkSwitchModal({
   open,
   isSwitching,
   onSwitch,
+  showAgentTestnetLink = false,
 }: NetworkSwitchModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -73,6 +76,15 @@ export default function NetworkSwitchModal({
           <p id="network-switch-description" className="mt-3 text-sm leading-6 text-[#cbd5e1]">
             Your wallet is connected to a network that cannot trade WOLV tokenized equities. This terminal requires Binance Smart Chain Mainnet to stay compliant with the Spot Trading Only hackathon rule.
           </p>
+
+          {showAgentTestnetLink && (
+            <Link
+              href="/agent"
+              className="mt-4 block rounded-xl border border-sky-400/30 bg-sky-400/[0.06] p-3 text-sm font-bold text-sky-200 hover:border-sky-300/50"
+            >
+              Open Agent Policy on BSC Testnet
+            </Link>
+          )}
 
           <div className="mt-4 rounded-xl border border-[#d9a80a]/30 bg-[#d9a80a]/5 p-3 text-sm font-bold text-[#d9a80a]">
             Switch to Binance Smart Chain Mainnet

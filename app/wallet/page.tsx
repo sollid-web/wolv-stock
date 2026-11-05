@@ -78,6 +78,7 @@ export default function WalletPage() {
               open={!isCorrectNetwork}
               isSwitching={isSwitchingNetwork}
               onSwitch={handleNetworkSwitch}
+              showAgentTestnetLink={chainId === 97}
             />
 
             <div className="wolv-glass rounded-xl p-6">

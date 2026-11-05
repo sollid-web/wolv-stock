@@ -12,7 +12,9 @@ import {
   useWalletClient,
 } from "wagmi";
 import { TransactionReceiptNotFoundError, type Hash } from "viem";
+import { usePathname } from "next/navigation";
 import { createSingleFlightGate } from "@/lib/singleFlightGate";
+import { getWalletConnectChainId, isBscNetworkAllowedOnPath } from "@/lib/bscChain";
 
 interface TxRequest {
   from?: string;
@@ -147,6 +149,7 @@ function getWalletTransactionError(error: unknown): string {
  * app/wallet/page.tsx did not need to change.
  */
 export function useWallet(): WalletHookValue {
+  const pathname = usePathname();
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const {
     connectors,
@@ -165,9 +168,8 @@ export function useWallet(): WalletHookValue {
 
   // Prefer an already-injected wallet (MetaMask, Trust Wallet, etc.);
   // otherwise fall back to WalletConnect. Mirrors the old lib/wallet.ts
-  // fallback order, but the actual eth_requestAccounts call, BSC chain
-  // enforcement (chainId: 56 below), and QR-modal flow are all handled by
-  // wagmi's connectors, not by hand-rolled window.ethereum calls.
+  // fallback order. The connection targets the configured BSC chain; the
+  // trading signing and submission guards below remain mainnet-only.
   const connect = useCallback(async (wallet?: "injected" | "walletConnect") => {
     if (connectInFlight.current) return;
     connectInFlight.current = true;
@@ -188,14 +190,14 @@ export function useWallet(): WalletHookValue {
           : "No browser-wallet provider was found. Open this page in your wallet app's built-in browser, or choose WalletConnect.");
         return;
       }
-      await connectAsync({ connector: target, chainId: 56 });
+      await connectAsync({ connector: target, chainId: getWalletConnectChainId(pathname) });
       setConnectionError(null);
     } catch (err) {
       setConnectionError(getConnectionErrorMessage(err));
     } finally {
       connectInFlight.current = false;
     }
-  }, [connectors, connectAsync]);
+  }, [connectors, connectAsync, pathname]);
 
   const disconnect = useCallback(() => {
     setConnectionError(null);
@@ -347,7 +349,7 @@ export function useWallet(): WalletHookValue {
     address: address ?? null,
     chainId,
     isConnected,
-    isCorrectNetwork: chainId === 56,
+    isCorrectNetwork: isBscNetworkAllowedOnPath(pathname, chainId ?? 0),
     isConnecting: isConnectPending,
     isInitializing: isReconnecting,
     error: connectionError ?? getConnectionErrorMessage(connectError),

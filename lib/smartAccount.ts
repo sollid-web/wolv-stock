@@ -721,10 +721,9 @@ function requirePublicUrl(value: string | undefined, variableName: string) {
         || url.username
         || url.password
         || url.hash
-        || url.search
     ) {
         throw new Error(
-            `${variableName} must be a public HTTP(S) URL without credentials or query parameters`
+            `${variableName} must be a public HTTP(S) URL without embedded credentials or fragments`
         )
     }
     return url.toString()

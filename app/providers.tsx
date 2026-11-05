@@ -2,16 +2,15 @@
 
 import { useState, type ReactNode } from "react";
 import { createAppKit } from "@reown/appkit/react";
-import { bsc } from "@reown/appkit/networks";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { appKitNetworks, wagmiAdapter, wagmiConfig, walletConnectProjectId } from "@/lib/wagmi";
+import { appKitNetworks, defaultAppKitNetwork, wagmiAdapter, wagmiConfig, walletConnectProjectId } from "@/lib/wagmi";
 
 if (typeof window !== "undefined" && walletConnectProjectId && wagmiAdapter) {
   createAppKit({
     adapters: [wagmiAdapter],
     networks: [...appKitNetworks],
-    defaultNetwork: bsc,
+    defaultNetwork: defaultAppKitNetwork,
     projectId: walletConnectProjectId,
     metadata: {
       name: "WOLV Spot Lens",

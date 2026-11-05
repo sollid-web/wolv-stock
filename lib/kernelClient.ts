@@ -16,7 +16,7 @@ import {
     type WalletClient
 } from "viem"
 import { toAccount } from "viem/accounts"
-import { bsc, bscTestnet } from "viem/chains"
+import { getBscRpcUrl, getConfiguredBscChain } from "./bscChain.ts"
 
 const BSC_ENTRY_POINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 const ENTRY_POINT = getEntryPoint("0.7")
@@ -25,28 +25,16 @@ if (ENTRY_POINT.address.toLowerCase() !== BSC_ENTRY_POINT_ADDRESS.toLowerCase())
     throw new Error("ZeroDev SDK EntryPoint v0.7 does not match the configured BSC EntryPoint.")
 }
 
-function getConfiguredChain() {
-    const chainId = Number(process.env.NEXT_PUBLIC_BSC_CHAIN_ID ?? "56")
-    if (chainId === 56) return bsc
-    if (chainId === 97) return bsc
-    throw new Error("NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet) or 97 (BSC testnet).")
-}
-
 export function getAgentPublicClient() {
-    const chain = getConfiguredChain()
-    const rpcUrl = process.env.NEXT_PUBLIC_BSC_RPC_URL
-    if (!rpcUrl) {
-        throw new Error("Configure NEXT_PUBLIC_BSC_RPC_URL before using agent policies.")
-    }
-
+    const chain = getConfiguredBscChain()
     return createPublicClient({
         chain,
-        transport: http(rpcUrl)
+        transport: http(getBscRpcUrl(chain.id))
     })
 }
 
-export async function getKernelClient(signer: WalletClient) {
-    const chain = getConfiguredChain()
+export async function getKernelAccountContext(signer: WalletClient) {
+    const chain = getConfiguredBscChain()
     const signerAccount = signer.account
     if (!signerAccount) {
         throw new Error("Connect a wallet account before configuring an agent policy.")
@@ -55,10 +43,6 @@ export async function getKernelClient(signer: WalletClient) {
         throw new Error("Switch your wallet to the configured BNB Chain network.")
     }
 
-    const bundlerUrl = process.env.NEXT_PUBLIC_BSC_BUNDLER_RPC_URL
-    if (!bundlerUrl) {
-        throw new Error("Configure NEXT_PUBLIC_BSC_BUNDLER_RPC_URL before submitting agent policies.")
-    }
     const publicClient = getAgentPublicClient()
     const ownerSigner = toAccount({
         address: signerAccount.address,
@@ -88,12 +72,33 @@ export async function getKernelClient(signer: WalletClient) {
         kernelVersion: KERNEL_V3_1
     })
 
+    return { account, chain, publicClient }
+}
+
+export function createKernelClientFromContext(
+    context: Awaited<ReturnType<typeof getKernelAccountContext>>
+) {
+    const { account, chain, publicClient } = context
+    const bundlerVariable = chain.id === 56
+        ? "NEXT_PUBLIC_BSC_BUNDLER_RPC_URL"
+        : "NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL"
+    const bundlerUrl = chain.id === 56
+        ? process.env.NEXT_PUBLIC_BSC_BUNDLER_RPC_URL
+        : process.env.NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL
+    if (!bundlerUrl) {
+        throw new Error(`Configure ${bundlerVariable} before submitting agent policies.`)
+    }
+
     return createKernelAccountClient({
         account,
         chain,
         client: publicClient,
         bundlerTransport: http(bundlerUrl)
     })
+}
+
+export async function getKernelClient(signer: WalletClient) {
+    return createKernelClientFromContext(await getKernelAccountContext(signer))
 }
 
 export type AgentKernelClient = Awaited<ReturnType<typeof getKernelClient>>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { usePathname } from "next/navigation"
 import {
     encodeFunctionData,
     formatEther,
@@ -16,9 +17,11 @@ import {
 } from "@/lib/setupAgentPolicy"
 import {
     getAgentPublicClient,
-    getKernelClient,
+    createKernelClientFromContext,
+    getKernelAccountContext,
     type AgentKernelClient
 } from "@/lib/kernelClient"
+import { isBscNetworkAllowedOnPath, isSupportedBscChainId } from "@/lib/bscChain"
 
 type PolicySnapshot = {
     account: Address
@@ -66,11 +69,13 @@ function getFriendlyError(error: unknown): string {
 }
 
 export default function AgentPolicyPanel() {
+    const pathname = usePathname()
     const { address, chainId, isConnected } = useAccount()
     const { data: walletClient } = useWalletClient()
     const [kernelClient, setKernelClient] = useState<AgentKernelClient | null>(null)
     const [publicClient, setPublicClient] = useState<ReturnType<typeof getAgentPublicClient> | null>(null)
     const [clientOwnerKey, setClientOwnerKey] = useState("")
+    const [derivedAccount, setDerivedAccount] = useState<{ address: Address; ownerKey: string } | null>(null)
     const [snapshot, setSnapshot] = useState<PolicySnapshot | null>(null)
     const [snapshotOwnerKey, setSnapshotOwnerKey] = useState("")
     const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000))
@@ -79,19 +84,30 @@ export default function AgentPolicyPanel() {
     const [busy, setBusy] = useState(false)
     const [lastUserOperation, setLastUserOperation] = useState<Hex | null>(null)
 
-    const chainConfigured = configuredChainId === 56
-    const correctChain = isConnected && chainId === configuredChainId
+    const chainConfigured = isSupportedBscChainId(configuredChainId)
+    const configuredNetworkName = configuredChainId === 97
+        ? "BNB Smart Chain Testnet"
+        : "BNB Smart Chain Mainnet"
+    const bundlerVariable = configuredChainId === 97
+        ? "NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL"
+        : "NEXT_PUBLIC_BSC_BUNDLER_RPC_URL"
+    const bundlerConfigured = Boolean(configuredChainId === 97
+        ? process.env.NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL
+        : process.env.NEXT_PUBLIC_BSC_BUNDLER_RPC_URL)
+    const correctChain = isConnected
+        && chainId === configuredChainId
+        && isBscNetworkAllowedOnPath(pathname, chainId)
     const walletReady = Boolean(address && walletClient && correctChain)
 
     const refreshPolicy = useCallback(async (
-        currentKernelClient: AgentKernelClient,
+        account: Address,
+        currentChainId: number,
         currentOwnerAddress: Address,
         currentPublicClient = getAgentPublicClient()
     ) => {
         if (!validatorAddress) {
             throw new Error("Configure NEXT_PUBLIC_VALIDATOR_ADDRESS with the deployed validator address.")
         }
-        const account = getAddress(currentKernelClient.account.address)
         const [installed, revoked, policy, targetToken, paused] = await Promise.all([
             currentPublicClient.readContract({
                 address: validatorAddress,
@@ -125,7 +141,7 @@ export default function AgentPolicyPanel() {
         ])
         setSnapshot({
             account,
-            chainId: currentKernelClient.chain?.id ?? 0,
+            chainId: currentChainId,
             installed,
             revoked,
             paused,
@@ -136,30 +152,42 @@ export default function AgentPolicyPanel() {
             expiresAt: policy[3],
             intentSigner: policy[4]
         })
-        setSnapshotOwnerKey(`${currentKernelClient.chain?.id}:${currentOwnerAddress.toLowerCase()}`)
+        setSnapshotOwnerKey(`${currentChainId}:${currentOwnerAddress.toLowerCase()}`)
     }, [])
 
     useEffect(() => {
         let cancelled = false
         let refreshTimer: ReturnType<typeof setInterval> | undefined
-        if (!walletReady || !walletClient) return
-        if (!validatorAddress || !address) return
+        if (!walletReady || !walletClient || !address) return
 
         void (async () => {
             try {
                 const nextPublicClient = getAgentPublicClient()
-                const nextKernelClient = await getKernelClient(walletClient)
+                const context = await getKernelAccountContext(walletClient)
                 if (cancelled) return
                 const ownerAddress = getAddress(address)
-                setKernelClient(nextKernelClient)
+                const accountAddress = getAddress(context.account.address)
+                const ownerKey = `${context.chain.id}:${ownerAddress.toLowerCase()}`
+                setDerivedAccount({ address: accountAddress, ownerKey })
+                setKernelClient(null)
                 setPublicClient(nextPublicClient)
-                setClientOwnerKey(`${nextKernelClient.chain?.id}:${ownerAddress.toLowerCase()}`)
-                await refreshPolicy(nextKernelClient, ownerAddress, nextPublicClient)
+                setClientOwnerKey(ownerKey)
+                if (!validatorAddress) {
+                    setError("")
+                    return
+                }
+                await refreshPolicy(accountAddress, context.chain.id, ownerAddress, nextPublicClient)
                 setError("")
                 if (cancelled) return
+                if (!bundlerConfigured) {
+                    setError(`Configure ${bundlerVariable} before submitting agent policy transactions.`)
+                    return
+                }
+                const nextKernelClient = createKernelClientFromContext(context)
+                setKernelClient(nextKernelClient)
                 refreshTimer = setInterval(() => {
                     setNowSeconds(Math.floor(Date.now() / 1000))
-                    void refreshPolicy(nextKernelClient, ownerAddress, nextPublicClient).catch((cause: unknown) => {
+                    void refreshPolicy(accountAddress, context.chain.id, ownerAddress, nextPublicClient).catch((cause: unknown) => {
                         if (!cancelled) setError(getFriendlyError(cause))
                     })
                 }, 15_000)
@@ -171,7 +199,7 @@ export default function AgentPolicyPanel() {
             cancelled = true
             if (refreshTimer) clearInterval(refreshTimer)
         }
-    }, [address, chainId, walletClient, walletReady, refreshPolicy])
+    }, [address, chainId, walletClient, walletReady, refreshPolicy, bundlerConfigured, bundlerVariable])
 
     async function revokeAgent() {
         if (!activeKernelClient || !activePublicClient || !currentSnapshot || !validatorAddress || !address) return
@@ -193,7 +221,12 @@ export default function AgentPolicyPanel() {
             if (!receipt.success) {
                 throw new Error("Revoke UserOperation reverted.")
             }
-            await refreshPolicy(activeKernelClient, getAddress(address), activePublicClient)
+            await refreshPolicy(
+                getAddress(activeKernelClient.account.address),
+                activeKernelClient.chain?.id ?? configuredChainId,
+                getAddress(address),
+                activePublicClient
+            )
             setNotice("Agent policy revoked on-chain.")
         } catch (cause) {
             setError(getFriendlyError(cause))
@@ -204,6 +237,7 @@ export default function AgentPolicyPanel() {
 
     const walletKey = address ? `${chainId}:${address.toLowerCase()}` : ""
     const currentSnapshot = snapshotOwnerKey === walletKey ? snapshot : null
+    const currentDerivedAccount = derivedAccount?.ownerKey === walletKey ? derivedAccount.address : null
     const activeKernelClient = clientOwnerKey === walletKey ? kernelClient : null
     const activePublicClient = clientOwnerKey === walletKey ? publicClient : null
     const policyActive = Boolean(
@@ -244,16 +278,20 @@ export default function AgentPolicyPanel() {
                         This account has been revoked on-chain. The current validator requires hook reinstallation before a new policy can be activated.
                     </p>
                 )}
-                {currentSnapshot && <p className="mt-3 break-all text-xs text-slate-500">Smart account: {currentSnapshot.account}</p>}
+                {currentDerivedAccount && (
+                    <p className="mt-3 break-all text-xs text-slate-500">
+                        Smart account (chain {configuredChainId}): {currentDerivedAccount}
+                    </p>
+                )}
             </div>
 
             {!isConnected && <p className="mb-5 text-sm text-slate-400">Connect your owner wallet to load or configure its on-chain policy.</p>}
             {isConnected && !correctChain && (
                 <p className="mb-5 text-sm text-amber-300">
-                    Switch your wallet to BNB Smart Chain mainnet to continue.
+                    Switch your wallet to {configuredNetworkName} to continue.
                 </p>
             )}
-            {!chainConfigured && <p className="mb-5 text-sm text-rose-300">NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet).</p>}
+            {!chainConfigured && <p className="mb-5 text-sm text-rose-300">NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet) or 97 (BSC testnet).</p>}
             {isConnected && !validatorAddress && (
                 <p className="mb-5 text-sm text-rose-300">Set NEXT_PUBLIC_VALIDATOR_ADDRESS to the deployed validator address.</p>
             )}
@@ -295,11 +333,20 @@ export default function AgentPolicyPanel() {
                     validatorAddress={validatorAddress}
                     installedTargetToken={currentSnapshot.installed ? currentSnapshot.targetToken : undefined}
                     canSubmit={Boolean(activeKernelClient && activePublicClient && !busy)}
-                    disabledReason={activeKernelClient ? undefined : "Preparing the Kernel smart account..."}
+                    disabledReason={activeKernelClient
+                        ? undefined
+                        : bundlerConfigured
+                            ? "Preparing the Kernel smart account..."
+                            : `Configure ${bundlerVariable} before submitting agent policy transactions.`}
                     onConfigured={async () => {
                         if (activeKernelClient && address) {
                             if (activePublicClient) {
-                                await refreshPolicy(activeKernelClient, getAddress(address), activePublicClient)
+                                await refreshPolicy(
+                                    getAddress(activeKernelClient.account.address),
+                                    activeKernelClient.chain?.id ?? configuredChainId,
+                                    getAddress(address),
+                                    activePublicClient
+                                )
                             }
                         }
                     }}
