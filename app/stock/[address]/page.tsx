@@ -14,7 +14,6 @@ import MarketChart from "@/components/MarketChart";
 
 export const dynamic = "force-dynamic";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const num = (value: unknown) => {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number.parseFloat(value) : NaN;
   return Number.isFinite(parsed) ? parsed : null;
@@ -64,15 +63,21 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   );
 
   const errs: string[] = [];
-  await sleep(300);
-  const market: unknown = await getRWAMarketData(address).catch((error: unknown) => { errs.push("market data: " + (error instanceof Error ? error.message : String(error))); return null; });
-  await sleep(300);
-  const profile: unknown = await getRWAProfile(address).catch((error: unknown) => { errs.push("company profile: " + (error instanceof Error ? error.message : String(error))); return null; });
-  await sleep(300);
-  const candles: unknown = await getCandles(address, "56", "1h", "48").catch((error: unknown) => { errs.push("chart data: " + (error instanceof Error ? error.message : String(error))); return null; });
-  const q = await marketQuoteUsd(address);
-
-  console.log("[profile-dump]", token.underlyingTicker, JSON.stringify(profile)?.slice(0, 1500));
+  const [market, profile, candles, q] = await Promise.all([
+    getRWAMarketData(address).catch((error: unknown) => {
+      errs.push("market data: " + (error instanceof Error ? error.message : String(error)));
+      return null;
+    }),
+    getRWAProfile(address).catch((error: unknown) => {
+      errs.push("company profile: " + (error instanceof Error ? error.message : String(error)));
+      return null;
+    }),
+    getCandles(address, "56", "1h", "48").catch((error: unknown) => {
+      errs.push("chart data: " + (error instanceof Error ? error.message : String(error)));
+      return null;
+    }),
+    marketQuoteUsd(address),
+  ]);
 
   const marketData = isRecord(market) && isRecord(market.data) && isRecord(market.data.marketData)
     ? market.data.marketData
