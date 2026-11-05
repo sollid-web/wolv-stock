@@ -278,7 +278,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The development server uses Next.js 16's default Turbopack bundler for faster route compilation; the production build remains on Webpack. If Turbopack is unavailable in your environment, you can start the fallback with `pnpm exec next dev --webpack`. The app uses system-font fallbacks, so production compilation does not need a Google Fonts network request.
+The development and production build scripts use Webpack for compatibility with environments such as Proot where Turbopack may not run. WalletConnect/AppKit providers are scoped to the agent, wallet, and trade-detail routes, keeping the initial homepage and market-list compilation lighter. The app uses system-font fallbacks, so production compilation does not need a Google Fonts network request.
 
 ## Checks
 
