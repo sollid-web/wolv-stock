@@ -34,20 +34,32 @@ function minimumExpirationDate(): string {
 }
 
 function getFriendlySetupError(error: unknown): string {
-    const message = error instanceof Error ? error.message.toLowerCase() : ""
-    if (/user rejected|user denied|rejected the request|code.?4001/.test(message)) {
+    const message = error instanceof Error ? error.message : ""
+    const lowerMessage = message.toLowerCase()
+    if (/user rejected|user denied|rejected the request|code.?4001/.test(lowerMessage)) {
         return "Wallet approval was declined. No policy change was completed."
-    }
-    if (/chain|network|entrypoint|validator|bundler|rpc/.test(message)) {
-        return "The wallet or agent policy service is not configured for this BNB Chain network."
-    }
-    if (/hook installation|policy configuration|readback|initialized/.test(message)) {
-        return "The on-chain policy step could not be verified. Check the transaction status before trying again."
     }
     if (error instanceof AgentPolicyValidationError) {
         return error.message
     }
-    return "Agent policy setup failed. Check your wallet and network, then try again."
+    if (/insufficient funds|aa21|didn't pay prefund|did not pay prefund/.test(lowerMessage)) {
+        return "The smart account needs enough testnet BNB to cover UserOperation gas. Fund the smart account and try again."
+    }
+
+    const shortMessage = error instanceof Error
+        && "shortMessage" in error
+        && typeof error.shortMessage === "string"
+        ? error.shortMessage
+        : ""
+    const detail = shortMessage || message
+    if (detail) {
+        const safeDetail = detail
+            .replace(/https?:\/\/[^\s"'<>]+/gi, "[RPC endpoint]")
+            .replace(/[\r\n\t]+/g, " ")
+            .slice(0, 300)
+        return `Agent policy setup failed: ${safeDetail}`
+    }
+    return "Agent policy setup failed with an unknown wallet or provider error. Check the wallet request and browser console."
 }
 
 export default function AgentSetupForm({

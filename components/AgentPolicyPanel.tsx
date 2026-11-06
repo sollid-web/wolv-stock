@@ -37,7 +37,11 @@ type PolicySnapshot = {
     intentSigner: Address
 }
 
-const configuredChainId = Number(process.env.NEXT_PUBLIC_BSC_CHAIN_ID ?? "56")
+const configuredChainId = Number(
+    process.env.NEXT_PUBLIC_BSC_CHAIN_ID
+    ?? process.env.NEXT_PUBLIC_CHAIN_ID
+    ?? "56"
+)
 const validatorEnv = process.env.NEXT_PUBLIC_VALIDATOR_ADDRESS
     || process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS
 const validatorAddress = validatorEnv && isAddress(validatorEnv)
@@ -291,7 +295,7 @@ export default function AgentPolicyPanel() {
                     Switch your wallet to {configuredNetworkName} to continue.
                 </p>
             )}
-            {!chainConfigured && <p className="mb-5 text-sm text-rose-300">NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet) or 97 (BSC testnet).</p>}
+            {!chainConfigured && <p className="mb-5 text-sm text-rose-300">NEXT_PUBLIC_CHAIN_ID or NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet) or 97 (BSC testnet).</p>}
             {isConnected && !validatorAddress && (
                 <p className="mb-5 text-sm text-rose-300">Set NEXT_PUBLIC_VALIDATOR_ADDRESS to the deployed validator address.</p>
             )}

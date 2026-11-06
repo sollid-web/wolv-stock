@@ -15,6 +15,7 @@ import {
     http,
     type WalletClient
 } from "viem"
+import { estimateFeesPerGas } from "viem/actions"
 import { toAccount } from "viem/accounts"
 import { getBscRpcUrl, getConfiguredBscChain } from "./bscChain.ts"
 
@@ -31,6 +32,12 @@ export function getAgentPublicClient() {
         chain,
         transport: http(getBscRpcUrl(chain.id))
     })
+}
+
+export function estimateKernelUserOperationFees(
+    publicClient: ReturnType<typeof getAgentPublicClient>
+) {
+    return estimateFeesPerGas(publicClient, { type: "eip1559" })
 }
 
 export async function getKernelAccountContext(signer: WalletClient) {
@@ -93,7 +100,10 @@ export function createKernelClientFromContext(
         account,
         chain,
         client: publicClient,
-        bundlerTransport: http(bundlerUrl)
+        bundlerTransport: http(bundlerUrl),
+        userOperation: {
+            estimateFeesPerGas: async () => estimateKernelUserOperationFees(publicClient)
+        }
     })
 }
 

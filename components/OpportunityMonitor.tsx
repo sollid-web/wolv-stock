@@ -7,12 +7,12 @@ import OpportunityCard from "@/components/OpportunityCard";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
 import { parseRwaAssetRecords } from "@/lib/spotAssets";
-import { getOpportunityRows, QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
+import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import {
-  getCrossListedPairs,
   MAX_RELIABLE_GAP_PERCENT,
   positiveNumberValue,
 } from "@/lib/opportunityMath";
+import { getMarketPulseRows, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,7 @@ function MonitorLoading() {
         <span>Loading comparison data</span>
         <span className="inline-flex items-center gap-2 normal-case tracking-normal text-[#94a3b8]">
           <span className="h-2 w-2 animate-pulse rounded-full bg-[#d9a80a]" />
-          Checking the current asset feed and quotes…
+          Loading the latest stored market pulse…
         </span>
       </div>
       <div className="space-y-4">
@@ -100,8 +100,16 @@ async function OpportunityMonitorData({ searchParams }: { searchParams: SearchPa
     feedUnavailable = true;
   }
 
-  const pairs = feedUnavailable ? [] : getCrossListedPairs(tokens);
-  const rows = feedUnavailable ? [] : await getOpportunityRows(tokens, limit);
+  let rows: Awaited<ReturnType<typeof getMarketPulseRows>> = [];
+  if (!feedUnavailable) {
+    try {
+      rows = (await getMarketPulseRows()).slice(0, limit);
+      if (!rows.length) feedUnavailable = true;
+    } catch (error) {
+      console.error("Opportunity monitor market pulse unavailable:", error);
+      feedUnavailable = true;
+    }
+  }
   const unusual = tokens
     .filter((token) => {
       const multiplier = positiveNumberValue(token.tokenToShareRatio);
@@ -121,7 +129,7 @@ async function OpportunityMonitorData({ searchParams }: { searchParams: SearchPa
         <span>
           {feedUnavailable
             ? "Live comparison unavailable"
-            : `Showing ${rows.length} of ${pairs.length} cross-listed tickers`}
+            : `Showing ${rows.length} of ${MARKET_PULSE_TICKERS.length} tracked tickers`}
         </span>
         <span>{feedUnavailable ? "No price or opportunity inferred" : `${tokens.length} eligible BSC asset records`}</span>
       </div>

@@ -6,8 +6,8 @@ import GlobalNav from "@/components/GlobalNav";
 import BrandMark from "@/components/BrandMark";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
-import { getOpportunityRows } from "@/lib/opportunityMonitor";
 import { parseRwaAssetRecords } from "@/lib/spotAssets";
+import { getMarketPulseRows } from "@/lib/marketPulse";
 
 export const dynamic = "force-dynamic";
 
@@ -116,8 +116,16 @@ async function HomeData() {
     feedUnavailable = true;
   }
 
-  // The homepage renders four opportunity cards; do not block first data paint on unused rows.
-  const rows = feedUnavailable ? [] : await getOpportunityRows(tokens, 4);
+  let rows: Awaited<ReturnType<typeof getMarketPulseRows>> = [];
+  if (!feedUnavailable) {
+    try {
+      rows = await getMarketPulseRows();
+      if (!rows.length) feedUnavailable = true;
+    } catch (error) {
+      console.error("Homepage market pulse unavailable:", error);
+      feedUnavailable = true;
+    }
+  }
 
   return (
     <>

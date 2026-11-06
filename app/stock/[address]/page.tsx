@@ -1,5 +1,6 @@
 import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
-import { marketQuoteUsd } from "@/lib/quotes";
+import { marketQuoteUsd, type Q } from "@/lib/quotes";
+import { getMarketPulseRows, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
 import Link from "next/link";
 import Image from "next/image";
 import { buildProtectionRows } from "@/lib/rwaData";
@@ -63,6 +64,23 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   );
 
   const errs: string[] = [];
+  const ticker = (token.underlyingTicker ?? "").trim().toUpperCase();
+  const trackedTicker = MARKET_PULSE_TICKERS.find((candidate) => candidate === ticker);
+  const loadQuote = async (): Promise<Q> => {
+    if (!trackedTicker) return marketQuoteUsd(address);
+    try {
+      const [row] = await getMarketPulseRows([trackedTicker]);
+      const venue = row?.venues.find((item) =>
+        item.token.tokenContractAddress.toLowerCase() === address.toLowerCase()
+      );
+      if (venue) return venue.quote;
+      errs.push("market pulse: no stored quote is available for this venue");
+      return { ok: false, err: "Stored market pulse quote unavailable", ts: 0 };
+    } catch (error) {
+      errs.push("market pulse: " + (error instanceof Error ? error.message : String(error)));
+      return { ok: false, err: "Stored market pulse is temporarily unavailable", ts: 0 };
+    }
+  };
   const [market, profile, candles, q] = await Promise.all([
     getRWAMarketData(address).catch((error: unknown) => {
       errs.push("market data: " + (error instanceof Error ? error.message : String(error)));
@@ -76,7 +94,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
       errs.push("chart data: " + (error instanceof Error ? error.message : String(error)));
       return null;
     }),
-    marketQuoteUsd(address),
+    loadQuote(),
   ]);
 
   const marketData = isRecord(market) && isRecord(market.data) && isRecord(market.data.marketData)

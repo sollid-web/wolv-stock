@@ -68,7 +68,7 @@ export default function AIInsightStrip({ row }: { row?: OpportunityRow }) {
               <span className="rounded-full border border-sky-300/20 bg-sky-300/[0.06] px-2 py-1 tracking-[0.12em]">{loading ? "Validating live data" : analysis?.source ?? "On-demand analysis"}</span>
             </div>
             {loading ? (
-              <div className="mt-2 flex items-center gap-2 text-sm font-bold text-white"><span className="wolv-pulse size-1.5 rounded-full bg-sky-300" />Fetching server-side market data and preparing the explanation…</div>
+              <div className="mt-2 flex items-center gap-2 text-sm font-bold text-white"><span className="wolv-pulse size-1.5 rounded-full bg-sky-300" />Loading the latest stored market snapshot and preparing the explanation…</div>
             ) : analysis ? (
               <>
                 <h2 className="mt-2 truncate text-base font-black text-white sm:text-lg">{analysis.headline}</h2>
@@ -102,7 +102,7 @@ export default function AIInsightStrip({ row }: { row?: OpportunityRow }) {
             onClick={analyze}
             className="rounded-lg border border-sky-300/25 bg-sky-300/[0.06] px-3 py-2 text-[10px] font-bold text-sky-200 transition hover:bg-sky-300/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Analyzing…" : analysis || error ? "Refresh market read" : "Analyze live market"}
+            {loading ? "Analyzing…" : analysis || error ? "Refresh market read" : "Analyze stored market"}
           </button>
           {analysis && <span className="text-[10px] font-bold text-slate-300 sm:max-w-[190px] sm:text-right">{analysis.nextStep}</span>}
         </div>

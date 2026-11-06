@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
-import { filterSpotEligibleAssets } from "@/lib/compliance";
-import { getRWATokenList } from "@/lib/binance";
-import { getOpportunityRows } from "@/lib/opportunityMonitor";
 import { marketLabel } from "@/lib/opportunityMath";
 import { quoteAgeSeconds } from "@/lib/quotes";
-import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
-import { parseRwaAssetRecords } from "@/lib/spotAssets";
+import { getMarketPulseRows } from "@/lib/marketPulse";
 import {
   buildRulesAnalysis,
   normalizeModelSummary,
@@ -201,13 +197,7 @@ export async function POST(request: Request) {
     const requestInput = parseAnalysisRequest(parsedBody.value);
     if (!requestInput) return NextResponse.json({ error: "A valid ticker is required" }, { status: 400 });
 
-    const response: unknown = await getRWATokenList();
-    if (!isRwaAssetListResponse(response, { allowEmpty: true })) {
-      throw new Error("The RWA asset response could not be validated");
-    }
-    const tokens = filterSpotEligibleAssets(parseRwaAssetRecords(response))
-      .filter((token) => token.underlyingTicker.trim().toUpperCase() === requestInput.ticker);
-    const [row] = await getOpportunityRows(tokens, 1);
+    const [row] = await getMarketPulseRows([requestInput.ticker]);
     if (!row) {
       return NextResponse.json({ error: "No supported cross-venue data is available for this ticker" }, { status: 404 });
     }
@@ -243,7 +233,7 @@ export async function POST(request: Request) {
           };
         })() : { source: "WOLV rules · model not configured" }),
         checkedAt,
-        dataSources: ["Binance RWA reference data", "Binance indicative server-side estimate"],
+        dataSources: ["Supabase market pulse snapshot", "Binance RWA reference and indicative data"],
         observations: input.venues.map((venue) => ({
           platform: venue.platform,
           status: venue.status,
@@ -265,7 +255,7 @@ export async function POST(request: Request) {
         ...fallback,
         source: "WOLV rules · AI unavailable",
         checkedAt,
-        dataSources: ["Binance RWA reference data", "Binance indicative server-side estimate"],
+        dataSources: ["Supabase market pulse snapshot", "Binance RWA reference and indicative data"],
         observations: input.venues.map((venue) => ({
           platform: venue.platform,
           status: venue.status,

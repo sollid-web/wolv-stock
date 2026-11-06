@@ -135,7 +135,7 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
           feedUnavailable ? "border-amber-400/20 bg-amber-400/[0.06] text-amber-200" : "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200"
         }`}>
           <span className={`size-1.5 rounded-full ${feedUnavailable ? "bg-amber-300" : "wolv-pulse bg-emerald-400"}`} />
-          {feedUnavailable ? "Feed unavailable" : "Live BSC data"}
+          {feedUnavailable ? "Feed unavailable" : "          Stored BSC snapshot"}
         </span>
       </div>
 
@@ -401,7 +401,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         <div role="alert" className="mx-auto mb-5 max-w-7xl px-4 sm:px-6">
           <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.05] p-3 text-xs leading-5 text-amber-100">
             Live market data is unavailable. WOLV is not substituting sample prices or inferred opportunities.
-            Retry when the upstream market feed is available.
+            Retry when the market pulse database and upstream provider are available.
           </div>
         </div>
       )}

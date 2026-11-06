@@ -10,7 +10,11 @@ export function getBscChain(chainId: number) {
 }
 
 export function getConfiguredBscChain() {
-    return getBscChain(Number(process.env.NEXT_PUBLIC_BSC_CHAIN_ID ?? "56"))
+    return getBscChain(Number(
+        process.env.NEXT_PUBLIC_BSC_CHAIN_ID
+        ?? process.env.NEXT_PUBLIC_CHAIN_ID
+        ?? "56"
+    ))
 }
 
 export function isSupportedBscChainId(chainId: number): chainId is SupportedBscChainId {

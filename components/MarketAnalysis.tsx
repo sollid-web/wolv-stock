@@ -121,7 +121,7 @@ export default function MarketAnalysis({ row }: { row: OpportunityRow }) {
                 <div>
                   <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.18em] text-sky-300"><span className="wolv-pulse size-1.5 rounded-full bg-sky-300" /> WOLV AI market read</div>
                   <h2 id={`analysis-${row.ticker}`} className="mt-2 text-2xl font-black text-white">{row.ticker} <span className="text-slate-500">/</span> live context</h2>
-                  <p className="mt-1 text-xs text-slate-400">A server-derived read. The request uses this ticker only; market data is fetched again on the server.</p>
+                  <p className="mt-1 text-xs text-slate-400">A server-derived read based on the latest persisted market snapshot for this ticker.</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} className="grid size-9 shrink-0 place-items-center rounded-lg border border-white/[0.1] text-lg text-slate-400 transition hover:bg-white/[0.06] hover:text-white" aria-label="Close analysis">×</button>
               </div>
