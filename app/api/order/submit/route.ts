@@ -66,6 +66,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       error: "Binance RFQ typed-data schema is not documented or fixture-verified; signing and order submission are disabled.",
       code: result.code,
+      execution: "BLOCKED",
+      transactionSubmitted: false,
     }, { status: 501 });
   } catch (error: unknown) {
     if (error instanceof BrowserTradeIntentStoreError) {

@@ -59,7 +59,9 @@ after(async () => {
         wolv_agent_market_observations, wolv_agent_asset_history, wolv_agent_runs,
         wolv_agent_events, wolv_agent_opportunities, wolv_agent_analyses,
         wolv_agent_policy_decisions, wolv_agent_risk_policies, wolv_agent_proposals,
-        wolv_agent_control, wolv_strategy_evaluations CASCADE
+        wolv_agent_control, wolv_strategy_evaluations, wolv_agent_execution_claims,
+        wolv_agent_schedules, wolv_agent_delegated_custody, wolv_agent_alerts,
+        wolv_agent_market_calendar, wolv_agent_intent_nonces CASCADE
     `;
     await cleanup`DROP FUNCTION IF EXISTS wolv_agent_events_are_append_only();`;
     await cleanup`DROP FUNCTION IF EXISTS wolv_agent_proposals_material_immutable();`;
@@ -560,6 +562,128 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
 
     restartedStore = new AgentMemoryStore(TEST_DATABASE_URL);
     await restartedStore.initialize();
+    const scheduleId = randomUUID();
+    await restartedStore.saveSchedule({
+      ownerAddress: ownerA,
+      scheduleId,
+      name: "migration-v8-dca",
+      intervalSeconds: 300,
+      policyVersion: "dca-v1",
+      policyHash: "c".repeat(64),
+      nextRunAt: now,
+      strategyType: "DCA",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: {
+        assetAllowlist: [tokenA],
+        allocationMatrix: [{ ticker: "TST", weightBps: 10_000 }],
+        executionDays: ["TUESDAY"],
+      },
+    });
+    const storedSchedule = (await restartedStore.listSchedules(ownerA))
+      .find((schedule) => schedule.scheduleId === scheduleId);
+    assert.equal(storedSchedule.strategyType, "DCA");
+    assert.equal(storedSchedule.executionMode, "AUTONOMOUS");
+    assert.deepEqual(storedSchedule.strategyConfig.assetAllowlist, [tokenA]);
+    assert.equal((await restartedStore.listSchedules(ownerB)).length, 0);
+
+    const dueSchedules = await restartedStore.claimDueSchedules(ownerA, now + 1);
+    const dueSchedule = dueSchedules.find((schedule) => schedule.scheduleId === scheduleId);
+    assert.ok(dueSchedule);
+    assert.equal(dueSchedule.strategyConfig.allocationMatrix[0].weightBps, 10_000);
+    await assert.rejects(
+      restartedStore.claimExecution({
+        claimId: randomUUID(),
+        scheduleId,
+        ownerAddress: ownerB,
+        runKey: "d".repeat(64),
+        policyHash: "c".repeat(64),
+        createdAt: now,
+      }),
+      (error) => error?.code === "23503",
+    );
+    const claimId = randomUUID();
+    const claim = await restartedStore.claimExecution({
+      claimId,
+      scheduleId,
+      ownerAddress: ownerA,
+      runKey: "e".repeat(64),
+      policyHash: "c".repeat(64),
+      createdAt: now,
+    });
+    assert.equal(claim.claimId, claimId);
+    await restartedStore.updateExecutionClaim(claimId, ownerA, {
+      status: "SUBMITTED",
+      providerReference: "rfq-order-123",
+      at: now + 2,
+    });
+    await assert.rejects(
+      restartedStore.updateExecutionClaim(claimId, ownerB, { status: "FAILED", at: now + 3 }),
+      { code: "NOT_FOUND" },
+    );
+    const migrationSql = (await import("postgres")).default(TEST_DATABASE_URL, { max: 1, prepare: false });
+    try {
+      const [claimState] = await migrationSql`
+        SELECT status, run_ledger_status, provider_reference
+        FROM wolv_agent_execution_claims
+        WHERE claim_id = ${claimId} AND owner_address = ${ownerA}
+      `;
+      assert.equal(claimState.status, "SUBMITTED");
+      assert.equal(claimState.run_ledger_status, "SUBMITTED");
+      assert.equal(claimState.provider_reference, "rfq-order-123");
+
+      const reservation = await restartedStore.claimExecution({
+        claimId: randomUUID(),
+        scheduleId,
+        ownerAddress: ownerA,
+        runKey: "f".repeat(64),
+        policyHash: "c".repeat(64),
+        createdAt: now + 3,
+        notionalValue: "20",
+        rollingSince: now - 60_000,
+        maxRollingExposure: "100",
+      });
+      assert.ok(reservation.claimId);
+      assert.equal(await restartedStore.getDcaRollingExposure(ownerA, now - 60_000), "20");
+      assert.equal((await restartedStore.claimExecution({
+        claimId: randomUUID(),
+        scheduleId,
+        ownerAddress: ownerA,
+        runKey: "f".repeat(64),
+        policyHash: "c".repeat(64),
+        createdAt: now + 4,
+        notionalValue: "90",
+        rollingSince: now - 60_000,
+        maxRollingExposure: "100",
+      })).claimId, null);
+      await assert.rejects(
+        restartedStore.claimExecution({
+          claimId: randomUUID(),
+          scheduleId,
+          ownerAddress: ownerA,
+          runKey: "1".repeat(64),
+          policyHash: "c".repeat(64),
+          createdAt: now + 5,
+          notionalValue: "90",
+          rollingSince: now - 60_000,
+          maxRollingExposure: "100",
+        }),
+        { code: "EXPOSURE_LIMIT" },
+      );
+
+      const [triggerCount] = await migrationSql`
+        SELECT count(*)::integer AS count FROM pg_trigger
+        WHERE NOT tgisinternal
+          AND tgrelid IN ('wolv_agent_schedules'::regclass, 'wolv_agent_execution_claims'::regclass)
+      `;
+      assert.equal(triggerCount.count, 0);
+      await assert.rejects(
+        migrationSql`UPDATE wolv_agent_schedules SET execution_mode = 'BYPASS' WHERE schedule_id = ${scheduleId}`,
+        /execution_mode_valid/i,
+      );
+    } finally {
+      await migrationSql.end({ timeout: 3 });
+    }
+
     assert.equal(await restartedStore.recoverStaleRuns(now, now - 300_000, ownerA), 1);
     assert.equal(await restartedStore.recoverStaleRuns(now, now - 300_000, ownerA), 0);
     const recoveredRun = await restartedStore.reconstructRun(interruptedRunId, ownerA);

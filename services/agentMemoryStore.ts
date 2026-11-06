@@ -540,6 +540,52 @@ const MIGRATIONS = [{
     `CREATE INDEX wolv_agent_intent_nonces_expiry
       ON wolv_agent_intent_nonces (expires_at DESC)`,
   ],
+}, {
+  version: 8,
+  statements: [
+    `ALTER TABLE wolv_agent_schedules
+      ADD COLUMN strategy_type varchar(50) NOT NULL DEFAULT 'MONITORING',
+      ADD COLUMN execution_mode varchar(20) NOT NULL DEFAULT 'MANUAL',
+      ADD COLUMN strategy_config jsonb NOT NULL DEFAULT '{}'::jsonb`,
+    `ALTER TABLE wolv_agent_schedules
+      ADD CONSTRAINT wolv_agent_schedules_strategy_type_valid
+        CHECK (strategy_type ~ '^[A-Z][A-Z0-9_]{0,49}$'),
+      ADD CONSTRAINT wolv_agent_schedules_execution_mode_valid
+        CHECK (execution_mode IN ('MANUAL', 'AUTONOMOUS')),
+      ADD CONSTRAINT wolv_agent_schedules_strategy_config_object
+        CHECK (jsonb_typeof(strategy_config) = 'object'),
+      ADD CONSTRAINT wolv_agent_schedules_id_owner_unique
+        UNIQUE (schedule_id, owner_address)`,
+    `ALTER TABLE wolv_agent_execution_claims
+      ADD COLUMN run_ledger_status varchar(30),
+      ADD COLUMN provider_reference text`,
+    `UPDATE wolv_agent_execution_claims
+      SET run_ledger_status = status`,
+    `ALTER TABLE wolv_agent_execution_claims
+      ALTER COLUMN run_ledger_status SET DEFAULT 'CLAIMED',
+      ALTER COLUMN run_ledger_status SET NOT NULL,
+      ADD CONSTRAINT wolv_agent_execution_claims_ledger_status_valid
+        CHECK (run_ledger_status = status),
+      ADD CONSTRAINT wolv_agent_execution_claims_provider_reference_valid
+        CHECK (provider_reference IS NULL OR length(provider_reference) BETWEEN 1 AND 512),
+      ADD CONSTRAINT wolv_agent_execution_claims_schedule_owner_fk
+        FOREIGN KEY (schedule_id, owner_address)
+        REFERENCES wolv_agent_schedules (schedule_id, owner_address)`,
+    `CREATE UNIQUE INDEX wolv_agent_execution_claims_owner_provider_reference
+      ON wolv_agent_execution_claims (owner_address, provider_reference)
+      WHERE provider_reference IS NOT NULL`,
+  ],
+}, {
+  version: 9,
+  statements: [
+    `ALTER TABLE wolv_agent_execution_claims
+      ADD COLUMN notional_value numeric,
+      ADD CONSTRAINT wolv_agent_execution_claims_notional_positive
+        CHECK (notional_value IS NULL OR notional_value > 0)`,
+    `CREATE INDEX wolv_agent_execution_claims_dca_exposure
+      ON wolv_agent_execution_claims (owner_address, created_at)
+      WHERE notional_value IS NOT NULL`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -551,6 +597,9 @@ export type ProposalStatus =
   | "EXPIRED"
   | "REVOKED"
   | "EXECUTION_BLOCKED";
+
+export type AgentStrategyConfig = Record<string, unknown>;
+export type AgentExecutionMode = "MANUAL" | "AUTONOMOUS";
 
 export type AgentEventInput = {
   eventType: string;
@@ -708,6 +757,7 @@ export interface AgentMemoryStorePort {
   listDynamicStrategyRuns(ownerAddress: string, chainId?: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   updateOpportunityOutcome(opportunityId: string, ownerAddress: string, outcome: Record<string, unknown>): Promise<void>;
   getDailyExposure(ownerAddress: string, since: number): Promise<string>;
+  getDcaRollingExposure(ownerAddress: string, since: number): Promise<string>;
   getRecentProposalCount(ownerAddress: string, since: number): Promise<number>;
   getActivePolicy(ownerAddress: string, name: string): Promise<RiskPolicy | null>;
   saveSchedule(input: {
@@ -718,6 +768,9 @@ export interface AgentMemoryStorePort {
     policyVersion: string;
     policyHash: string;
     nextRunAt: number;
+    strategyType?: string;
+    executionMode?: AgentExecutionMode;
+    strategyConfig?: AgentStrategyConfig;
     enabled?: boolean;
     createdAt?: number;
     updatedAt?: number;
@@ -732,6 +785,9 @@ export interface AgentMemoryStorePort {
     runKey: string;
     policyHash: string;
     createdAt: number;
+    notionalValue?: string;
+    rollingSince?: number;
+    maxRollingExposure?: string;
   }): Promise<{ claimId: string | null }>;
   updateExecutionClaim(claimId: string, ownerAddress: string, update: {
     status: "CLAIMED" | "SIMULATED" | "SUBMITTED" | "CONFIRMED" | "FAILED" | "STOPPED";
@@ -739,6 +795,7 @@ export interface AgentMemoryStorePort {
     receiptHash?: string;
     failureCode?: string;
     failureDetail?: string;
+    providerReference?: string;
     at: number;
   }): Promise<void>;
   consumeIntentNonce(input: {
@@ -760,7 +817,7 @@ export interface AgentMemoryStorePort {
 }
 
 export class AgentMemoryStoreError extends Error {
-  readonly code: "NOT_CONFIGURED" | "INVALID_DATABASE_URL" | "NOT_FOUND" | "INVALID_TRANSITION" | "EMERGENCY_STOP" | "DUPLICATE" | "RATE_LIMITED" | "POLICY_CHANGED";
+  readonly code: "NOT_CONFIGURED" | "INVALID_DATABASE_URL" | "NOT_FOUND" | "INVALID_TRANSITION" | "EMERGENCY_STOP" | "DUPLICATE" | "RATE_LIMITED" | "POLICY_CHANGED" | "EXPOSURE_LIMIT";
 
   constructor(
     code: AgentMemoryStoreError["code"],
@@ -2212,6 +2269,23 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     return String(rows[0]?.exposure ?? "0");
   }
 
+  async getDcaRollingExposure(ownerAddress: string, since: number): Promise<string> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    if (!Number.isSafeInteger(since) || since <= 0) throw new TypeError("DCA exposure window is invalid.");
+    const rows = await this.sql`
+      SELECT COALESCE(SUM(c.notional_value), 0)::text AS exposure
+      FROM wolv_agent_execution_claims c
+      JOIN wolv_agent_schedules s
+        ON s.schedule_id = c.schedule_id AND s.owner_address = c.owner_address
+      WHERE c.owner_address = ${owner}
+        AND s.strategy_type = 'DCA'
+        AND c.notional_value IS NOT NULL
+        AND c.created_at >= ${new Date(since)}
+    `;
+    return String(rows[0]?.exposure ?? "0");
+  }
+
   async getRecentProposalCount(ownerAddress: string, since: number): Promise<number> {
     await this.ready;
     const owner = requireOwnerAddress(ownerAddress);
@@ -2240,16 +2314,24 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     const owner = requireOwnerAddress(input.ownerAddress);
     const createdAt = input.createdAt ?? input.nextRunAt;
     const updatedAt = input.updatedAt ?? createdAt;
+    const strategyType = input.strategyType ?? "MONITORING";
+    const executionMode = input.executionMode ?? "MANUAL";
+    const strategyConfig = serializeStrategyConfig(input.strategyConfig ?? {});
     if (!/^[a-zA-Z0-9._-]{1,64}$/.test(input.name) || !Number.isSafeInteger(input.intervalSeconds) ||
       input.intervalSeconds < 60 || input.intervalSeconds > 86400 ||
-      !/^[a-f0-9]{64}$/.test(input.policyHash)) throw new TypeError("Schedule configuration is invalid.");
+      !/^[a-f0-9]{64}$/.test(input.policyHash) ||
+      typeof strategyType !== "string" || !/^[A-Z][A-Z0-9_]{0,49}$/.test(strategyType) ||
+      !["MANUAL", "AUTONOMOUS"].includes(executionMode)) {
+      throw new TypeError("Schedule configuration is invalid.");
+    }
     const rows = await this.sql`
       INSERT INTO wolv_agent_schedules (
         schedule_id, owner_address, name, enabled, interval_seconds, policy_version, policy_hash,
-        next_run_at, created_at, updated_at
+        next_run_at, strategy_type, execution_mode, strategy_config, created_at, updated_at
       ) VALUES (
         ${input.scheduleId}, ${owner}, ${input.name}, ${input.enabled ?? true}, ${input.intervalSeconds},
         ${input.policyVersion}, ${input.policyHash}, ${new Date(input.nextRunAt)},
+        ${strategyType}, ${executionMode}, ${strategyConfig}::jsonb,
         ${new Date(createdAt)}, ${new Date(updatedAt)}
       )
       ON CONFLICT (owner_address, name) DO UPDATE SET
@@ -2258,6 +2340,9 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         policy_version = EXCLUDED.policy_version,
         policy_hash = EXCLUDED.policy_hash,
         next_run_at = EXCLUDED.next_run_at,
+        strategy_type = EXCLUDED.strategy_type,
+        execution_mode = EXCLUDED.execution_mode,
+        strategy_config = EXCLUDED.strategy_config,
         updated_at = EXCLUDED.updated_at
       RETURNING schedule_id
     `;
@@ -2270,6 +2355,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
     const rows = await this.sql`
       SELECT schedule_id, name, enabled, interval_seconds, policy_version, policy_hash,
+             strategy_type, execution_mode, strategy_config,
              next_run_at, last_run_at, created_at, updated_at
       FROM wolv_agent_schedules WHERE owner_address = ${owner}
       ORDER BY updated_at DESC LIMIT ${safeLimit}
@@ -2278,6 +2364,8 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       scheduleId: String(row.schedule_id), name: String(row.name), enabled: Boolean(row.enabled),
       intervalSeconds: Number(row.interval_seconds), policyVersion: String(row.policy_version),
       policyHash: String(row.policy_hash), nextRunAt: Number(row.next_run_at),
+      strategyType: String(row.strategy_type), executionMode: String(row.execution_mode),
+      strategyConfig: parseJson<AgentStrategyConfig>(row.strategy_config),
       lastRunAt: row.last_run_at ? Number(row.last_run_at) : null,
       createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
     }));
@@ -2307,12 +2395,16 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         ORDER BY next_run_at ASC LIMIT ${safeLimit}
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING schedule_id, name, interval_seconds, policy_version, policy_hash, next_run_at, last_run_at
+      RETURNING schedule_id, name, interval_seconds, policy_version, policy_hash,
+        strategy_type, execution_mode, strategy_config, next_run_at, last_run_at
     `;
     return rows.map((row) => ({
       scheduleId: String(row.schedule_id), name: String(row.name),
       intervalSeconds: Number(row.interval_seconds), policyVersion: String(row.policy_version),
-      policyHash: String(row.policy_hash), nextRunAt: Number(row.next_run_at),
+      policyHash: String(row.policy_hash), strategyType: String(row.strategy_type),
+      executionMode: String(row.execution_mode),
+      strategyConfig: parseJson<AgentStrategyConfig>(row.strategy_config),
+      nextRunAt: Number(row.next_run_at),
       lastRunAt: Number(row.last_run_at),
     }));
   }
@@ -2320,11 +2412,69 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
   async claimExecution(input: Parameters<AgentMemoryStorePort["claimExecution"]>[0]): Promise<{ claimId: string | null }> {
     await this.ready;
     const owner = requireOwnerAddress(input.ownerAddress);
+    const hasReservation = input.notionalValue !== undefined ||
+      input.rollingSince !== undefined ||
+      input.maxRollingExposure !== undefined;
+    if (hasReservation) {
+      if (typeof input.notionalValue !== "string" ||
+        typeof input.maxRollingExposure !== "string" ||
+        !isPositiveDecimalAmount(input.notionalValue) ||
+        !isPositiveDecimalAmount(input.maxRollingExposure) ||
+        typeof input.rollingSince !== "number" ||
+        !Number.isSafeInteger(input.rollingSince) ||
+        input.rollingSince <= 0) {
+        throw new TypeError("DCA exposure reservation parameters are invalid.");
+      }
+      const notionalValue: string = input.notionalValue;
+      const maxRollingExposure: string = input.maxRollingExposure;
+      const rollingSince: number = input.rollingSince;
+      return this.sql.begin(async (transaction) => {
+        await transaction`SELECT pg_advisory_xact_lock(hashtextextended(${owner}, 0))`;
+        const existing = await transaction`
+          SELECT claim_id FROM wolv_agent_execution_claims
+          WHERE owner_address = ${owner} AND run_key = ${input.runKey}
+        `;
+        if (existing[0]) return { claimId: null };
+
+        const exposureRows = await transaction`
+          SELECT COALESCE(SUM(c.notional_value), 0)::text AS exposure
+          FROM wolv_agent_execution_claims c
+          JOIN wolv_agent_schedules s
+            ON s.schedule_id = c.schedule_id AND s.owner_address = c.owner_address
+          WHERE c.owner_address = ${owner}
+            AND s.strategy_type = 'DCA'
+            AND c.notional_value IS NOT NULL
+            AND c.created_at >= ${new Date(rollingSince)}
+        `;
+        const exposure = String(exposureRows[0]?.exposure ?? "0");
+        const withinLimit = await transaction`
+          SELECT (${exposure}::numeric + ${notionalValue}::numeric)
+            <= ${maxRollingExposure}::numeric AS allowed
+        `;
+        if (withinLimit[0]?.allowed !== true) throw new AgentMemoryStoreError("EXPOSURE_LIMIT");
+
+        const reserved = await transaction`
+          INSERT INTO wolv_agent_execution_claims (
+            claim_id, schedule_id, owner_address, run_key, status, run_ledger_status,
+            policy_hash, notional_value, created_at, updated_at
+          ) VALUES (
+            ${input.claimId}, ${input.scheduleId}, ${owner}, ${input.runKey}, 'CLAIMED', 'CLAIMED',
+            ${input.policyHash}, ${notionalValue}::numeric,
+            ${new Date(input.createdAt)}, ${new Date(input.createdAt)}
+          )
+          ON CONFLICT (owner_address, run_key) DO NOTHING
+          RETURNING claim_id
+        `;
+        return { claimId: reserved[0] ? String(reserved[0].claim_id) : null };
+      });
+    }
+
     const rows = await this.sql`
       INSERT INTO wolv_agent_execution_claims (
-        claim_id, schedule_id, owner_address, run_key, status, policy_hash, created_at, updated_at
+        claim_id, schedule_id, owner_address, run_key, status, run_ledger_status,
+        policy_hash, created_at, updated_at
       ) VALUES (
-        ${input.claimId}, ${input.scheduleId}, ${owner}, ${input.runKey}, 'CLAIMED',
+        ${input.claimId}, ${input.scheduleId}, ${owner}, ${input.runKey}, 'CLAIMED', 'CLAIMED',
         ${input.policyHash}, ${new Date(input.createdAt)}, ${new Date(input.createdAt)}
       )
       ON CONFLICT (owner_address, run_key) DO NOTHING RETURNING claim_id
@@ -2335,10 +2485,18 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
   async updateExecutionClaim(claimId: string, ownerAddress: string, update: Parameters<AgentMemoryStorePort["updateExecutionClaim"]>[2]): Promise<void> {
     await this.ready;
     const owner = requireOwnerAddress(ownerAddress);
+    const providerReference = update.providerReference ?? null;
+    if (providerReference !== null &&
+      (typeof providerReference !== "string" || providerReference.trim() !== providerReference ||
+        providerReference.length < 1 || providerReference.length > 512)) {
+      throw new TypeError("Execution provider reference is invalid.");
+    }
     const result = await this.sql`
       UPDATE wolv_agent_execution_claims SET status = ${update.status},
+        run_ledger_status = ${update.status},
         intent_hash = COALESCE(${update.intentHash ?? null}, intent_hash),
         receipt_hash = COALESCE(${update.receiptHash ?? null}, receipt_hash),
+        provider_reference = COALESCE(${providerReference}, provider_reference),
         failure_code = COALESCE(${update.failureCode ?? null}, failure_code),
         failure_detail = COALESCE(${update.failureDetail ?? null}, failure_detail),
         simulated_at = CASE WHEN ${update.status} = 'SIMULATED' THEN ${new Date(update.at)} ELSE simulated_at END,
@@ -2512,6 +2670,21 @@ function requireOwnerAddress(value: string | undefined): string {
     throw new TypeError("A valid wallet owner is required to access agent memory.");
   }
   return value.toLowerCase();
+}
+
+function isPositiveDecimalAmount(value: string): boolean {
+  if (!/^(?:0|[1-9]\d{0,77})(?:\.\d{1,18})?$/.test(value)) return false;
+  const [whole, fraction = ""] = value.split(".");
+  return BigInt(`${whole}${fraction.padEnd(18, "0")}`) > BigInt(0);
+}
+
+function serializeStrategyConfig(value: unknown): string {
+  if (!isRecord(value)) throw new TypeError("Strategy configuration must be a JSON object.");
+  const serialized = JSON.stringify(value);
+  if (typeof serialized !== "string" || Buffer.byteLength(serialized, "utf8") > 16_384) {
+    throw new TypeError("Strategy configuration exceeds the 16 KB limit.");
+  }
+  return serialized;
 }
 
 function isPostgresUrl(value: string): boolean {

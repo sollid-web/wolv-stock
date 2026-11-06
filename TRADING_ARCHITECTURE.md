@@ -41,7 +41,7 @@ The main-track product is a BSC spot cross-venue monitor for tokenized equities.
 2. The gap view calls the aggregator quote endpoint for the candidate token addresses and compares executable prices with the listed reference fields.
 3. The browser requests a quote from `/api/quote`, then transaction details from `/api/swap`. Both API routes validate address/amount formats and verify the target is in the cached RWA list and passes the spot-only metadata filter.
 4. For `SWAP` responses, the server validates the transaction payload and the browser runs Binance Transaction API simulation through `/api/transaction-simulate`. The UI uses simulation allowance changes to decide whether USDT approval is needed and shows predicted balance changes. Immediately before an approval, the browser simulates the approval transaction again, then asks the connected wallet to confirm and broadcast it. For the normal swap, the app reuses the prepared `/api/swap` calldata when the earlier simulation succeeded; it simulates again only when that preflight is missing or unsuccessful, then asks the wallet to confirm and broadcast. The current normal `SWAP` path does not fetch refreshed swap calldata immediately before signing. The app reads the resulting receipt from its BSC RPC client.
-5. For `RFQ` responses, the browser signs the returned EIP-712 data and posts the signature, vendor, quote ID, idempotency UUID, and selected target address to `/api/order/submit`. The server rechecks spot eligibility before Binance receives the order submission. Status is polled through `/api/order/[orderId]`.
+5. RFQ order submission is currently blocked. `/api/order/submit` validates request formatting and the owner-bound quote intent, records the unsupported execution state, and returns `501` with `transactionSubmitted: false`. Binance's RFQ typed-data schema has no verified fixture, so the server does not recover a signer, accept client-supplied typed data, or call `submitOrder`.
 6. Approval and order-status requests use no-store fetches. BSC approval and swap status are polled through `/api/transaction-status`, backed by Binance Wallet API transaction details. Catalog requests use a 60-second cache. Outbound Binance requests are serialized at a 250 ms minimum interval per server process.
 7. `/api/wallet/portfolio` retrieves read-only BSC token balances and portfolio overview data for the connected address; `/wallet` renders loading, empty, error, holdings, and portfolio-statistic states. This path does not sign or execute transactions.
 
@@ -78,7 +78,7 @@ The hackathon and Binance Web3 developer product have restricted-region and sanc
 
 - Autonomous agent execution, Altana/TWAK session configuration, ERC-8004 registration, ERC-8183 commerce settlement, and x402 payment flows. The BNB Agent SDK and the Binance agentic-wallet skill are installed, but are not active signing integrations.
 - Distributed per-client API rate limiting. The current Binance request queue is process-local and is not sufficient by itself for a horizontally scaled public deployment.
-- Automated local EIP-712 signer recovery and persistent replay tracking. Binance remains the external order-submission boundary.
+- Binance RFQ schema validation and signature recovery. Binance remains the external order-submission boundary until official typed-data fixtures, signer/domain binding tests, and submit response fixtures are reviewed.
 
 ## Before Public Mainnet Use
 
@@ -90,11 +90,53 @@ PostgreSQL migration 6 adds owner-scoped schedules, execution claims, delegated-
 alerts, and verified market-calendar snapshots. `POST /api/agent/schedules` stores a bounded
 monitoring schedule against a SHA-256 policy snapshot hash. `POST /api/agent/worker` is an
 authenticated external worker entry point that atomically claims due schedules and creates replayable
-execution claims. The worker is monitoring-only and sets no transaction-simulation or submission state.
+execution claims. DCA schedules are additionally quote-checked and generate a payload-free manual
+alert; all signing and transaction submission remain blocked.
+
+Agent-memory migration 8 adds `strategy_type`, `execution_mode`, and object-valued `strategy_config`
+to owner-scoped schedules, plus `run_ledger_status` and an idempotently unique provider reference to
+execution claims. Existing schedules migrate as `MONITORING` / `MANUAL` with an empty config; all
+execution remains blocked unless separately implemented and authorized. A composite schedule-owner
+foreign key prevents a claim from associating one owner's run with another owner's schedule.
+Strategy settings and run records stay in the agent-memory PostgreSQL database and do not read from
+or mutate `tokenized_market_pulse`. This migration adds no triggers.
+
+Agent-memory migration 9 adds a nullable DCA notional reservation to execution claims. DCA reservations
+are owner-scoped and acquired under a transaction lock with an atomic rolling-limit check; all DCA
+candidate claims reserve budget for the configured window, including manual proposals, which is
+conservative if the user does not sign.
+
+The Flash DCA path uses `POST /api/flash` for authenticated, owner-bound, one-time unsigned swap
+building. It resolves the token against the spot-eligible RWA catalogue, accepts only the LiquidMesh
+`SWAP` mode, and simulates before returning a short-lived payload. `services/recurringIntentService.ts`
+loads only owner-scoped V8 schedules; live price deviation is checked against a fresh Binance quote
+and verified RWA reference data, not the market-pulse table. It rejects evidence older than 3 seconds
+and enforces per-run and rolling exposure bounds. `services/dcaExecutor.ts` stores only a payload-free
+alert and idempotent execution claim. Manual signing requires a new quote after a user action;
+autonomous execution remains blocked because this adapter does not sign or broadcast transactions.
+
+The RFQ lifecycle service provides an idempotent quote-binding and bounded status-observation ledger
+in a separate PostgreSQL database schema. Provider polling stops on the explicit `FILLED` or
+`FAILED` state; unresolved or malformed responses are durably marked for reconciliation. The RFQ
+typed-data extraction path returns the exact provider block only after the vendor-specific schema
+validator accepts it; that validator currently rejects all inputs pending fixture verification.
+Autonomous RFQ attempts throw `AUTONOMOUS_RFQ_UNAVAILABLE` and never inspect or use repository
+private-key environment variables. No delegated signer is enabled unless its scope and the RFQ
+vendor's acceptance for the exact EIP-712 domain can be cryptographically verified.
 
 US exchange-calendar evidence is provider-backed: `WOLV_US_MARKET_CALENDAR_URL` must be an HTTPS
 endpoint returning exact dates, session state, UTC session minutes, and fresh provider timestamps.
 Missing, malformed, stale, or unavailable calendar evidence fails closed; no holiday data is invented.
+
+The Weekend DeFi flow stores strategy settings in the owner-scoped V8 schedule ledger. `POST
+/api/agent/strategies/weekend-defi` configures manual-only plans and returns calendar-based previews;
+`POST /api/defi/deposit` and `/api/defi/redeem` produce simulated, unsigned Binance `dataList` calls
+only after owner, policy, amount-cap, and verified calendar checks. Market-pulse `session_mismatch`
+can generate a warning but is never evidence of market closure or a deposit trigger. The worker only
+records monitoring claims and alerts; it never constructs, signs, or submits DeFi transactions.
+Redemption delay metadata is exposed as an asynchronous estimate with no promise of liquidity by
+market open. Autonomous DeFi on BSC mainnet (chain 56) is explicitly blocked because the delegated
+custody policy is testnet-only (chain 97).
 
 Policy execution intents use canonical, versioned JSON, owner and smart-account address validation,
 a testnet-only chain restriction, 0.5-BNB and 100-bps caps, a policy hash, nonce, and short expiry.
