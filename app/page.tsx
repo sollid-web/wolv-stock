@@ -8,6 +8,7 @@ import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
 import { parseRwaAssetRecords } from "@/lib/spotAssets";
 import { getMarketPulseRows } from "@/lib/marketPulse";
+import Web3StrategyShowcase from "@/components/Web3StrategyShowcase";
 
 export const dynamic = "force-dynamic";
 
@@ -31,20 +32,28 @@ function HomepageLoading() {
         <div>
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#d9a80a]/20 bg-[#d9a80a]/[0.05] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.17em] text-[#f4c834]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#d9a80a]" />
-            BNB Chain · Tokenized stocks · Spot only
+            BNB Chain · Tokenized stocks · Owner-controlled
           </div>
           <h1 className="max-w-2xl text-4xl font-black leading-[1.03] tracking-[-0.055em] text-white sm:text-5xl xl:text-6xl">
             TOKENIZED STOCKS.<br />
-            <span className="text-[#d9a80a]">ON-CHAIN EXECUTION.</span>
+            <span className="text-[#d9a80a]">CLEARER DECISIONS.</span>
           </h1>
-          <p className="mt-5 text-base font-semibold text-slate-200 sm:text-lg">Find the price. See the execution.</p>
+          <p className="mt-5 text-base font-semibold text-slate-200 sm:text-lg">Compare the market. Prepare with control.</p>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-            WOLV compares issuer reference data with indicative BSC spot estimates and checks freshness and market status before you decide whether to trade.
+            Review tokenized-stock prices, market status, and owner-controlled strategy tools. Your wallet remains in charge of transaction approval.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d9a80a] px-5 text-xs font-black text-[#101010]">Explore opportunities <span aria-hidden="true" className="ml-2">→</span></a>
             <a href="#how-it-works" className="wolv-glass-control inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-xs font-bold text-slate-200">How WOLV works</a>
           </div>
+          <a href="#strategy-center" className="mt-5 inline-flex max-w-xl items-center gap-3 rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.045] p-3.5 text-left transition hover:border-[#d9a80a]/40">
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-[#d9a80a]/20 bg-[#d9a80a]/[0.08] text-[#f2c94c]" aria-hidden="true">✦</span>
+            <span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-[#f2c94c]">New · Strategy toolkit</span>
+              <span className="mt-1 block text-[11px] leading-4 text-slate-300">Exposure controls, weekend checks, and RFQ review · preview only</span>
+            </span>
+            <span className="text-sm text-[#f2c94c]" aria-hidden="true">→</span>
+          </a>
           <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500">
             <span className="inline-flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Reference-backed data</span>
             <span className="inline-flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#d9a80a]" /> Preflight before signing</span>
@@ -73,11 +82,15 @@ function HomepageLoading() {
         </div>
       </section>
 
+      <div id="strategy-center" className="scroll-mt-24">
+        <Web3StrategyShowcase />
+      </div>
+
       <section id="opportunities" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14" aria-busy="true">
         <div className="mb-5 flex items-end justify-between gap-3">
           <div>
             <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">Live BSC spot monitor</p>
-            <h2 className="mt-1 text-lg font-black text-white sm:text-xl">Execution opportunities</h2>
+            <h2 className="mt-1 text-lg font-black text-white sm:text-xl">Market comparisons</h2>
           </div>
           <span className="text-[10px] text-slate-500">Checking current data…</span>
         </div>

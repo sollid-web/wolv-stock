@@ -8,6 +8,7 @@ import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import MarketAnalysis from "@/components/MarketAnalysis";
 import AIInsightStrip from "@/components/AIInsightStrip";
 import ParticleCanvas from "@/components/ParticleCanvas";
+import Web3StrategyShowcase from "@/components/Web3StrategyShowcase";
 type HomepageProps = {
   rows: OpportunityRow[];
   assetCount: number;
@@ -86,6 +87,7 @@ function Navigation() {
         <div className="hidden items-center gap-7 md:flex">
           <Link href="/markets" className="text-xs font-semibold text-slate-400 transition hover:text-white">Markets</Link>
           <a href="#opportunities" className="text-xs font-semibold text-slate-400 transition hover:text-white">Opportunities</a>
+          <a href="#strategy-center" className="text-xs font-semibold text-slate-400 transition hover:text-white">Strategies</a>
           <Link href="/trade" className="text-xs font-semibold text-slate-400 transition hover:text-white">Trade</Link>
           <Link href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Agent</Link>
           <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
@@ -368,15 +370,15 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         <div className="relative home-reveal">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#d9a80a]/20 bg-[#d9a80a]/[0.05] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.17em] text-[#f4c834]">
             <span className="wolv-pulse size-1.5 rounded-full bg-[#d9a80a]" />
-            BNB Chain · Tokenized stocks · Spot only
+            BNB Chain · Tokenized stocks · Owner-controlled
           </div>
           <h1 className="max-w-2xl text-4xl font-black leading-[1.03] tracking-[-0.055em] text-white sm:text-5xl xl:text-6xl">
             TOKENIZED STOCKS.<br />
-            <span className="text-[#d9a80a]">ON-CHAIN EXECUTION.</span>
+            <span className="text-[#d9a80a]">CLEARER DECISIONS.</span>
           </h1>
-          <p className="mt-5 text-base font-semibold text-slate-200 sm:text-lg">Find the price. See the execution.</p>
+          <p className="mt-5 text-base font-semibold text-slate-200 sm:text-lg">Compare the market. Prepare with control.</p>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
-            WOLV compares issuer reference data with indicative BSC spot estimates, normalizes prices per share, and surfaces quote freshness and market status before you decide whether to trade.
+            Review tokenized-stock reference prices beside indicative BNB Chain quotes, check freshness and venue status, then prepare transactions for your own wallet to review and approve.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d9a80a] px-5 text-xs font-black text-[#101010] shadow-[0_8px_24px_rgba(217,168,10,.16)] transition hover:-translate-y-0.5 hover:bg-[#f2c94c]">
@@ -386,6 +388,19 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
               How WOLV works
             </a>
           </div>
+          <a href="#strategy-center" className="group mt-5 flex max-w-xl items-center justify-between gap-4 rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.045] p-3.5 transition hover:border-[#d9a80a]/40 hover:bg-[#d9a80a]/[0.075]">
+            <span className="flex items-start gap-3">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-[#d9a80a]/20 bg-[#d9a80a]/[0.08] text-[#f2c94c]" aria-hidden="true">✦</span>
+              <span>
+                <span className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#f2c94c]">
+                  New · Strategy toolkit
+                  <span className="rounded-full border border-white/[0.09] px-1.5 py-0.5 text-[8px] tracking-wide text-slate-400">Preview</span>
+                </span>
+                <span className="mt-1 block text-[11px] leading-4 text-slate-300">Explore exposure controls, weekend yield checks, and an RFQ review ticket.</span>
+              </span>
+            </span>
+            <span className="shrink-0 text-sm text-[#f2c94c] transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
+          </a>
           <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[10px] font-semibold text-slate-500">
             <span className="inline-flex items-center gap-2"><span className="size-1.5 rounded-full bg-emerald-400" /> Reference-backed data</span>
             <span className="inline-flex items-center gap-2"><span className="size-1.5 rounded-full bg-[#d9a80a]" /> Preflight before signing</span>
@@ -406,6 +421,10 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         </div>
       )}
 
+      <div id="strategy-center" className="scroll-mt-24">
+        <Web3StrategyShowcase />
+      </div>
+
       <Ticker rows={rows} />
 
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:space-y-16 sm:px-6 sm:py-14">
@@ -413,7 +432,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         <section id="opportunities" className="scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <SectionHeading eyebrow="Live BSC spot monitor" title="Execution opportunities" />
+              <SectionHeading eyebrow="BSC spot market snapshot" title="Market comparisons" />
               <p className="mt-2 text-xs text-slate-500">
                 {feedUnavailable
                   ? "Live quote comparison unavailable"
@@ -440,7 +459,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         <section id="how-it-works" className="scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <SectionHeading eyebrow="A transparent workflow" title="From market data to your decision" />
-            <p className="text-[10px] text-slate-500">No autonomous trades. You review and approve every transaction.</p>
+            <p className="text-[10px] text-slate-500">Transaction preparation is user-controlled; your wallet reviews and approves each action.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[

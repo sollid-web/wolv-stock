@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build  --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "agent:worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types worker/agentWorker.ts",
     "lint": "eslint",
@@ -35,7 +35,7 @@
     "ethers": "^6.17.0",
     "ioredis": "^5.11.1",
     "lightweight-charts": "^5.2.1",
-    "next": "16.3.6",
+    "next": "16.4.5",
     "postgres": "^3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -48,7 +48,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "16.4.5",
     "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
