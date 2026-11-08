@@ -13,6 +13,43 @@ WOLV contains useful pieces of an agentic system, but they are not yet one integ
 
 The distinction is critical. A source-level executor, passing mocked dispatch tests, or configured feature flags do not prove that production scheduling, market-data ingestion, per-user authorization recovery, or autonomous execution is operational.
 
+## Product baseline clarified by the project owner
+
+The project owner confirms that before the agentic/autonomous work, WOLV was a functioning BNB Chain hackathon product. The expected manual user journey is:
+
+1. Connect an externally controlled wallet.
+2. Select a supported token and request a live quote.
+3. Validate the quote and transaction details.
+4. Check USDT allowance and request approval only when required.
+5. Have the user approve the allowance in their wallet.
+6. Prepare/validate the swap and let the user explicitly sign and broadcast it.
+7. Verify the transaction/order result and show its status.
+
+This manual flow is the product's primary acceptance baseline. It must be restored and regression-tested before any autonomous feature is considered. This audit does not assume the manual trade flow should be replaced by Kernel/ZeroDev, a session signer, BAW operator wallet, background worker, or an AI-controlled execution path.
+
+## Regression-first recovery strategy
+
+The next engineering pass must compare the current branch with the last known-good pre-agentic revision and classify each change as:
+- **Keep:** independent improvements that do not alter the working manual trading contract.
+- **Repair:** changes that broke wallet connection, chain selection, quote binding/freshness, allowance checks, simulation, signing, broadcast, or transaction-status reconciliation.
+- **Isolate:** agent wallet, smart-account, delegated signer, worker, scheduler, autonomous UI, experimental vault, and related dependencies that are not required by the manual product.
+- **Remove only after proof:** obsolete or duplicate paths, and any agentic change shown by tests/diff analysis to cause a regression.
+
+Do not perform a broad reset or mass revert. Preserve the original spot-trading architecture and add agent capabilities behind a separate, optional boundary. The manual path must continue to work when every agent feature flag is disabled and when no ZeroDev, Redis, PostgreSQL agent, or delegated-signer configuration is present.
+
+### Required manual-flow regression tests
+
+- Wallet connect/reconnect/disconnect and account change.
+- BNB Chain mainnet enforcement on the trade route; agent testnet configuration must not leak into trading.
+- Quote request, server-side quote binding, token/amount validation, expiry and stale quote rejection.
+- Correct USDT allowance/spender checks; no unnecessary approval; exact approval amount.
+- Approval simulation, wallet prompt, submission, receipt confirmation, and allowance refresh.
+- Swap quote/details binding to the same wallet, token, amount, and intent.
+- Transaction simulation and explicit wallet confirmation before broadcast.
+- Correct transaction receipt/status reconciliation, including unknown/pending/failed outcomes.
+- Double-click protection and recovery after rejected wallet prompts or RPC/bundler/provider errors.
+- Build, typecheck, unit tests, and browser-based wallet-flow verification.
+
 ## Findings
 
 | Priority | Finding | Evidence / impact | Required action |
