@@ -28,11 +28,11 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | Wallet sign-in / session | BAW CLI | QR-based sign-in, session expiry, sign-out/revocation | Requires interactive user onboarding |
 | BAW balances / settings / quota | BAW CLI | Read-only wallet commands | Can be monitored by worker while session is valid |
 | BAW market-order quote | BAW CLI | Read-only quote | Probe separately from Web3 API quote |
-| BAW market-order swap | BAW CLI | Wallet policy applies; docs describe confirmation in the normal flow and high-risk confirmation/rejection | Autonomous/no-human-confirm path is **not yet proven** |
+| BAW market-order swap | BAW CLI + Secure Auto Sign | Binance FAQ says Secure Auto Sign, once enabled and authorised, can execute supported transactions without individual confirmations; confirm exact market-order coverage on the target account | **Promising; must prove end-to-end** |
 | BAW limit orders | BAW CLI | Order lifecycle and cancellation commands documented | Validate unattended trigger behavior and session constraints |
-| BAW external transaction signing | BAW CLI / Developer Mode | Separate developer-mode capability and user policy; not equivalent to ordinary market-order swap | Requires a dedicated proof-of-capability |
+| BAW external transaction signing | BAW CLI / Developer Mode | Contract-call preview and execute are a two-step flow; explicit confirmation is required, and some calls may still become App-pending | **Not suitable as the default unattended custom-call signer** |
 | BSC testnet through BAW | BAW | Public docs list BSC mainnet chain ID 56; no BSC testnet support established here | Unverified; do not assume |
-| Multi-user unattended worker | WOLV | Requires per-user session isolation, revocation handling, leases, durable idempotency and reconciliation | Not proven |
+| BAW onboarding | Binance App / supported agent | Binance FAQ says each user currently has one Agentic Wallet and warns against scanning third-party website QR codes; direct WOLV-hosted QR onboarding is not an acceptable assumption | **Integration approval / supported-agent path required** |\n| Multi-user unattended worker | WOLV | Requires per-user session isolation, revocation handling, leases, durable idempotency and reconciliation; one BAW wallet per user constrains agent tenancy | Not proven |
 
 ## Hard roadblocks to resolve
 
@@ -48,15 +48,15 @@ A BAW capability test must establish, with a dedicated low-value test wallet and
 
 If BAW requires per-trade confirmation, it can still be a supported custody adapter, but it cannot be WOLV's sole autonomous execution path.
 
-### 2. Signing authority
+### 3. Signing authority
 
 Web3 API API-key/secret authentication authenticates WOLV to Binance's API. It does not grant WOLV the user's private key. The Web3 broadcast endpoint accepts a signed transaction. WOLV must supply an independently authorized signing provider (BAW external signing, an EIP-7702 delegated session, or another user-controlled smart-account signer).
 
-### 3. Session and user isolation
+### 4. Session and user isolation
 
 Never keep one global BAW session for all WOLV users. Store a provider connection per owner, encrypt session material at rest, isolate worker jobs by owner/wallet, and stop execution immediately when a session expires or is revoked. Do not log secrets, session tokens, signatures, or raw authentication output.
 
-### 4. Settlement truth
+### 5. Settlement truth
 
 A provider's `success: true` or order ID means submission, not settlement. Track order state to a terminal status and independently verify the transaction receipt and token balance deltas. Unknown submission state must be reconciled before retrying; never blindly resubmit.
 
@@ -95,7 +95,7 @@ Do not enable unattended execution until all are true:
 
 ## Source references
 
-- [Binance Agentic Wallet overview](https://developers.binance.com/en/docs/products/agentic-wallet/welcome)
+- [Binance Agentic Wallet overview](https://developers.binance.com/en/docs/products/agentic-wallet/welcome)\n- [Binance Agentic Wallet FAQ — Secure Auto Sign, onboarding and wallet limits](https://www.binance.bh/en/support/faq/detail/3ff00e2d488a41c4aaa4aabb6fc36763)\n- [Binance Agentic Wallet external signing — Developer Mode flow](https://github.com/binance/binance-skills-hub/blob/main/skills/binance-web3/binance-agentic-wallet/references/external-sign.md)
 - [Binance Agentic Wallet CLI package](https://www.npmjs.com/package/@binance/agentic-wallet)
 - [Binance Web3 API RWA Data](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/rwa-data)
 - [Binance Web3 API Wallet API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/wallet-api)
