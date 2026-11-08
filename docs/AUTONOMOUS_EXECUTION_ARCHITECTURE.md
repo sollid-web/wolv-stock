@@ -192,3 +192,14 @@ node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PAC
 ```
 
 This is a pure domain layer only. It does not persist intents, reserve real balances, contact a provider, sign, broadcast, or execute trades. Those capabilities must be added behind separately tested storage, budget-reservation and execution-provider interfaces. The tests have been committed but have **not** been run in this environment; run the command locally before treating them as passing.
+
+
+The provider/storage boundary is now also captured in `services/autonomy/execution-contracts.ts`:
+- Atomic `createIfAbsent` for owner-scoped idempotency.
+- Version-checked compare-and-swap to prevent stale workers overwriting state.
+- Atomic budget reservation/release contracts.
+- Append-only audit event contract.
+- Separate quote, simulation, execution and reconciliation provider contracts.
+- Distributed worker lease / heartbeat contract.
+
+These are TypeScript contracts, not connected implementations. A real database and queue/lease backend must implement the atomicity guarantees before a worker is allowed to submit orders. Provider responses explicitly distinguish submitted, rejected and unknown outcomes; unknown outcomes must be reconciled, never blindly retried.
