@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test:hardening": "node scripts/hardening-smoke.mjs",
     "test:logic": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/*.test.mjs",
-    "test:responsive": "node scripts/responsive-smoke.mjs"
+    "test:responsive": "node scripts/responsive-smoke.mjs",
+    "market:worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types worker/marketPriceWorker.ts",
+    "test:market-cache": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/market-price-cache.test.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
