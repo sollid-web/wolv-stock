@@ -1,5 +1,3 @@
-import "server-only";
-
 const CHAIN_ID = 56;
 const PROVIDER = "binance-web3-rwa-price";
 const MAX_DISPLAY_AGE_MS = 5 * 60_000;
@@ -102,7 +100,7 @@ export async function readLatestMarketPrices(options: {
   const now = options.now ?? Date.now();
   return rows.map((row) => {
     const observedAt = String(row.observed_at);
-    const ageMs = Math.max(0, now - Date.parse(observedAt));
+    const ageMs = Math.max(0, now - Date.parse(String(row.provider_timestamp)));
     return {
       chainId: Number(row.chain_id),
       tokenAddress: String(row.token_address),
