@@ -74,6 +74,8 @@ The following screenshots were captured from the live application on **9 October
 
 `/wallet` provides a read-only holdings and portfolio surface for the connected address. It does not sign, approve, or execute transactions.
 
+**Product priority:** WOLV's original user-operated BNB Chain spot-trading journey—wallet connection, quote, allowance check/approval, transaction preflight, explicit wallet signing/broadcast, and status verification—is the primary product baseline. Agent features must remain optional and must never break or replace this flow. The recovery checklist and regression-test requirements are in [the reconciliation audit](./docs/AGENTIC_AUTONOMY_RECONCILIATION_AUDIT.md).
+
 ### Agent control plane and autonomous-execution boundary
 
 The current `/agent` product is the Phase 4 persistent control plane, not a live autonomous trader. It uses PostgreSQL-backed agent memory, owner-authorized APIs, bounded orchestration, deterministic policy evaluation, proposal lifecycle records, and a durable global emergency stop. The Phase 4.0.1 verification report documents disposable-PostgreSQL integration and browser/production-build checks. Those results are repository-reported evidence; they have not been rerun as part of this branch audit.
