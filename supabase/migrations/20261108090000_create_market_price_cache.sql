@@ -41,3 +41,18 @@ create policy "Market prices are publicly readable" on public.wolv_market_prices
 drop policy if exists "Market price history is publicly readable" on public.wolv_market_price_history;
 create policy "Market price history is publicly readable" on public.wolv_market_price_history
   for select to anon, authenticated using (true);
+
+-- Never let a delayed provider response replace a newer cached price.
+create or replace function public.wolv_keep_newest_market_price()
+returns trigger language plpgsql as $$
+begin
+  if new.provider_timestamp < old.provider_timestamp then
+    return old;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists wolv_market_prices_latest_monotonic on public.wolv_market_prices_latest;
+create trigger wolv_market_prices_latest_monotonic
+  before update on public.wolv_market_prices_latest
+  for each row execute function public.wolv_keep_newest_market_price();
