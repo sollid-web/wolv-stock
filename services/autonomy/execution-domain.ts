@@ -128,7 +128,7 @@ function parsePositiveDecimal(value: string, field: string): bigint {
   requireNonEmpty(value, field);
   if (!/^(0|[1-9][0-9]*)$/.test(value)) throw new Error(`Invalid ${field}`);
   const parsed = BigInt(value);
-  if (parsed <= 0n) throw new Error(`${field} must be greater than zero`);
+  if (parsed <= BigInt(0)) throw new Error(`${field} must be greater than zero`);
   return parsed;
 }
 
