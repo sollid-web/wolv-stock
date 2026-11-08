@@ -4,6 +4,7 @@
  * GET requests only: never signs, submits, broadcasts, or places an order.
  */
 import crypto from "node:crypto";
+import fs from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -135,6 +136,14 @@ export async function runReadOnlyProbe(env = process.env, fetchImpl = fetch) {
 
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirectRun) {
+  if (fs.existsSync(".env.local")) {
+    for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (match && process.env[match[1]] === undefined) {
+        process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, "").trim();
+      }
+    }
+  }
   try {
     const result = await runReadOnlyProbe();
     if (result.skipped) process.exitCode = 2;
