@@ -100,26 +100,26 @@ test("rejects illegal, backward-time and post-terminal transitions", () => {
   const intent = baseIntent();
   assert.throws(() => transitionExecutionIntent(intent, "SUBMITTED", { type: "BAD", at: now, actor: "worker" }), /Invalid execution transition/);
   assert.throws(() => transitionExecutionIntent(intent, "QUALIFIED", { type: "OLD", at: "2026-11-08T11:59:00.000Z", actor: "worker" }), /cannot move backwards/);
-  const settled = transitionExecutionIntent(
-    transitionExecutionIntent(
-      transitionExecutionIntent(
-        transitionExecutionIntent(
-          transitionExecutionIntent(
-            transitionExecutionIntent(
-              transitionExecutionIntent(
-                transitionExecutionIntent(
-                  transitionExecutionIntent(
-                    transitionExecutionIntent(intent, "QUALIFIED", { type: "1", at: "2026-11-08T12:00:01.000Z", actor: "worker" }),
-                    "RISK_APPROVED", { type: "2", at: "2026-11-08T12:00:02.000Z", actor: "worker" }),
-                  "BUDGET_RESERVED", { type: "3", at: "2026-11-08T12:00:03.000Z", actor: "worker" }),
-                "QUOTED", { type: "4", at: "2026-11-08T12:00:04.000Z", actor: "provider" }),
-              "SIMULATED", { type: "5", at: "2026-11-08T12:00:05.000Z", actor: "provider" }),
-            "SUBMISSION_PENDING", { type: "6", at: "2026-11-08T12:00:06.000Z", actor: "worker" }),
-          "SUBMITTED", { type: "7", at: "2026-11-08T12:00:07.000Z", actor: "provider" }),
-        "SETTLEMENT_PENDING", { type: "8", at: "2026-11-08T12:00:08.000Z", actor: "worker" }),
-      "SETTLED", { type: "9", at: "2026-11-08T12:00:09.000Z", actor: "provider" });
-  assert.equal(isTerminalExecutionState(settled.state), true);
-  assert.throws(() => transitionExecutionIntent(settled, "FAILED", { type: "late", at: "2026-11-08T12:00:10.000Z", actor: "worker" }), /terminal state/);
+
+  const path = [
+    "QUALIFIED", "RISK_APPROVED", "BUDGET_RESERVED", "QUOTED",
+    "SIMULATED", "SUBMISSION_PENDING", "SUBMITTED",
+    "SETTLEMENT_PENDING", "SETTLED",
+  ];
+  let current = intent;
+  path.forEach((state, index) => {
+    const seconds = String(index + 1).padStart(2, "0");
+    current = transitionExecutionIntent(current, state, {
+      type: `STEP_${index + 1}`,
+      at: `2026-11-08T12:00:${seconds}.000Z`,
+      actor: "worker",
+    });
+  });
+
+  assert.equal(isTerminalExecutionState(current.state), true);
+  assert.throws(() => transitionExecutionIntent(current, "FAILED", {
+    type: "late", at: "2026-11-08T12:00:20.000Z", actor: "worker",
+  }), /terminal state/);
 });
 
 test("ambiguous submissions are never eligible for blind retry", () => {
