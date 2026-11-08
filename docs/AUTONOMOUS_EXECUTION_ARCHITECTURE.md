@@ -171,3 +171,24 @@ The dashboard is observability and policy management; it is not required to rema
 - No arbitrary contract calls through BAW Developer Mode.
 - No LLM-controlled limit changes or signer access.
 - No deployment or merge to `main`.
+
+
+## First implementation slice: deterministic execution domain
+
+The branch now contains a provider-independent domain module at `services/autonomy/execution-domain.ts` and tests at `scripts/autonomy-execution-domain.test.mjs`.
+
+Implemented in this slice:
+- Typed execution intent and lifecycle states.
+- Explicit transition graph; terminal states cannot be reopened.
+- Monotonic event timestamps and version increments.
+- Deterministic policy evaluation for enabled state, chain/token allowlists, order size, projected position, daily spend, gas budget, quote age, slippage, price impact and minimum expected edge.
+- Integer-string / `bigint` comparisons for token amounts; no floating-point arithmetic for base-unit amounts.
+- Explicit rejection codes suitable for UI and audit records.
+- Ambiguous submissions are marked for reconciliation and are never eligible for blind retry.
+
+Validation command:
+```bash
+node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/autonomy-execution-domain.test.mjs
+```
+
+This is a pure domain layer only. It does not persist intents, reserve real balances, contact a provider, sign, broadcast, or execute trades. Those capabilities must be added behind separately tested storage, budget-reservation and execution-provider interfaces. The tests have been committed but have **not** been run in this environment; run the command locally before treating them as passing.
