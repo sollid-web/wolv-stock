@@ -15,6 +15,7 @@ WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-g
 - **Hackathon:** [BNB Hack: Tokenized Stocks Edition](https://www.bnbchain.org/en/hackathons/tokenized-stocks)
 - **Demo video:** [Watch the WOLV walkthrough on YouTube](https://youtu.be/E6QEMJIIAfg?si=Jw3AtuueLI4-Aj2Z)
 - **Developer Experience Report:** [DevReport.MD](./DevReport.MD)
+- **Autonomy upgrade work:** [Binance capability matrix](./docs/BINANCE_CAPABILITY_MATRIX.md) and [read-only provider probe](./scripts/binance-provider-probe.mjs)
 - **License:** [MIT](./LICENSE)
 
 ## Why WOLV exists
