@@ -92,7 +92,7 @@ export async function runReadOnlyProbe(env = process.env, fetchImpl = fetch) {
 
   const selected = env.BINANCE_PROBE_TOKEN_ADDRESS
     ? assets.find((item) => item.tokenContractAddress.toLowerCase() === env.BINANCE_PROBE_TOKEN_ADDRESS.toLowerCase())
-    : assets[0];
+    : (assets.find((item) => item.statusInfo?.openState === true) ?? assets[0]);
 
   if (selected) {
     await run("RWA token price", async () => {
@@ -117,7 +117,7 @@ export async function runReadOnlyProbe(env = process.env, fetchImpl = fetch) {
           binanceChainId: "56",
           fromTokenAddress: USDT_BSC,
           toTokenAddress: selected.tokenContractAddress,
-          amount: "1000000000000000000",
+          amount: "100000000000000000000",
           userWalletAddress: wallet,
         }, credentials, fetchImpl);
         if (!data || typeof data !== "object") throw new Error("missing quote payload");
