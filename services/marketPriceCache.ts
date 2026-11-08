@@ -100,7 +100,9 @@ export async function readLatestMarketPrices(options: {
   const now = options.now ?? Date.now();
   return rows.map((row) => {
     const observedAt = String(row.observed_at);
-    const ageMs = Math.max(0, now - Date.parse(String(row.provider_timestamp)));
+    const providerTime = Date.parse(String(row.provider_timestamp));
+    const ageMs = Number.isFinite(providerTime) ? Math.max(0, now - providerTime) : Number.MAX_SAFE_INTEGER;
+    const futureTimestamp = Number.isFinite(providerTime) && providerTime > now + 30_000;
     return {
       chainId: Number(row.chain_id),
       tokenAddress: String(row.token_address),
@@ -111,7 +113,7 @@ export async function readLatestMarketPrices(options: {
       providerTimestamp: String(row.provider_timestamp),
       observedAt,
       ageMs,
-      stale: !Number.isFinite(ageMs) || ageMs > MAX_DISPLAY_AGE_MS,
+      stale: futureTimestamp || !Number.isFinite(providerTime) || ageMs > MAX_DISPLAY_AGE_MS,
     };
   });
 }
@@ -135,7 +137,7 @@ export function parseBinanceRwaPrices(
     const price = firstDecimal(candidate, ["tokenPrice", "price", "priceUsd", "usdPrice", "currentPrice"]);
     if (!price || Number(price) <= 0) continue;
     const reference = firstDecimal(candidate, ["referencePrice", "referencePriceUsd"]);
-    const providerTime = firstTimestamp(candidate, ["timestamp", "updateTime", "updatedAt", "priceTimestamp"]) ?? observedAt;
+    const providerTime = firstTimestamp(candidate, ["timestamp", "updateTime", "updatedAt", "priceTimestamp"]) ?? "1970-01-01T00:00:00.000Z";
     result.push({
       chainId: CHAIN_ID,
       tokenAddress: asset.tokenAddress,
