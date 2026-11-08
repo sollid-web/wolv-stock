@@ -1,0 +1,42 @@
+name: Binance provider probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_live_probe:
+        description: Run signed, read-only Binance Web3 API checks (GET only)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run deterministic probe tests
+        run: node --test scripts/binance-provider-probe.test.mjs
+
+  live-read-only-probe:
+    if: inputs.run_live_probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run read-only Binance checks
+        env:
+          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+          BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY }}
+          BINANCE_PROBE_WALLET_ADDRESS: ${{ vars.BINANCE_PROBE_WALLET_ADDRESS }}
+          BINANCE_PROBE_TOKEN_ADDRESS: ${{ vars.BINANCE_PROBE_TOKEN_ADDRESS }}
+        run: node scripts/binance-provider-probe.mjs
