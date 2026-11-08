@@ -266,3 +266,7 @@ WOLV is a software interface, not a guarantee of liquidity, price parity, invest
 ## License
 
 The application source is released under the [MIT License](./LICENSE). The disclaimer above remains applicable to the project and its use with tokenized-stock products.
+
+### Market price cache
+
+WOLV uses the existing Supabase PostgreSQL database for the Binance market-price cache. See [`docs/MARKET_PRICE_CACHE.md`](docs/MARKET_PRICE_CACHE.md) for the collector, latest-price API, migration, worker configuration and freshness rules. Apply the migration before starting `npm run market:worker`.
