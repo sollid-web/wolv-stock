@@ -181,3 +181,10 @@ Binance's current Trading API documentation states that:
 WOLV now validates the chain, wallet and token identities, amount, RFQ mode, quote freshness, quote ID, route, output, fee/gas estimate, price impact, token decimals/taxes and honeypot flags. It stores only normalized fields, hashes and a conservative 20-second expiry in the execution event. A successful quote is **not** risk approval and is not a transaction or fill.
 
 Official reference: [Binance Web3 Trading API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
+
+
+## WOLV portfolio controls (2026-11-10)
+
+The autonomy branch now includes a Supabase migration for owner-scoped paper portfolios, allowlists, budget reservations, positions and idempotent paper quote fills. Defaults are deliberately disabled with emergency stop enabled and zero budget. Reservation RPCs require an execution intent already in `RISK_APPROVED`; paper-fill commit requires `SIMULATED`, the same unexpired quote ID and exact expected output amount.
+
+This ledger is not connected to the worker yet and the migration has not been confirmed applied. It does not move real funds. The exact-decimal reference-edge calculator is also present, but a reliable USD gas cost and conservative exit valuation are still required before the risk engine can approve an opportunity.
