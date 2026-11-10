@@ -30,6 +30,7 @@ export type ValidatedBinanceRfqOrder = {
   amountIn: string;
   expectedAmountOut: string;
   typedDataHash: string;
+  typedDataToSign: string;
   routeFingerprint: string;
   rawEvidenceRef: string;
   approvalRequired: boolean;
@@ -101,6 +102,7 @@ export function parseBinanceRfqOrderBuild(
     amountIn: quote.amountIn,
     expectedAmountOut: quote.expectedAmountOut,
     typedDataHash: hash(typedDataToSign),
+    typedDataToSign,
     routeFingerprint: quote.routeFingerprint,
     rawEvidenceRef: hash({ routerResult: route, rfq: { ...rfq, typedDataToSign: "[REDACTED]" } }),
     approvalRequired,
