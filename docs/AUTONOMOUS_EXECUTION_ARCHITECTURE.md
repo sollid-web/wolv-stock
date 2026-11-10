@@ -1,6 +1,6 @@
 # WOLV Autonomous Execution Architecture
 
-**Status:** architecture proposal; no live execution enabled  
+**Status:** partially implemented; durable paper qualification only; no live execution enabled  
 **Baseline:** `ef67f625b5a67b528761b7832cb27e52174fb5dd`  
 **Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`
 
