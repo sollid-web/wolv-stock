@@ -128,3 +128,11 @@ test("ambiguous submissions are never eligible for blind retry", () => {
   assert.equal(canRetrySubmission("UNKNOWN_REQUIRES_RECONCILIATION"), false);
   assert.equal(canRetrySubmission("SUBMITTED"), false);
 });
+
+
+test("allows a zero gas ceiling for explicitly gas-free simulations", () => {
+  assert.deepEqual(
+    evaluateRiskPolicy({ ...policy, maxGasCost: "0" }, { ...candidate, gasCost: "0" }),
+    { allowed: true, code: "RISK_APPROVED" },
+  );
+});
