@@ -80,7 +80,7 @@ node --test scripts/binance-provider-probe.test.mjs
 node scripts/binance-provider-probe.mjs
 ```
 
-The live probe performs GET requests only. It does not invoke BAW, sign transactions, request approval calldata, submit orders, or broadcast transactions. When a wallet is configured, it reports quote field names and types without printing values. The worker quote adapter validates both a buy RFQ and a reverse sell RFQ for the exact buy output, calculates an indicative round-trip edge after a 2x default network-fee buffer, persists redacted evidence and stops at `QUOTED`; it does not approve risk or execute.
+The live probe performs GET requests only. It does not invoke BAW, sign transactions, request approval calldata, submit orders, or broadcast transactions. When a wallet is configured, it reports quote field names and types without printing values. The worker validates buy and reverse sell RFQ quotes, calculates indicative round-trip edge after a configurable network-fee buffer, then evaluates the owner policy and can commit a quote-based paper fill. It never signs or submits a live order.
 
 ## Go / no-go criteria for autonomous execution
 
@@ -189,10 +189,10 @@ Official reference: [Binance Web3 Trading API](https://web3.binance.com/en/dev-d
 
 The autonomy branch now includes a Supabase migration for owner-scoped paper portfolios, allowlists, budget reservations, positions and idempotent paper quote fills. Defaults are deliberately disabled with emergency stop enabled and zero budget. Reservation RPCs require an execution intent already in `RISK_APPROVED`; paper-fill commit requires `SIMULATED`, the same unexpired quote ID and exact expected output amount.
 
-This ledger is not connected to the worker yet and the migration has not been confirmed applied. It does not move real funds. The exact-decimal reference-edge calculator is also present, but a reliable USD gas cost and conservative exit valuation are still required before the risk engine can approve an opportunity.
+The ledger and policy adapter are connected to the paper worker. The migration has not been confirmed applied and no owner portfolio policy is configured in this repository. Defaults are disabled with emergency stop enabled and zero paper budget. The exact-decimal edge calculator uses a fresh reverse RFQ output and a 2x default network-fee buffer for paper screening; this is not an exact gas quote or a guarantee of a later sale.
 
 
-WOLV also now contains a read-only RFQ order-preparation adapter. It builds the swap response with approval construction disabled, validates route/token/amount/vendor consistency against the quote, checks EIP-712 metadata, hashes the typed-data payload and flags unexpected approval data. It does not sign or submit. The polling worker currently stops at the validated quote; the order-preparation adapter is not yet connected to that loop.
+WOLV also now contains a read-only RFQ order-preparation adapter. It builds the swap response with approval construction disabled, validates route/token/amount/vendor consistency against the quote, checks EIP-712 metadata, hashes the typed-data payload and flags unexpected approval data. It does not sign or submit. The polling worker currently stops at quote-based paper fills; the order-preparation adapter is not yet connected to the loop.
 
 ## RFQ signing-provider decision
 
@@ -207,3 +207,6 @@ References:
 
 
 WOLV's round-trip validator (`services/autonomy/binance-roundtrip.ts`) rejects missing/stale reverse quotes, mismatched token direction/amount/decimals and non-zero intermediate RWA transfer taxes. This is a momentary exit-liquidity check, not an atomic two-leg arbitrage or guaranteed sale.
+
+
+Paper execution now includes portfolio risk evaluation, atomic budget reservation, quote-based simulated fill commit and position accounting. It is not live trading. The worker has not been run against the user's Supabase project or a live Binance RFQ wallet, so runtime behavior and provider payload compatibility remain unverified.
