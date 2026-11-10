@@ -76,6 +76,7 @@ export interface TypedDataSigner {
     walletAddress: string;
     chainId: string;
     typedDataToSign: string;
+    typedDataFormat: PreparedRfqOrder["typedDataFormat"];
   }): Promise<{ signerAddress: string; signature: string }>;
 }
 
