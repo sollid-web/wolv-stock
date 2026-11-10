@@ -255,16 +255,16 @@ Implemented on the autonomy branch:
 - Supabase/Postgres persistence for intents, events and worker leases.
 - Versioned state transitions and compare-and-swap writes.
 - Opportunity qualification from cached market snapshots.
-- Strict Binance RWA RFQ quote normalization and validation.
+- Strict Binance RWA RFQ quote normalization and validation, including buy and reverse sell quotes for a round-trip edge.
 - Strict unsigned RFQ `/swap` payload builder/parser, including EIP-712 metadata and approval detection; no signature or order submission.
-- Worker progression to `QUOTED`, with quote ID, expiry and redacted audit evidence.
+- Worker progression to `QUOTED` only after a fresh reverse RFQ quote validates; stores both quote IDs, output amounts, fee buffer, edge, expiry and redacted evidence.
 - Exact decimal arithmetic for reference-price edge after token taxes, trade fees and an explicitly supplied gas USD cost.
 - Supabase portfolio policy schema, fail-closed defaults, atomic reservation/release RPCs, and idempotent paper-fill/position commit RPCs.
 - A read-only Binance capability probe; configured quote responses are summarized by field names and types only.
 
 Not implemented or proven:
 - Live response validation in the user's Binance environment.
-- Live net-edge evaluation: the exact arithmetic module exists, but the worker still needs a reliable USD gas-cost input and a conservative exit-price model.
+- Portfolio-aware risk approval using the two-sided quote edge, exposure, capital limits and current policy.
 - Worker integration and an owner-configured portfolio policy row; no paper fill has been recorded.
 - Exact transaction construction and simulation.
 - An unattended signer that Binance authorizes for WOLV's target swap class.
@@ -304,7 +304,7 @@ The PostgreSQL reservation function serializes per-owner budget decisions, enfor
 
 The server-only adapter is `services/autonomy/supabase-portfolio-ledger.ts`. It loads policy from Supabase and exposes reserve/release/commit operations. It is not yet connected to the worker's risk/quote lifecycle, and the migration has not been confirmed applied to the user's Supabase project.
 
-The exact-decimal helper `services/autonomy/reference-edge.ts` computes a target-price scenario after input/output token taxes, quoted trade fee and an explicit USD gas cost. It intentionally rejects missing gas cost. This is a reference-price scenario, not guaranteed profit or a verified executable exit; the worker must obtain a trustworthy exit valuation and accurate gas cost before risk approval.
+The exact-decimal helper `services/autonomy/reference-edge.ts` computes net edge from a supplied output valuation, token taxes and explicit USD network cost. The round-trip adapter supplies a fresh reverse RFQ quote as the output valuation and applies the portfolio's configurable fee buffer (default 2x). This is stronger than an issuer reference-price target, but the buy and sell legs are not atomic; the sell quote is a momentary liquidity check, not a guaranteed later fill. Risk approval remains blocked until the portfolio policy is loaded and all per-leg limits pass.
 
 
 ## Unsigned RFQ order preparation
@@ -315,3 +315,6 @@ This adapter is not yet called by the polling worker. It does not sign typed dat
 
 
 The portfolio policy includes `network_fee_buffer_bps` (default 10000 = 100% uplift) for Binance's estimated USD network fee. The worker must apply this buffer before comparing against `max_gas_cost_usd` or calculating target-price edge. This mitigates underestimation but does not turn Binance's estimate into an exact gas quote; missing fee data still fails closed.
+
+
+The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It requires the reverse quote's input amount to equal the buy quote's exact output amount, rejects non-zero intermediate RWA transfer taxes until vendor tax treatment is verified, and fails closed if either quote or fee estimate is missing/stale. It applies the portfolio-configured network-fee buffer (default 10000 bps = 2x) to both estimated USD network fees. It does not claim atomic execution or guaranteed profit.
