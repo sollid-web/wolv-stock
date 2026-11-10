@@ -219,7 +219,7 @@ The autonomy branch now includes:
 - A continuously polling paper-only worker that consumes fresh ACTIVE discount signals, ranks candidates by absolute deviation, and applies the deterministic policy engine.
 - A conservative one-intent-per-strategy-per-UTC-day idempotency key until portfolio-wide exposure accounting and atomic budget reservations are implemented.
 
-The current worker stops at `QUOTE_REQUIRED`. A reference-price dislocation is not an executable quote and is never treated as risk approval. The next required implementation is a fresh wallet-and-size-specific executable quote adapter, followed by deterministic fee/slippage/impact checks and exact transaction simulation. No order, fill, settlement, or live transaction is created. The worker has no signer or execution-provider import and cannot broadcast. It uses zero assumed current position and daily spend only because this slice permits at most one candidate intent per strategy per UTC day and creates no fills; this is not a substitute for a portfolio exposure ledger before paper fills or live execution.
+The current worker reaches `QUOTED` after validating a fresh Binance RWA RFQ quote. It does not yet evaluate portfolio-aware risk, reserve capital, create paper fills, sign, submit or broadcast. It has no signer or execution-provider import. The one-intent-per-strategy-per-UTC-day guard is only a temporary throttle, not a substitute for portfolio-wide exposure accounting.
 
 ### Apply and configure
 
@@ -238,7 +238,9 @@ WOLV_AUTONOMY_OWNER_ID=YOUR_OWNER_UUID
 WOLV_AUTONOMY_WALLET_ADDRESS=0xYourBscWallet
 WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS=0xYourInputToken
 WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS=1000000000000000000
-WOLV_AUTONOMY_RISK_POLICY_JSON={"enabled":true,"allowedChainIds":["56"],"allowedTokenAddresses":["0xYourAllowlistedToken"],"allowedInputTokenAddresses":["0xYourInputToken"],"maxOrderAmount":"1000000000000000000","maxPositionAmount":"1000000000000000000","maxDailySpend":"1000000000000000000","maxSlippageBps":50,"maxPriceImpactBps":100,"maxQuoteAgeMs":300000,"maxGasCost":"0","minExpectedEdgeBps":100}
+WOLV_AUTONOMY_SLIPPAGE_BPS=50
+BINANCE_API_KEY=YOUR_BINANCE_WEB3_API_KEY
+BINANCE_SECRET_KEY=YOUR_BINANCE_WEB3_API_SECRET
 ```
 
 Run the worker only after migrations are applied and the market-price worker is producing fresh opportunities:
@@ -256,11 +258,12 @@ Implemented on the autonomy branch:
 - Supabase/Postgres persistence for intents, events and worker leases.
 - Versioned state transitions and compare-and-swap writes.
 - Opportunity qualification from cached market snapshots.
-- A fail-closed transition that blocks risk approval until an executable quote exists.
-- A read-only Binance capability probe. When `BINANCE_PROBE_WALLET_ADDRESS` is set, it reports the quote response's field names and data types only; it does not print quote values or submit transactions.
+- Strict Binance RWA RFQ quote normalization and validation.
+- Worker progression to `QUOTED`, with quote ID, expiry and redacted audit evidence.
+- A read-only Binance capability probe; configured quote responses are summarized by field names and types only.
 
 Not implemented or proven:
-- Binance quote normalization against a live, observed response schema.
+- Live response validation in the user's Binance environment.
 - Net-edge calculation using executable output, all fees and gas.
 - Portfolio-wide atomic capital reservation and simulated fill/position ledger.
 - Exact transaction construction and simulation.
