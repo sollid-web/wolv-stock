@@ -96,6 +96,7 @@ export type RiskDecision =
 
 const TERMINAL = new Set<ExecutionState>([
   "SETTLED",
+  "PAPER_FILLED",
   "REJECTED_POLICY",
   "EXPIRED",
   "PROVIDER_REJECTED",
