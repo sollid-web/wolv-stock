@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getValidatedBinanceRwaQuote } from "../services/autonomy/binance-quote-provider.ts";
+import { getValidatedBinanceRoundTripQuote } from "../services/autonomy/binance-roundtrip-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
   createExecutionIntent, transitionExecutionIntent,
@@ -22,6 +22,10 @@ const LEASE_MS = 30_000;
 const SLIPPAGE_BPS = Number(process.env.WOLV_AUTONOMY_SLIPPAGE_BPS ?? 50);
 if (!Number.isInteger(SLIPPAGE_BPS) || SLIPPAGE_BPS < 0 || SLIPPAGE_BPS > 5000) {
   throw new Error("WOLV_AUTONOMY_SLIPPAGE_BPS must be an integer from 0 to 5000.");
+}
+const NETWORK_FEE_BUFFER_BPS = Number(process.env.WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS ?? 10_000);
+if (!Number.isInteger(NETWORK_FEE_BUFFER_BPS) || NETWORK_FEE_BUFFER_BPS < 0 || NETWORK_FEE_BUFFER_BPS > 100_000) {
+  throw new Error("WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS must be an integer from 0 to 100000.");
 }
 
 function required(name: string): string {
@@ -94,35 +98,44 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
       return;
     }
 
-    const quote = await getValidatedBinanceRwaQuote({
+    const roundTrip = await getValidatedBinanceRoundTripQuote({
       chainId: intent.chainId, walletAddress: intent.walletAddress,
       inputTokenAddress: intent.inputTokenAddress, outputTokenAddress: intent.tokenAddress,
       amountIn: intent.amountIn, slippageBps: SLIPPAGE_BPS,
+      networkFeeBufferBps: NETWORK_FEE_BUFFER_BPS,
     });
-    if (Date.parse(quote.expiresAt) <= Date.now()) {
-      throw new Error("Binance executable quote expired before it could be persisted.");
+    const quote = roundTrip.buy;
+    if (Date.parse(roundTrip.expiresAt) <= Date.now()) {
+      throw new Error("Binance round-trip quotes expired before they could be persisted.");
     }
     const version = intent.version;
     intent = {
-      ...next(intent, "QUOTED", "BINANCE_EXECUTABLE_QUOTE_VALIDATED", {
-      provider: quote.provider, quoteId: quote.quoteId, vendorName: quote.vendorName,
-      executionMode: quote.executionMode, amountIn: quote.amountIn,
-      expectedAmountOut: quote.expectedAmountOut, slippageBps: SLIPPAGE_BPS,
-      priceImpactBps: quote.priceImpactBps, gasEstimateRaw: quote.gasEstimateRaw,
-      estimatedNetworkFeeUsd: quote.estimatedNetworkFeeUsd, approvalTarget: quote.approvalTarget,
-      inputTokenDecimals: quote.inputTokenDecimals,
-      outputTokenDecimals: quote.outputTokenDecimals, inputTokenTaxRate: quote.inputTokenTaxRate,
-      outputTokenTaxRate: quote.outputTokenTaxRate, observedAt: quote.observedAt,
-      expiresAt: quote.expiresAt, routeFingerprint: quote.routeFingerprint,
-      rawEvidenceRef: quote.rawEvidenceRef,
+      ...next(intent, "QUOTED", "BINANCE_ROUNDTRIP_QUOTES_VALIDATED", {
+      provider: roundTrip.provider,
+      buyQuoteId: roundTrip.buy.quoteId, buyVendor: roundTrip.buy.vendorName,
+      buyAmountIn: roundTrip.buy.amountIn, expectedAmountOut: roundTrip.buy.expectedAmountOut,
+      buyPriceImpactBps: roundTrip.buy.priceImpactBps, buyGasEstimateRaw: roundTrip.buy.gasEstimateRaw,
+      buyEstimatedNetworkFeeUsd: roundTrip.buy.estimatedNetworkFeeUsd,
+      buyApprovalTarget: roundTrip.buy.approvalTarget, buyObservedAt: roundTrip.buy.observedAt,
+      sellQuoteId: roundTrip.sell.quoteId, sellVendor: roundTrip.sell.vendorName,
+      sellAmountIn: roundTrip.sell.amountIn, expectedExitAmountOut: roundTrip.sell.expectedAmountOut,
+      sellPriceImpactBps: roundTrip.sell.priceImpactBps, sellGasEstimateRaw: roundTrip.sell.gasEstimateRaw,
+      sellEstimatedNetworkFeeUsd: roundTrip.sell.estimatedNetworkFeeUsd,
+      sellApprovalTarget: roundTrip.sell.approvalTarget, sellObservedAt: roundTrip.sell.observedAt,
+      indicativeRoundTripEdgeBps: roundTrip.indicativeRoundTripEdgeBps,
+      bufferedNetworkFeesUsd: roundTrip.bufferedNetworkFeesUsd,
+      approvalRequired: roundTrip.approvalRequired, slippageBps: SLIPPAGE_BPS,
+      expiresAt: roundTrip.expiresAt, routeFingerprint: roundTrip.routeFingerprint,
+      rawEvidenceRef: roundTrip.rawEvidenceRef,
       }),
       quoteId: quote.quoteId,
-      quoteExpiresAt: quote.expiresAt,
+      quoteExpiresAt: roundTrip.expiresAt,
     };
     await persistTransition(intent, version);
-    console.info("[autonomy-worker] quote-validated " + intent.id + " " + opportunity.ticker +
-      " vendor=" + quote.vendorName + " impactBps=" + quote.priceImpactBps +
-      " expiresAt=" + quote.expiresAt + " mode=PAPER_ONLY");
+    console.info("[autonomy-worker] roundtrip-quoted " + intent.id + " " + opportunity.ticker +
+      " edgeBps=" + roundTrip.indicativeRoundTripEdgeBps +
+      " bufferedNetworkFeesUsd=" + roundTrip.bufferedNetworkFeesUsd +
+      " expiresAt=" + roundTrip.expiresAt + " mode=PAPER_ONLY");
   } finally {
     await releaseExecutionLease(OWNER_ID, intent.id, lease);
   }
