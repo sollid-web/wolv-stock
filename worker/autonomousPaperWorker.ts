@@ -252,6 +252,14 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       await persistTransition(intent, version);
       return intent;
     }
+    const feeEvidence = roundTripEvidence(intent);
+    if (evidenceNumber(feeEvidence, "networkFeeBufferBps") !== portfolio.networkFeeBufferBps) {
+      await releasePortfolioBudget(intent.ownerId, intent.id);
+      const version = intent.version;
+      intent = next(intent, "SECURITY_HOLD", "NETWORK_FEE_POLICY_CHANGED_AFTER_RESERVATION");
+      await persistTransition(intent, version);
+      return intent;
+    }
     if (!intent.quoteExpiresAt || Date.parse(intent.quoteExpiresAt) <= Date.now()) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
@@ -277,6 +285,14 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
       intent = next(intent, "SECURITY_HOLD", "PAPER_FILL_BLOCKED_BY_POLICY_CHANGE");
+      await persistTransition(intent, version);
+      return intent;
+    }
+    const feeEvidence = roundTripEvidence(intent);
+    if (evidenceNumber(feeEvidence, "networkFeeBufferBps") !== portfolio.networkFeeBufferBps) {
+      await releasePortfolioBudget(intent.ownerId, intent.id);
+      const version = intent.version;
+      intent = next(intent, "SECURITY_HOLD", "NETWORK_FEE_POLICY_CHANGED_AFTER_RESERVATION");
       await persistTransition(intent, version);
       return intent;
     }
