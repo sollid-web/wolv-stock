@@ -148,7 +148,7 @@ function validTimestamp(value: string, field: string): number {
 
 function parseFixedDecimal(value: string, field: string): bigint {
   requireNonEmpty(value, field);
-  const match = /^(0|[1-9][0-9]*)(?:\\.([0-9]{1,18}))?$/.exec(value);
+  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,18}))?$/.exec(value);
   if (!match) throw new Error(`Invalid ${field}`);
   const fraction = (match[2] ?? "").padEnd(18, "0");
   return BigInt(match[1]) * BigInt("1000000000000000000") + BigInt(fraction || "0");
