@@ -22,6 +22,7 @@ const quote = {
   tradeFeeUsd: "0.12",
   inputTokenUsdPrice: "1",
   outputTokenUsdPrice: "100",
+  approvalTarget: null,
   inputTokenDecimals: 6,
   outputTokenDecimals: 18,
   inputTokenTaxRate: "0",
@@ -101,8 +102,9 @@ test("rejects invalid typed data, vendor signing mismatch and missing EIP712 met
 
 test("flags approval payloads and rejects expired or stale RFQ builds", () => {
   const withApproval = buildData();
-  withApproval.rfq.signatureData = ["approval-data"];
+  withApproval.routerResult.approveTarget = "0x4444444444444444444444444444444444444444";
   assert.equal(parseBinanceRfqOrderBuild(response(withApproval), quote, now).approvalRequired, true);
+  assert.equal(parseBinanceRfqOrderBuild(response(withApproval), quote, now).approvalTarget, "0x4444444444444444444444444444444444444444");
   assert.throws(() => parseBinanceRfqOrderBuild(response(), {
     ...quote, expiresAt: new Date(now - 1).toISOString(),
   }, now), /expired/);
