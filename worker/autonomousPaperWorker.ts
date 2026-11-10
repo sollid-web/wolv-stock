@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getValidatedBinanceRwaQuote } from "../services/autonomy/binance-quote-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
   createExecutionIntent, transitionExecutionIntent,
@@ -18,6 +19,10 @@ const STRATEGY_ID = process.env.WOLV_AUTONOMY_STRATEGY_ID ?? "rwa-dislocation-v1
 const STRATEGY_VERSION = process.env.WOLV_AUTONOMY_STRATEGY_VERSION ?? "1";
 const POLICY_VERSION = process.env.WOLV_AUTONOMY_POLICY_VERSION ?? "paper-policy-1";
 const LEASE_MS = 30_000;
+const SLIPPAGE_BPS = Number(process.env.WOLV_AUTONOMY_SLIPPAGE_BPS ?? 50);
+if (!Number.isInteger(SLIPPAGE_BPS) || SLIPPAGE_BPS < 0 || SLIPPAGE_BPS > 5000) {
+  throw new Error("WOLV_AUTONOMY_SLIPPAGE_BPS must be an integer from 0 to 5000.");
+}
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -60,29 +65,59 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
   // A daily strategy key may already belong to a different top-ranked asset.
   // Never apply the current loop item to an intent created for another token.
   if (intent.tokenAddress.toLowerCase() !== opportunity.tokenAddress.toLowerCase()) return;
-  if (intent.state !== "DISCOVERED") return;
+  if (!["DISCOVERED", "QUALIFIED", "QUOTE_REQUIRED"].includes(intent.state)) return;
   const lease = await acquireExecutionLease(OWNER_ID, intent.id, LEASE_MS);
   if (!lease) return;
   try {
-    const originalVersion = intent.version;
-    intent = next(intent, "QUALIFIED", "OPPORTUNITY_QUALIFIED", {
-      ticker: opportunity.ticker, direction: opportunity.direction,
-      deviationBps: opportunity.deviationBps, providerTimestamp: opportunity.providerTimestamp,
-      executionMode: "PAPER_ONLY",
-    });
-    await persistTransition(intent, originalVersion);
+    if (intent.state === "DISCOVERED") {
+      const originalVersion = intent.version;
+      intent = next(intent, "QUALIFIED", "OPPORTUNITY_QUALIFIED", {
+        ticker: opportunity.ticker, direction: opportunity.direction,
+        deviationBps: opportunity.deviationBps, providerTimestamp: opportunity.providerTimestamp,
+        executionMode: "PAPER_ONLY",
+      });
+      await persistTransition(intent, originalVersion);
+    }
 
-    // A reference-price dislocation is not an executable quote. Do not mark
-    // this candidate RISK_APPROVED until a fresh Binance executable quote has
-    // been validated for this wallet, size, route, fees, slippage and expiry.
+    if (intent.state === "QUALIFIED") {
+      const version = intent.version;
+      intent = next(intent, "QUOTE_REQUIRED", "EXECUTABLE_QUOTE_REQUIRED", {
+        mode: "PAPER_ONLY", blocker: "AWAITING_VALIDATED_BINANCE_QUOTE",
+        referenceDeviationBps: opportunity.deviationBps,
+      });
+      await persistTransition(intent, version);
+    }
+
+    if (intent.state !== "QUOTE_REQUIRED") return;
+    if (!process.env.BINANCE_API_KEY?.trim() || !process.env.BINANCE_SECRET_KEY?.trim()) {
+      console.info("[autonomy-worker] quote-required " + intent.id + " blocker=BINANCE_API_CREDENTIALS_MISSING");
+      return;
+    }
+
+    const quote = await getValidatedBinanceRwaQuote({
+      chainId: intent.chainId, walletAddress: intent.walletAddress,
+      inputTokenAddress: intent.inputTokenAddress, outputTokenAddress: intent.tokenAddress,
+      amountIn: intent.amountIn, slippageBps: SLIPPAGE_BPS,
+    });
+    if (Date.parse(quote.expiresAt) <= Date.now()) {
+      throw new Error("Binance executable quote expired before it could be persisted.");
+    }
     const version = intent.version;
-    intent = next(intent, "QUOTE_REQUIRED", "EXECUTABLE_QUOTE_REQUIRED", {
-      mode: "PAPER_ONLY",
-      blocker: "NO_EXECUTABLE_QUOTE_PROVIDER",
-      referenceDeviationBps: opportunity.deviationBps,
+    intent = next(intent, "QUOTED", "BINANCE_EXECUTABLE_QUOTE_VALIDATED", {
+      provider: quote.provider, quoteId: quote.quoteId, vendorName: quote.vendorName,
+      executionMode: quote.executionMode, amountIn: quote.amountIn,
+      expectedAmountOut: quote.expectedAmountOut, slippageBps: SLIPPAGE_BPS,
+      priceImpactBps: quote.priceImpactBps, gasEstimateNativeUnits: quote.gasEstimateNativeUnits,
+      tradeFeeUsd: quote.tradeFeeUsd, inputTokenDecimals: quote.inputTokenDecimals,
+      outputTokenDecimals: quote.outputTokenDecimals, inputTokenTaxRate: quote.inputTokenTaxRate,
+      outputTokenTaxRate: quote.outputTokenTaxRate, observedAt: quote.observedAt,
+      expiresAt: quote.expiresAt, routeFingerprint: quote.routeFingerprint,
+      rawEvidenceRef: quote.rawEvidenceRef,
     });
     await persistTransition(intent, version);
-    console.info(`[autonomy-worker] quote-required ${intent.id} ${opportunity.ticker} mode=PAPER_ONLY blocker=NO_EXECUTABLE_QUOTE_PROVIDER`);
+    console.info("[autonomy-worker] quote-validated " + intent.id + " " + opportunity.ticker +
+      " vendor=" + quote.vendorName + " impactBps=" + quote.priceImpactBps +
+      " expiresAt=" + quote.expiresAt + " mode=PAPER_ONLY");
   } finally {
     await releaseExecutionLease(OWNER_ID, intent.id, lease);
   }
