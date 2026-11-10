@@ -1,6 +1,6 @@
 # WOLV Autonomous Execution Architecture
 
-**Status:** partially implemented; durable opportunity qualification and quote-required gating; executable quote validation, paper fills, signing and live execution are not enabled  
+**Status:** partially implemented; durable opportunity qualification and strict Binance RFQ quote validation; risk approval, paper fills, signing and live execution are not enabled  
 **Baseline:** `ef67f625b5a67b528761b7832cb27e52174fb5dd`  
 **Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`
 
@@ -113,7 +113,7 @@ DISCOVERED
    -> SETTLEMENT_PENDING
    -> SETTLED
 
-The current paper worker intentionally stops at `QUOTE_REQUIRED`: it does not treat the RWA reference-price dislocation as an executable quote and does not fabricate zero gas or slippage. The Binance Web3 quote response schema must be captured and validated before the worker can proceed.\n\nAny stage may instead transition to:
+The current paper worker obtains and validates Binance RWA RFQ quotes, then stops at `QUOTED`. It does not treat the RWA reference-price dislocation as an executable quote and does not fabricate zero gas or slippage. The worker resumes persisted `QUOTE_REQUIRED` intents after restarts and records quote evidence without retaining secrets or raw provider payloads.\n\nAny stage may instead transition to:
    REJECTED_POLICY
    EXPIRED
    PROVIDER_REJECTED
@@ -264,3 +264,26 @@ Not implemented or proven:
 - On-chain submission, receipt verification, balance reconciliation or unattended recovery.
 
 The Binance Web3 API is explicitly non-custodial: it returns unsigned transactions and does not hold or access user private keys. Therefore, adding quote and transaction-build calls alone cannot make WOLV autonomous. A separately authorized signer remains a hard dependency. See the official [Binance Web3 API announcement](https://www.binance.com/en/support/announcement/detail/a9f19002d4584183b83892b002d61f96).
+
+
+## Binance RWA quote adapter (2026-11-10)
+
+The worker now calls the existing Binance Web3 aggregator quote endpoint through a generic BSC read-only adapter and validates the response before persisting a quote event.
+
+Validation includes:
+- BSC chain ID, wallet/token address formats, exact input token and amount, and exact output token.
+- Successful provider envelope and a recent provider timestamp.
+- Route quote ID, vendor, route string, and documented `RFQ` execution mode for equity/RWA assets.
+- Positive output amount, gas estimate, and trade fee; explicit non-honeypot flags; token decimals and tax rates.
+- Price-impact conversion to basis points with conservative upward rounding.
+- A 20-second local expiry budget against Binance's documented approximately 30-second quote lifetime.
+- SHA-256 fingerprints for route and quote evidence.
+
+Important limitations:
+- Binance documents `tradeFee` as a USD estimate and `estimateGasFee` as an estimate that may be inaccurate. The quote is therefore evidence for screening, not sufficient by itself for risk approval or transaction execution. Accurate gas requires the separate gas-price and gas-limit endpoints, and the exact swap/RFQ request must be built and simulated before signing.
+- RWA routes return `RFQ`, not a normal router swap. The execution path must sign the returned typed data and submit the RFQ order, which is a distinct signer capability from broadcasting a standard swap transaction.
+- Quote IDs expire quickly. WOLV records a conservative 20-second deadline and must obtain a new quote before any later build/submit stage if the deadline has passed.
+
+The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED` and stops. It does not mark the intent `RISK_APPROVED`, reserve funds, simulate a fill, or submit an order. The next blockers are portfolio-aware policy evaluation, atomic capital reservation, accurate gas calculation, RFQ typed-data construction/signing, and settlement reconciliation.
+
+Official endpoint contract: [Binance Trading API — Get Aggregated Quote and RFQ flow](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
