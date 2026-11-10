@@ -216,16 +216,3 @@ export async function commitPaperQuoteFill(input: {
     }),
   });
   return result === true;
-}): Promise<boolean> {
-  const result = await request("rpc/wolv_commit_autonomy_paper_fill", {
-    method: "POST",
-    body: JSON.stringify({
-      p_owner_id: input.ownerId,
-      p_intent_id: input.intentId,
-      p_quote_id: input.quoteId,
-      p_amount_out: input.amountOut,
-      p_quote_observed_at: input.quoteObservedAt,
-    }),
-  });
-  return result === true;
-}
