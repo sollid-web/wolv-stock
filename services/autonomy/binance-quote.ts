@@ -31,6 +31,7 @@ export type ValidatedBinanceQuote = {
   tradeFeeUsd: string;
   inputTokenUsdPrice: string;
   outputTokenUsdPrice: string;
+  approvalTarget: string | null;
   inputTokenDecimals: number;
   outputTokenDecimals: number;
   inputTokenTaxRate: string;
@@ -149,6 +150,7 @@ export function parseBinanceRwaExecutableQuote(
   if (route.fromToken.isHoneyPot !== false || route.toToken.isHoneyPot !== false) {
     throw new Error("Binance quote token honeypot status is missing or unsafe");
   }
+  const approvalTarget = route.approveTarget == null ? null : tokenAddress(route.approveTarget, "approveTarget");
   const gasEstimateNativeUnits = positiveInteger(route.estimateGasFee, "estimateGasFee");
   const tradeFeeUsd = decimal(route.tradeFee, "tradeFee");
   const priceImpactBps = decimalPercentToBps(route.priceImpactPercent);
@@ -173,7 +175,7 @@ export function parseBinanceRwaExecutableQuote(
     walletAddress: request.walletAddress.toLowerCase(),
     inputTokenAddress, outputTokenAddress,
     amountIn, expectedAmountOut, priceImpactBps,
-    gasEstimateNativeUnits, tradeFeeUsd, inputTokenUsdPrice, outputTokenUsdPrice,
+    gasEstimateNativeUnits, tradeFeeUsd, inputTokenUsdPrice, outputTokenUsdPrice, approvalTarget,
     inputTokenDecimals, outputTokenDecimals,
     inputTokenTaxRate, outputTokenTaxRate,
     route: routeText,
