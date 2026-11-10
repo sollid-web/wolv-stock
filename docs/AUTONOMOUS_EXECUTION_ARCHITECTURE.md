@@ -125,7 +125,7 @@ The current paper worker reaches `QUOTED` and stops. It resumes persisted `DISCO
 Rules:
 - Persist the intent and idempotency key before external writes.
 - Validate exact chain, from/to tokens, wallet, amount, route, quote expiry and slippage.
-- Treat quote gas and fee estimates as estimates; obtain accurate gas data and build the exact RFQ order before risk approval.
+- Paper mode uses Binance's estimated network fee with a configurable buffer; live mode must validate the exact RFQ order payload and fee semantics before signing.
 - Simulate the exact transaction or validate the exact RFQ typed-data order before signing.
 - Never retry an ambiguous submission until provider and chain state have been reconciled.
 - A provider order ID or `success: true` is not settlement.
@@ -293,10 +293,10 @@ Not implemented or proven:
 - Accurate gas/fee validation beyond Binance's estimated network fee, and conservative controls for non-atomic buy/sell execution.
 - The worker and portfolio policy service are connected, but no owner portfolio has been configured and no paper fill has been observed in the user's Supabase environment.
 - Live RFQ `/swap` preparation remains a separate adapter and is not yet invoked by the worker; no live signer or live order submission exists.
-- An unattended signer that Binance authorizes for WOLV's target swap class.
+- A policy-constrained unattended EIP-712 signer authorized by the wallet owner; no signer provider is connected.
 - On-chain submission, receipt verification, balance reconciliation or unattended recovery.
 
-The Binance Web3 API is explicitly non-custodial: it returns unsigned transactions and does not hold or access user private keys. Therefore, adding quote and transaction-build calls alone cannot make WOLV autonomous. A separately authorized signer remains a hard dependency. See the official [Binance Web3 API announcement](https://www.binance.com/en/support/announcement/detail/a9f19002d4584183b83892b002d61f96).
+The Binance Web3 API is explicitly non-custodial: it returns unsigned transaction payloads or RFQ EIP-712 signing payloads and does not hold or access user private keys. Therefore, adding quote and transaction-build calls alone cannot make WOLV autonomous. A separately authorized signer remains a hard dependency. See the official [Binance Web3 API announcement](https://www.binance.com/en/support/announcement/detail/a9f19002d4584183b83892b002d61f96).
 
 
 ## Binance RWA quote adapter (2026-11-10)
@@ -307,7 +307,7 @@ Validation includes:
 - BSC chain ID, wallet/token address formats, exact input token and amount, and exact output token.
 - Successful provider envelope and a recent provider timestamp.
 - Route quote ID, vendor, route string, and documented `RFQ` execution mode for equity/RWA assets.
-- Positive output amount, gas estimate, and trade fee; explicit non-honeypot flags; token decimals and tax rates.
+- Positive output amount and gas estimate, non-negative estimated network fee, and explicit non-honeypot flags; token decimals and tax rates.
 - Price-impact conversion to basis points with conservative upward rounding.
 - A 20-second local expiry budget against Binance's documented approximately 30-second quote lifetime.
 - SHA-256 fingerprints for route and quote evidence.
