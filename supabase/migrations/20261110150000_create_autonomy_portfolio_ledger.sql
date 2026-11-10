@@ -105,7 +105,9 @@ declare
   position_reserved numeric(78,0);
   daily_reserved numeric(78,0);
 begin
-  if p_amount_in is null or p_amount_in <= 0 or p_expected_amount_out is null or p_expected_amount_out <= 0 then
+  if p_amount_in is null or p_amount_in <= 0 or p_amount_in <> trunc(p_amount_in)
+     or p_expected_amount_out is null or p_expected_amount_out <= 0
+     or p_expected_amount_out <> trunc(p_expected_amount_out) then
     return false;
   end if;
 
@@ -141,6 +143,10 @@ begin
       and intent->>'chainId' = p_chain_id
       and lower(intent->>'tokenAddress') = lower(p_token_address)
       and lower(intent->>'inputTokenAddress') = lower(p_input_token_address)
+      and intent->>'amountIn' = p_amount_in::text
+      and intent->>'quoteId' is not null
+      and (intent->>'quoteExpiresAt')::timestamptz > now()
+      and (intent->'events'->(jsonb_array_length(intent->'events') - 1)->'detail'->>'expectedAmountOut') = p_expected_amount_out::text
   ) then return false; end if;
 
   if account.daily_spend_date < current_date then
@@ -222,7 +228,8 @@ declare
   reservation public.wolv_autonomy_reservations%rowtype;
   account public.wolv_autonomy_portfolios%rowtype;
 begin
-  if p_amount_out is null or p_amount_out <= 0 or p_quote_id is null or p_quote_id = '' or p_quote_observed_at is null then
+  if p_amount_out is null or p_amount_out <= 0 or p_amount_out <> trunc(p_amount_out)
+     or p_quote_id is null or p_quote_id = '' or p_quote_observed_at is null then
     return false;
   end if;
 
@@ -247,6 +254,7 @@ begin
     select 1 from public.wolv_execution_intents
     where owner_id = p_owner_id and id = p_intent_id
       and intent->>'state' = 'SIMULATED' and intent->>'quoteId' = p_quote_id
+      and (intent->>'quoteExpiresAt')::timestamptz > now()
   ) then return false; end if;
   if p_quote_observed_at > now() + interval '5 seconds' then return false; end if;
   if account.daily_spend_date < current_date then
