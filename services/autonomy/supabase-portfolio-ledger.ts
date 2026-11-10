@@ -38,11 +38,13 @@ export type PortfolioPolicySnapshot = {
   reservedAmount: string;
   committedAmount: string;
   dailySpendAmount: string;
+  currentPositionInputUnits: string;
+  dailySpendIncludingReservations: string;
   networkFeeBufferBps: number;
   riskPolicy: RiskPolicy;
 };
 
-export async function loadPortfolioPolicy(ownerId: string): Promise<PortfolioPolicySnapshot | null> {
+export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId: string; tokenAddress: string }): Promise<PortfolioPolicySnapshot | null> {
   const query = new URLSearchParams({
     select: [
       "owner_id", "wallet_address", "chain_id", "input_token_address",
@@ -80,8 +82,43 @@ export async function loadPortfolioPolicy(ownerId: string): Promise<PortfolioPol
   if (typeof row.enabled !== "boolean" || typeof row.emergency_stop !== "boolean") {
     throw new Error("Portfolio policy has invalid enable/stop flags");
   }
+  const utcDate = new Date().toISOString().slice(0, 10);
+  const persistedDailySpend = String(row.daily_spend_date) < utcDate ? "0" : decimalString(row.daily_spend_amount_text, "daily_spend_amount");
+  let currentPositionInputUnits = "0";
+  let dailySpendIncludingReservations = persistedDailySpend;
+  const sumIntegerRows = (values: Array<Record<string, unknown>>, field: string): string => {
+    return values.reduce((sum, item) => {
+      const value = String(item[field]);
+      if (!/^(0|[1-9][0-9]*)$/.test(value)) throw new Error("Portfolio ledger has invalid " + field);
+      return sum + BigInt(value);
+    }, BigInt(0)).toString();
+  };
+  if (exposure) {
+    const positionQuery = new URLSearchParams({
+      select: "cost_basis_input_units_text:cost_basis_input_units::text",
+      owner_id: "eq." + ownerId, chain_id: "eq." + exposure.chainId,
+      token_address: "eq." + exposure.tokenAddress.toLowerCase(), limit: "1",
+    });
+    const positions = await request("wolv_autonomy_positions?" + positionQuery) as Array<Record<string, unknown>>;
+    const reservedPositionQuery = new URLSearchParams({
+      select: "amount_in_text:amount_in::text", owner_id: "eq." + ownerId,
+      chain_id: "eq." + exposure.chainId, token_address: "eq." + exposure.tokenAddress.toLowerCase(),
+      status: "eq.RESERVED",
+    });
+    const positionReservations = await request("wolv_autonomy_reservations?" + reservedPositionQuery) as Array<Record<string, unknown>>;
+    currentPositionInputUnits = (BigInt(positions[0]?.cost_basis_input_units_text == null ? "0" : String(positions[0].cost_basis_input_units_text)) +
+      BigInt(sumIntegerRows(positionReservations, "amount_in_text"))).toString();
+  }
+  const midnightUtc = new Date();
+  midnightUtc.setUTCHours(0, 0, 0, 0);
+  const dailyReservationQuery = new URLSearchParams({
+    select: "amount_in_text:amount_in::text", owner_id: "eq." + ownerId,
+    status: "eq.RESERVED", created_at: "gte." + midnightUtc.toISOString(),
+  });
+  const dailyReservations = await request("wolv_autonomy_reservations?" + dailyReservationQuery) as Array<Record<string, unknown>>;
+  dailySpendIncludingReservations = (BigInt(persistedDailySpend) + BigInt(sumIntegerRows(dailyReservations, "amount_in_text"))).toString();
   const snapshot: PortfolioPolicySnapshot = {
-    ownerId: String(row.owner_id),
+    ownerId: String(row.owner_id)
     walletAddress: String(row.wallet_address).toLowerCase(),
     chainId: String(row.chain_id),
     inputTokenAddress: String(row.input_token_address).toLowerCase(),
@@ -90,7 +127,9 @@ export async function loadPortfolioPolicy(ownerId: string): Promise<PortfolioPol
     paperBudgetAmount: decimalString(row.paper_budget_amount_text, "paper_budget_amount"),
     reservedAmount: decimalString(row.reserved_amount_text, "reserved_amount"),
     committedAmount: decimalString(row.committed_amount_text, "committed_amount"),
-    dailySpendAmount: decimalString(row.daily_spend_amount_text, "daily_spend_amount"),
+    dailySpendAmount: persistedDailySpend,
+    currentPositionInputUnits,
+    dailySpendIncludingReservations,
     networkFeeBufferBps: numeric(row.network_fee_buffer_bps, "network_fee_buffer_bps"),
     riskPolicy: {
       enabled: row.enabled && !row.emergency_stop,
