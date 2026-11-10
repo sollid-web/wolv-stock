@@ -69,7 +69,7 @@ export type RiskPolicy = {
   maxSlippageBps: number;
   maxPriceImpactBps: number;
   maxQuoteAgeMs: number;
-  maxGasCost: string;
+  maxGasCostUsd: string;
   minExpectedEdgeBps: number;
 };
 
@@ -84,7 +84,7 @@ export type RiskCandidate = {
   now: string;
   slippageBps: number;
   priceImpactBps: number;
-  gasCost: string;
+  gasCostUsd: string;
   expectedEdgeBps: number;
 };
 
@@ -146,6 +146,14 @@ function validTimestamp(value: string, field: string): number {
   return time;
 }
 
+function parseFixedDecimal(value: string, field: string): bigint {
+  requireNonEmpty(value, field);
+  const match = /^(0|[1-9][0-9]*)(?:\\.([0-9]{1,18}))?$/.exec(value);
+  if (!match) throw new Error(`Invalid ${field}`);
+  const fraction = (match[2] ?? "").padEnd(18, "0");
+  return BigInt(match[1]) * BigInt("1000000000000000000") + BigInt(fraction || "0");
+}
+
 export function createExecutionIntent(input: Omit<ExecutionIntent, "state" | "createdAt" | "updatedAt" | "version" | "events"> & { now: string }): ExecutionIntent {
   for (const [field, value] of Object.entries({
     id: input.id,
@@ -193,8 +201,8 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   let maxOrder: bigint;
   let maxPosition: bigint;
   let maxDailySpend: bigint;
-  let gasCost: bigint;
-  let maxGasCost: bigint;
+  let gasCostUsd: bigint;
+  let maxGasCostUsd: bigint;
 
   try {
     amount = parsePositiveDecimal(candidate.amountIn, "candidate.amountIn");
@@ -203,8 +211,8 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
     maxOrder = parsePositiveDecimal(policy.maxOrderAmount, "policy.maxOrderAmount");
     maxPosition = parsePositiveDecimal(policy.maxPositionAmount, "policy.maxPositionAmount");
     maxDailySpend = parsePositiveDecimal(policy.maxDailySpend, "policy.maxDailySpend");
-    gasCost = parseNonNegativeDecimal(candidate.gasCost, "candidate.gasCost");
-    maxGasCost = parseNonNegativeDecimal(policy.maxGasCost, "policy.maxGasCost");
+    gasCostUsd = parseFixedDecimal(candidate.gasCostUsd, "candidate.gasCostUsd");
+    maxGasCostUsd = parseFixedDecimal(policy.maxGasCostUsd, "policy.maxGasCostUsd");
   } catch (error) {
     return { allowed: false, code: "INVALID_NUMERIC_INPUT", reason: error instanceof Error ? error.message : "Invalid numeric input" };
   }
@@ -215,7 +223,7 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   if (amount > maxOrder) return { allowed: false, code: "ORDER_LIMIT_EXCEEDED", reason: "Order exceeds the maximum order amount" };
   if (position + amount > maxPosition) return { allowed: false, code: "POSITION_LIMIT_EXCEEDED", reason: "Order would exceed the maximum position" };
   if (dailySpend + amount > maxDailySpend) return { allowed: false, code: "DAILY_SPEND_LIMIT_EXCEEDED", reason: "Order would exceed the daily spend limit" };
-  if (gasCost > maxGasCost) return { allowed: false, code: "GAS_LIMIT_EXCEEDED", reason: "Estimated gas exceeds the configured maximum" };
+  if (gasCostUsd > maxGasCostUsd) return { allowed: false, code: "GAS_LIMIT_EXCEEDED", reason: "Estimated gas USD cost exceeds the configured maximum" };
 
   const quoteAge = validTimestamp(candidate.now, "candidate.now") - validTimestamp(candidate.quoteObservedAt, "candidate.quoteObservedAt");
   if (quoteAge < 0 || quoteAge > policy.maxQuoteAgeMs) return { allowed: false, code: "QUOTE_STALE", reason: "Quote timestamp is in the future or outside the freshness budget" };
