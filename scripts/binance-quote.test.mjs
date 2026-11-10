@@ -73,3 +73,10 @@ test("rejects future-dated and invalid slippage requests", () => {
   assert.throws(() => parseBinanceRwaExecutableQuote(response(route(), now + 6_000), request), /future-dated/);
   assert.throws(() => parseBinanceRwaExecutableQuote(response(), { ...request, slippageBps: 5001 }), /slippage/);
 });
+
+test("rounds sub-basis-point price impact upward rather than understating risk", () => {
+  const quote = parseBinanceRwaExecutableQuote(
+    response({ ...route(), priceImpactPercent: "0.001" }), request,
+  );
+  assert.equal(quote.priceImpactBps, 1);
+});
