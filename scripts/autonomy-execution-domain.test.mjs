@@ -136,3 +136,25 @@ test("allows a zero gas ceiling for explicitly gas-free simulations", () => {
     { allowed: true, code: "RISK_APPROVED" },
   );
 });
+
+
+test("qualified intent requires an executable quote before risk approval", () => {
+  const discovered = createExecutionIntent({
+    id: "quote-required-intent", idempotencyKey: "quote-required-key",
+    ownerId: "owner-1", walletAddress: "0x1111111111111111111111111111111111111111",
+    chainId: "56", tokenAddress: "0x2222222222222222222222222222222222222222",
+    inputTokenAddress: "0x3333333333333333333333333333333333333333",
+    amountIn: "100", strategyId: "test", strategyVersion: "1",
+    policyVersion: "1", now: "2026-11-10T12:00:00.000Z",
+  });
+  const qualified = transitionExecutionIntent(discovered, "QUALIFIED", {
+    type: "QUALIFIED", at: "2026-11-10T12:00:01.000Z", actor: "worker",
+  });
+  const quoteRequired = transitionExecutionIntent(qualified, "QUOTE_REQUIRED", {
+    type: "EXECUTABLE_QUOTE_REQUIRED", at: "2026-11-10T12:00:02.000Z", actor: "worker",
+  });
+  assert.equal(quoteRequired.state, "QUOTE_REQUIRED");
+  assert.throws(() => transitionExecutionIntent(qualified, "RISK_APPROVED", {
+    type: "RISK_APPROVED", at: "2026-11-10T12:00:02.000Z", actor: "worker",
+  }), /Invalid execution transition/);
+});
