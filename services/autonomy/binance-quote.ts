@@ -29,6 +29,8 @@ export type ValidatedBinanceQuote = {
   priceImpactBps: number;
   gasEstimateNativeUnits: string;
   tradeFeeUsd: string;
+  inputTokenUsdPrice: string;
+  outputTokenUsdPrice: string;
   inputTokenDecimals: number;
   outputTokenDecimals: number;
   inputTokenTaxRate: string;
@@ -151,6 +153,9 @@ export function parseBinanceRwaExecutableQuote(
   const tradeFeeUsd = decimal(route.tradeFee, "tradeFee");
   const priceImpactBps = decimalPercentToBps(route.priceImpactPercent);
   const routeText = nonEmpty(route.router, "router");
+  const inputTokenUsdPrice = decimal(route.fromToken.tokenUnitPrice, "fromToken.tokenUnitPrice");
+  const outputTokenUsdPrice = decimal(route.toToken.tokenUnitPrice, "toToken.tokenUnitPrice");
+  if (Number(inputTokenUsdPrice) <= 0 || Number(outputTokenUsdPrice) <= 0) throw new Error("Binance quote has invalid token USD price");
   const inputTokenDecimals = tokenDecimals(route.fromToken, "fromToken.decimal");
   const outputTokenDecimals = tokenDecimals(route.toToken, "toToken.decimal");
   const inputTokenTaxRate = taxRate(route.fromToken, "fromToken.taxRate");
@@ -168,7 +173,7 @@ export function parseBinanceRwaExecutableQuote(
     walletAddress: request.walletAddress.toLowerCase(),
     inputTokenAddress, outputTokenAddress,
     amountIn, expectedAmountOut, priceImpactBps,
-    gasEstimateNativeUnits, tradeFeeUsd,
+    gasEstimateNativeUnits, tradeFeeUsd, inputTokenUsdPrice, outputTokenUsdPrice,
     inputTokenDecimals, outputTokenDecimals,
     inputTokenTaxRate, outputTokenTaxRate,
     route: routeText,
