@@ -31,6 +31,7 @@ export type ValidatedBinanceRfqOrder = {
   expectedAmountOut: string;
   typedDataHash: string;
   typedDataToSign: string;
+  typedDataFormat: "HEX_EIP712_PREIMAGE" | "JSON_TYPED_DATA";
   approvalTarget: string | null;
   routeFingerprint: string;
   rawEvidenceRef: string;
@@ -85,8 +86,18 @@ export function parseBinanceRfqOrderBuild(
   }
   const orderId = text(rfq.orderId, "rfq.orderId");
   const typedDataToSign = text(rfq.typedDataToSign, "rfq.typedDataToSign");
-  if (!/^0x[0-9a-fA-F]+$/.test(typedDataToSign) || typedDataToSign.length < 10) {
-    throw new Error("RFQ build typedDataToSign is not a valid hex payload");
+  let typedDataFormat: "HEX_EIP712_PREIMAGE" | "JSON_TYPED_DATA";
+  if (/^0x(?:[0-9a-fA-F]{2})+$/.test(typedDataToSign) && typedDataToSign.length >= 10) {
+    typedDataFormat = "HEX_EIP712_PREIMAGE";
+  } else {
+    let parsed: unknown;
+    try { parsed = JSON.parse(typedDataToSign); }
+    catch { throw new Error("RFQ build typedDataToSign is neither hex nor JSON typed data"); }
+    if (!record(parsed) || !record(parsed.domain) || !record(parsed.types) ||
+        typeof parsed.primaryType !== "string" || !record(parsed.message)) {
+      throw new Error("RFQ build JSON typed data is missing domain, types, primaryType or message");
+    }
+    typedDataFormat = "JSON_TYPED_DATA";
   }
   const signatureData = rfq.signatureData;
   const approvalTarget = (route.approveTarget == null ? quote.approvalTarget : address(route.approveTarget, "routerResult.approveTarget")) ?? null;
@@ -105,6 +116,7 @@ export function parseBinanceRfqOrderBuild(
     expectedAmountOut: quote.expectedAmountOut,
     typedDataHash: hash(typedDataToSign),
     typedDataToSign,
+    typedDataFormat,
     approvalTarget,
     routeFingerprint: quote.routeFingerprint,
     rawEvidenceRef: hash({ routerResult: route, rfq: { ...rfq, typedDataToSign: "[REDACTED]" } }),
