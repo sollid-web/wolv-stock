@@ -236,6 +236,7 @@ WOLV_AUTONOMY_WALLET_ADDRESS=0xYourBscWallet
 WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS=0xYourInputToken
 WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS=1000000000000000000
 WOLV_AUTONOMY_SLIPPAGE_BPS=50
+WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS=10000
 BINANCE_API_KEY=YOUR_BINANCE_WEB3_API_KEY
 BINANCE_SECRET_KEY=YOUR_BINANCE_WEB3_API_SECRET
 ```
@@ -317,4 +318,4 @@ This adapter is not yet called by the polling worker. It does not sign typed dat
 The portfolio policy includes `network_fee_buffer_bps` (default 10000 = 100% uplift) for Binance's estimated USD network fee. The worker must apply this buffer before comparing against `max_gas_cost_usd` or calculating target-price edge. This mitigates underestimation but does not turn Binance's estimate into an exact gas quote; missing fee data still fails closed.
 
 
-The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It requires the reverse quote's input amount to equal the buy quote's exact output amount, rejects non-zero intermediate RWA transfer taxes until vendor tax treatment is verified, and fails closed if either quote or fee estimate is missing/stale. It applies the portfolio-configured network-fee buffer (default 10000 bps = 2x) to both estimated USD network fees. It does not claim atomic execution or guaranteed profit.
+The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It requires the reverse quote's input amount to equal the buy quote's exact output amount, rejects non-zero intermediate RWA transfer taxes until vendor tax treatment is verified, and fails closed if either quote or fee estimate is missing/stale. It applies a configurable network-fee buffer (worker environment variable `WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS`, default 10000 bps = 2x) to both estimated USD network fees. The portfolio table has the same policy field; worker-to-policy integration is still pending. It does not claim atomic execution or guaranteed profit.
