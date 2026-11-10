@@ -5,7 +5,6 @@ import {
 } from "./binance-roundtrip";
 
 export async function getValidatedBinanceRoundTripQuote(input: {
-  ownerId: string;
   walletAddress: string;
   chainId: string;
   inputTokenAddress: string;
