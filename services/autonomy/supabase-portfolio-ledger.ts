@@ -38,6 +38,7 @@ export type PortfolioPolicySnapshot = {
   reservedAmount: string;
   committedAmount: string;
   dailySpendAmount: string;
+  networkFeeBufferBps: number;
   riskPolicy: RiskPolicy;
 };
 
@@ -51,7 +52,8 @@ export async function loadPortfolioPolicy(ownerId: string): Promise<PortfolioPol
       "committed_amount_text:committed_amount::text", "daily_spend_amount_text:daily_spend_amount::text",
       "max_order_amount_text:max_order_amount::text", "max_position_amount_text:max_position_amount::text",
       "max_daily_spend_text:max_daily_spend::text", "max_slippage_bps", "max_price_impact_bps",
-      "max_quote_age_ms", "max_gas_cost_usd_text:max_gas_cost_usd::text", "min_expected_edge_bps",
+      "max_quote_age_ms", "max_gas_cost_usd_text:max_gas_cost_usd::text",
+      "network_fee_buffer_bps", "min_expected_edge_bps",
     ].join(","),
     owner_id: `eq.${ownerId}`,
     limit: "1",
@@ -89,6 +91,7 @@ export async function loadPortfolioPolicy(ownerId: string): Promise<PortfolioPol
     reservedAmount: decimalString(row.reserved_amount_text, "reserved_amount"),
     committedAmount: decimalString(row.committed_amount_text, "committed_amount"),
     dailySpendAmount: decimalString(row.daily_spend_amount_text, "daily_spend_amount"),
+    networkFeeBufferBps: numeric(row.network_fee_buffer_bps, "network_fee_buffer_bps"),
     riskPolicy: {
       enabled: row.enabled && !row.emergency_stop,
       allowedChainIds: strings(row.allowed_chain_ids, "allowed_chain_ids"),
