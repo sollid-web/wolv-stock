@@ -78,7 +78,7 @@ export function buildPortfolioConfig(env, enablePaper = false) {
     max_quote_age_ms: integer("WOLV_AUTONOMY_MAX_QUOTE_AGE_MS", 1000, 3600000),
     max_gas_cost_usd: maxGasCostUsd,
     network_fee_buffer_bps: integer("WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS", 0, 100000),
-    min_expected_edge_bps: integer("WOLV_AUTONOMY_MIN_EXPECTED_EDGE_BPS", 0, 100000),
+    min_expected_edge_bps: integer("WOLV_AUTONOMY_MIN_EXPECTED_EDGE_BPS", 1, 100000),
   };
 }
 
