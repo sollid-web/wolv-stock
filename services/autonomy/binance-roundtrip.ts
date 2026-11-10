@@ -44,7 +44,7 @@ export function validateRoundTripQuotes(
     throw new Error("Sell quote token direction does not reverse the buy quote");
   }
   if (buyMinimumAmountOut !== sell.amountIn) {
-    throw new Error("Sell quote amount must exactly match the buy quote output");
+    throw new Error("Sell quote amount must exactly match the slippage-adjusted buy minimum output");
   }
   if (buy.inputTokenDecimals !== sell.outputTokenDecimals ||
       buy.outputTokenDecimals !== sell.inputTokenDecimals) {
