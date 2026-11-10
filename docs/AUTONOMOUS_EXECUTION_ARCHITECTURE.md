@@ -104,16 +104,17 @@ Routine eligible trades do not transition to a human-approval state.
 ```text
 DISCOVERED
    -> QUALIFIED
+   -> QUOTE_REQUIRED
+   -> QUOTED
    -> RISK_APPROVED
    -> BUDGET_RESERVED
-   -> QUOTED
-   -> SIMULATED (where supported)
+   -> SIMULATED
    -> SUBMISSION_PENDING
    -> SUBMITTED
    -> SETTLEMENT_PENDING
    -> SETTLED
 
-The current paper worker obtains and validates Binance RWA RFQ quotes, then stops at `QUOTED`. It does not treat the RWA reference-price dislocation as an executable quote and does not fabricate zero gas or slippage. The worker resumes persisted `QUOTE_REQUIRED` intents after restarts and records quote evidence without retaining secrets or raw provider payloads.\n\nAny stage may instead transition to:
+Any stage may instead transition to:
    REJECTED_POLICY
    EXPIRED
    PROVIDER_REJECTED
@@ -122,15 +123,18 @@ The current paper worker obtains and validates Binance RWA RFQ quotes, then stop
    SECURITY_HOLD
 ```
 
+The current paper worker reaches `QUOTED` and stops. It resumes persisted `DISCOVERED`, `QUALIFIED`, and `QUOTE_REQUIRED` intents after restarts, and records normalized quote evidence. It does not treat a reference-price dislocation as executable, does not fabricate zero gas or slippage, and does not mark a quote as risk-approved.
+
 Rules:
-- Persist the intent and idempotency key before the external write.
-- Validate exact chain, from/to, token addresses, amount, spender, recipient, calldata, quote expiry and slippage.
-- Simulate the exact transaction payload that will be signed where the provider supports simulation.
-- Never retry an ambiguous submission until the provider and chain have been reconciled.
+- Persist the intent and idempotency key before external writes.
+- Validate exact chain, from/to tokens, wallet, amount, route, quote expiry and slippage.
+- Treat quote gas and fee estimates as estimates; obtain accurate gas data and build the exact RFQ order before risk approval.
+- Simulate the exact transaction or validate the exact RFQ typed-data order before signing.
+- Never retry an ambiguous submission until provider and chain state have been reconciled.
 - A provider order ID or `success: true` is not settlement.
-- Settlement requires a terminal order state and, for on-chain trades, a successful receipt plus expected token balance deltas.
+- Settlement requires a terminal RFQ/order status and, for on-chain execution, a successful receipt plus expected token balance deltas.
 - Release reserved budget only after terminal reconciliation.
-- A policy breach is rejected automatically; an authorization/session anomaly enters SECURITY_HOLD and disables further writes.
+- A policy breach is rejected automatically; authorization/session anomalies enter `SECURITY_HOLD` and disable further writes.
 
 ## User experience
 
