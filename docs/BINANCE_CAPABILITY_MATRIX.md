@@ -1,6 +1,6 @@
 # Binance Capability Matrix — WOLV
 
-**Status:** discovery and read-only provider validation  
+**Status:** Binance RFQ quote validation and autonomous paper execution; live signing/submission remain blocked  
 **Target chain:** BNB Smart Chain (BSC, chain ID 56)  
 **Safety boundary:** this probe never signs, submits, broadcasts, approves, swaps, transfers, or places an order.
 
@@ -21,7 +21,7 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | RWA price / reference price | Web3 API | Signed GET `/api/v1/dex/market/rwa/price` | Documented; probe required |
 | Underlying company and market data | Web3 API | Signed GET `/api/v1/dex/market/rwa/underlying-profile` and `underlying-market` | Documented; probe required |
 | Candles / token market data | Web3 API | Signed GET market endpoints | Existing main-branch adapter; validate schema/freshness |
-| Aggregator quote | Web3 API | `/api/v1/dex/aggregator/quote`; RWA routes are RFQ, include quote ID (~30s TTL), exact amounts, vendor, impact and estimated fees | Strict parser and worker quote stage implemented; live response still requires user-environment validation |
+| Aggregator quote | Web3 API | `/api/v1/dex/aggregator/quote`; RWA routes are RFQ, include quote ID (~30s TTL), exact amounts, vendor, impact and estimated network fee | Strict parser, buy/reverse quote, slippage haircut, buffered edge and paper risk integration implemented; live quote still requires user-environment validation |
 | Swap / RFQ order construction | Web3 API | `/api/v1/dex/aggregator/swap` builds unsigned EVM swap data or RFQ EIP-712 payload | Quote and RFQ payload validators implemented; not yet live-verified or signed |
 | Transaction simulation | Web3 API | Pre-transaction simulation endpoint | Must be performed immediately before signing |
 | Transaction broadcast | Web3 API | Accepts an already signed transaction | Requires separate wallet signer |
