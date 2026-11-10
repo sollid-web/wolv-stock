@@ -108,7 +108,7 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
       provider: quote.provider, quoteId: quote.quoteId, vendorName: quote.vendorName,
       executionMode: quote.executionMode, amountIn: quote.amountIn,
       expectedAmountOut: quote.expectedAmountOut, slippageBps: SLIPPAGE_BPS,
-      priceImpactBps: quote.priceImpactBps, gasEstimateNativeUnits: quote.gasEstimateNativeUnits,
+      priceImpactBps: quote.priceImpactBps, gasEstimateRaw: quote.gasEstimateRaw,
       tradeFeeUsd: quote.tradeFeeUsd, approvalTarget: quote.approvalTarget,
       inputTokenDecimals: quote.inputTokenDecimals,
       outputTokenDecimals: quote.outputTokenDecimals, inputTokenTaxRate: quote.inputTokenTaxRate,
