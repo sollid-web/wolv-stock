@@ -89,7 +89,7 @@ export function parseBinanceRfqOrderBuild(
     throw new Error("RFQ build typedDataToSign is not a valid hex payload");
   }
   const signatureData = rfq.signatureData;
-  const approvalTarget = route.approveTarget == null ? quote.approvalTarget : address(route.approveTarget, "routerResult.approveTarget");
+  const approvalTarget = (route.approveTarget == null ? quote.approvalTarget : address(route.approveTarget, "routerResult.approveTarget")) ?? null;
   const approvalRequired = approvalTarget !== null || (Array.isArray(signatureData) && signatureData.length > 0);
   return {
     provider: "binance-web3-aggregator",
