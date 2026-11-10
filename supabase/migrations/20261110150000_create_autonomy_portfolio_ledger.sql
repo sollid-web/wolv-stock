@@ -22,6 +22,7 @@ create table if not exists public.wolv_autonomy_portfolios (
   max_price_impact_bps integer not null default 0 check (max_price_impact_bps between 0 and 10000),
   max_quote_age_ms integer not null default 0 check (max_quote_age_ms between 0 and 3600000),
   max_gas_cost_usd numeric(38,18) not null default 0 check (max_gas_cost_usd >= 0),
+  network_fee_buffer_bps integer not null default 10000 check (network_fee_buffer_bps between 0 and 100000),
   min_expected_edge_bps integer not null default 0 check (min_expected_edge_bps between -10000 and 100000),
   updated_at timestamptz not null default now(),
   check (reserved_amount + committed_amount <= paper_budget_amount)
