@@ -118,7 +118,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
   const dailyReservations = await request("wolv_autonomy_reservations?" + dailyReservationQuery) as Array<Record<string, unknown>>;
   dailySpendIncludingReservations = (BigInt(persistedDailySpend) + BigInt(sumIntegerRows(dailyReservations, "amount_in_text"))).toString();
   const snapshot: PortfolioPolicySnapshot = {
-    ownerId: String(row.owner_id)
+    ownerId: String(row.owner_id),
     walletAddress: String(row.wallet_address).toLowerCase(),
     chainId: String(row.chain_id),
     inputTokenAddress: String(row.input_token_address).toLowerCase(),
