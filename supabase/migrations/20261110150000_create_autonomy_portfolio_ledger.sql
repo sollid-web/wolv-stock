@@ -30,7 +30,7 @@ create table if not exists public.wolv_autonomy_portfolios (
 create table if not exists public.wolv_autonomy_reservations (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references public.wolv_autonomy_portfolios(owner_id) on delete cascade,
-  intent_id uuid not null,
+  intent_id uuid not null references public.wolv_execution_intents(id) on delete cascade,
   chain_id text not null,
   token_address text not null check (token_address ~* '^0x[0-9a-f]{40}$'),
   input_token_address text not null check (input_token_address ~* '^0x[0-9a-f]{40}$'),
@@ -132,6 +132,16 @@ begin
   if not exists(select 1 from unnest(account.allowed_input_token_addresses) as a(value) where lower(a.value) = lower(p_input_token_address)) then return false; end if;
   if lower(p_input_token_address) <> lower(account.input_token_address) or p_chain_id <> account.chain_id then return false; end if;
   if p_amount_in > account.max_order_amount then return false; end if;
+  if not exists (
+    select 1 from public.wolv_execution_intents
+    where owner_id = p_owner_id and id = p_intent_id
+      and intent->>'state' = 'RISK_APPROVED'
+      and lower(intent->>'walletAddress') = lower(account.wallet_address)
+      and intent->>'policyVersion' = p_policy_version
+      and intent->>'chainId' = p_chain_id
+      and lower(intent->>'tokenAddress') = lower(p_token_address)
+      and lower(intent->>'inputTokenAddress') = lower(p_input_token_address)
+  ) then return false; end if;
 
   if account.daily_spend_date < current_date then
     update public.wolv_autonomy_portfolios
