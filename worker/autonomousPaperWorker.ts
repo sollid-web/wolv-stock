@@ -381,11 +381,20 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
 }
 
 async function processExistingIntent(intent: ExecutionIntent) {
-  if (intent.state === "DISCOVERED" || isTerminalExecutionState(intent.state)) return;
+  if (isTerminalExecutionState(intent.state)) return;
   const leaseToken = await acquireExecutionLease(OWNER_ID, intent.id, LEASE_MS);
   if (!leaseToken) return;
-  try { await advanceIntent(intent); }
-  finally { await releaseExecutionLease(OWNER_ID, intent.id, leaseToken); }
+  try {
+    if (intent.state === "DISCOVERED") {
+      const version = intent.version;
+      const expired = next(intent, "EXPIRED", "OPPORTUNITY_NO_LONGER_ACTIVE");
+      await persistTransition(expired, version);
+      return;
+    }
+    await advanceIntent(intent);
+  } finally {
+    await releaseExecutionLease(OWNER_ID, intent.id, leaseToken);
+  }
 }
 async function cycle() {
   const processed = new Set<string>();
