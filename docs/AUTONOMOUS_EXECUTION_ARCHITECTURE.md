@@ -1,6 +1,6 @@
 # WOLV Autonomous Execution Architecture
 
-**Status:** partially implemented; durable opportunity qualification and strict Binance RFQ quote validation; risk approval, paper fills, signing and live execution are not enabled  
+**Status:** partially implemented; durable two-sided Binance RFQ quotes, deterministic portfolio risk checks, atomic paper-budget reservations and quote-based paper fills are implemented on the autonomy branch. Live EIP-712 signing, RFQ submission and settlement reconciliation are not enabled.  
 **Baseline:** `ef67f625b5a67b528761b7832cb27e52174fb5dd`  
 **Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`
 
@@ -87,7 +87,7 @@ Any missing, stale, malformed or contradictory input fails closed. Policy change
 
 The autonomy branch now adds a Supabase/Postgres-backed execution-intent queue, append-only event records, compare-and-swap updates and distributed per-intent leases. A separate migration adds fail-closed portfolio policy, atomic budget reservations, positions and idempotent paper-fill commit RPCs. Remaining persistence work includes:
 
-- Worker integration with portfolio policy, risk evaluation and reservation RPCs.
+- Live RFQ order preparation integration with the paper worker, exact EIP-712 signer, and idempotent submit/reconcile providers.
 - Durable outbox/inbox handling for provider writes and reconciliation.
 - Encrypted provider session references and rotation/revocation handling.
 - Complete recovery paths for worker crash, provider timeout, rate limit and ambiguous order submission.
@@ -203,7 +203,7 @@ The provider/storage boundary is now also captured in `services/autonomy/executi
 - Separate quote, simulation, execution and reconciliation provider contracts.
 - Distributed worker lease / heartbeat contract.
 
-These are TypeScript contracts, not connected implementations. A real database and queue/lease backend must implement the atomicity guarantees before a worker is allowed to submit orders. Provider responses explicitly distinguish submitted, rejected and unknown outcomes; unknown outcomes must be reconciled, never blindly retried.
+The provider contracts, Supabase/Postgres intent repository, worker leases, portfolio policy service and atomic paper ledger are implemented. The live RFQ signer/submission/reconciliation providers remain interfaces only. Provider responses distinguish submitted, rejected and unknown outcomes; unknown outcomes must be reconciled, never blindly retried.
 
 
 ## Implemented durable queue and paper qualification worker
@@ -216,7 +216,7 @@ The autonomy branch includes:
 - Binance RWA RFQ quote retrieval and strict response validation; the worker records quote ID, expiry, vendor, route fingerprint, amounts, fees, gas estimate and safety metadata.
 - Restart recovery for intents in `DISCOVERED`, `QUALIFIED` and `QUOTE_REQUIRED`.
 
-The worker stops at `QUOTED`. It does not run portfolio-aware risk approval, reserve capital, create paper fills, sign, submit or broadcast. Quote gas and trade fees are provider estimates and cannot be treated as final execution costs. A one-intent-per-strategy-per-UTC-day key is a temporary throttle, not a portfolio ledger.
+The worker can progress from `QUOTED` through deterministic portfolio risk approval, atomic paper-budget reservation, `SIMULATED` and terminal `PAPER_FILLED`. Paper fills are quote-based simulations recorded in Supabase; they are not real orders, chain transactions or settlement. The worker still has no signer or live submission path. Binance network fees are estimates and receive a configurable default 2x buffer.
 
 ### Apply and configure
 
@@ -247,7 +247,7 @@ Run the worker only after migrations are applied and the market-price worker is 
 npm run autonomy:paper-worker
 ```
 
-Do not run this as a browser process or expose the service-role key. This worker records decisions only; it does not create paper fills or live transactions. Live execution remains disabled.
+Do not run this as a browser process or expose the service-role key. With the portfolio migration applied and an enabled owner policy configured, the worker can create quote-based paper fills and update paper positions. It cannot create live transactions; live execution remains disabled.
 
 
 ## Current implementation boundary (2026-11-10)
@@ -265,7 +265,7 @@ Implemented on the autonomy branch:
 
 Not implemented or proven:
 - Live response validation in the user's Binance environment.
-- Portfolio-aware risk approval using the two-sided quote edge, exposure, capital limits and current policy.
+- Accurate gas/fee validation beyond Binance's estimated network fee, and conservative controls for non-atomic buy/sell execution.
 - Worker integration and an owner-configured portfolio policy row; no paper fill has been recorded.
 - Exact transaction construction and simulation.
 - An unattended signer that Binance authorizes for WOLV's target swap class.
@@ -305,7 +305,7 @@ The PostgreSQL reservation function serializes per-owner budget decisions, enfor
 
 The server-only adapter is `services/autonomy/supabase-portfolio-ledger.ts`. It loads policy from Supabase and exposes reserve/release/commit operations. It is not yet connected to the worker's risk/quote lifecycle, and the migration has not been confirmed applied to the user's Supabase project.
 
-The exact-decimal helper `services/autonomy/reference-edge.ts` computes net edge from a supplied output valuation, token taxes and explicit USD network cost. The round-trip adapter supplies a fresh reverse RFQ quote as the output valuation and applies the portfolio's configurable fee buffer (default 2x). This is stronger than an issuer reference-price target, but the buy and sell legs are not atomic; the sell quote is a momentary liquidity check, not a guaranteed later fill. Risk approval remains blocked until the portfolio policy is loaded and all per-leg limits pass.
+The exact-decimal helper `services/autonomy/reference-edge.ts` computes net edge from the reverse RFQ output amount, stablecoin USD valuation and buffered network fees. When the portfolio migration is applied and an enabled policy row is configured, the worker evaluates both quote legs, position exposure, daily spend, order size, slippage, impact, fee cap and minimum edge before approving a paper fill. The buy and sell legs are not atomic; the reverse quote is a momentary liquidity check, not a guaranteed later fill.
 
 
 ## Unsigned RFQ order preparation
@@ -315,7 +315,7 @@ WOLV now has a separate read-only adapter for Binance `GET /api/v1/dex/aggregato
 This adapter is not yet called by the polling worker. It does not sign typed data, submit an RFQ order, or broadcast a transaction. Binance's documented RFQ flow requires EIP-712 signing, then `POST /order/submit` with a UUID idempotency key, followed by polling the order status until `FILLED` or `FAILED`. The Binance API's request ID idempotency must be preserved across retries; ambiguous submissions must be reconciled rather than assigned a new request ID.
 
 
-The portfolio policy includes `network_fee_buffer_bps` (default 10000 = 100% uplift) for Binance's estimated USD network fee. The worker must apply this buffer before comparing against `max_gas_cost_usd` or calculating target-price edge. This mitigates underestimation but does not turn Binance's estimate into an exact gas quote; missing fee data still fails closed.
+The portfolio policy includes `network_fee_buffer_bps` (default 10000 = 100% uplift) for Binance's estimated USD network fee. The worker loads this value and applies it to both legs before comparing the total against `max_gas_cost_usd` or calculating round-trip edge. This mitigates underestimation but does not turn Binance's estimate into an exact gas quote; missing fee data still fails closed.
 
 
 The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It requires the reverse quote's input amount to equal the buy quote's exact output amount, rejects non-zero intermediate RWA transfer taxes until vendor tax treatment is verified, and fails closed if either quote or fee estimate is missing/stale. It applies a configurable network-fee buffer (worker environment variable `WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS`, default 10000 bps = 2x) to both estimated USD network fees. The portfolio table has the same policy field; worker-to-policy integration is still pending. It does not claim atomic execution or guaranteed profit.
