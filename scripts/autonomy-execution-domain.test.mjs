@@ -192,3 +192,36 @@ test("gas risk comparison uses exact decimal USD values", () => {
     { allowed: true, code: "RISK_APPROVED" },
   );
 });
+
+test("paper quote fills are terminal and expired quotes can be refreshed", () => {
+  const discovered = baseIntent();
+  const qualified = transitionExecutionIntent(discovered, "QUALIFIED", {
+    type: "QUALIFIED", at: "2026-11-08T12:00:01.000Z", actor: "worker",
+  });
+  const required = transitionExecutionIntent(qualified, "QUOTE_REQUIRED", {
+    type: "QUOTE_REQUIRED", at: "2026-11-08T12:00:02.000Z", actor: "worker",
+  });
+  const quoted = transitionExecutionIntent(required, "QUOTED", {
+    type: "QUOTE_VALIDATED", at: "2026-11-08T12:00:03.000Z", actor: "provider",
+  });
+  const refresh = transitionExecutionIntent(quoted, "QUOTE_REQUIRED", {
+    type: "QUOTE_EXPIRED_REFRESH", at: "2026-11-08T12:00:04.000Z", actor: "worker",
+  });
+  assert.equal(refresh.state, "QUOTE_REQUIRED");
+  const risk = transitionExecutionIntent(quoted, "RISK_APPROVED", {
+    type: "RISK_APPROVED", at: "2026-11-08T12:00:04.000Z", actor: "worker",
+  });
+  const reserved = transitionExecutionIntent(risk, "BUDGET_RESERVED", {
+    type: "BUDGET_RESERVED", at: "2026-11-08T12:00:05.000Z", actor: "worker",
+  });
+  const simulated = transitionExecutionIntent(reserved, "SIMULATED", {
+    type: "PAPER_QUOTE_SIMULATED", at: "2026-11-08T12:00:06.000Z", actor: "worker",
+  });
+  const filled = transitionExecutionIntent(simulated, "PAPER_FILLED", {
+    type: "PAPER_FILL_COMMITTED", at: "2026-11-08T12:00:07.000Z", actor: "worker",
+  });
+  assert.equal(isTerminalExecutionState(filled.state), true);
+  assert.throws(() => transitionExecutionIntent(filled, "FAILED", {
+    type: "LATE_FAILURE", at: "2026-11-08T12:00:08.000Z", actor: "worker",
+  }), /terminal state/);
+});
