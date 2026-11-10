@@ -202,7 +202,7 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
     maxPosition = parsePositiveDecimal(policy.maxPositionAmount, "policy.maxPositionAmount");
     maxDailySpend = parsePositiveDecimal(policy.maxDailySpend, "policy.maxDailySpend");
     gasCost = parseNonNegativeDecimal(candidate.gasCost, "candidate.gasCost");
-    maxGasCost = parsePositiveDecimal(policy.maxGasCost, "policy.maxGasCost");
+    maxGasCost = parseNonNegativeDecimal(policy.maxGasCost, "policy.maxGasCost");
   } catch (error) {
     return { allowed: false, code: "INVALID_NUMERIC_INPUT", reason: error instanceof Error ? error.message : "Invalid numeric input" };
   }
