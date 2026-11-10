@@ -351,3 +351,14 @@ The paper-fill evidence migration (`20261110170000_extend_paper_fill_exit_eviden
 
 
 **Important paper-mode boundary:** the current ledger opens paper positions and stores a contemporaneous indicative exit quote. It does not yet run a holding/exit strategy, execute paper sells, or calculate realized P&L. Do not interpret `PAPER_FILLED` as a closed profitable round trip.
+
+## RFQ signer decision update (2026-11-11)
+
+Privy's current wallet-infrastructure documentation confirms support for EVM typed-data signing and policy rules that can constrain typed-data domains and message fields. Its policy model supports explicit ALLOW/DENY rules, with DENY taking precedence. This strengthens Privy as the leading technical candidate for a bounded WOLV RFQ signer, but it is not yet an approved custody integration.
+
+Important distinction: the current Binance RFQ parser accepts both JSON typed data and opaque hex payloads. Privy's `eth_signTypedData_v4` interface expects structured JSON typed data. WOLV must not pass an opaque hex payload into that method or infer its semantic fields. The exact Binance RFQ domain, primary type, verifying contract, order fields, nonce and expiry must be established from a real target-vendor response and checked against the official provider contract before a signer adapter can be written safely.
+
+The existing Reown/Wagmi wallet connection is not automatically a server signer. A Privy wallet would have a distinct address unless the owner explicitly authorizes an appropriate signer/delegation arrangement for the exact wallet used in Binance's quote. Do not import a wallet key, create a replacement wallet, or move funds as part of this engineering phase.
+
+See [RFQ Signer Acceptance Plan](./RFQ_SIGNER_ACCEPTANCE_PLAN.md) for the required payload, wallet-policy, signature-recovery, revocation and settlement gates. Until those gates are met, WOLV remains paper-only and does not claim unattended live execution.
+
