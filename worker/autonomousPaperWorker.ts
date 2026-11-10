@@ -147,7 +147,11 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       return intent;
     }
     if (portfolio.policyVersion !== intent.policyVersion) {
-      console.info("[autonomy-worker] quote-held " + intent.id + " blocker=POLICY_VERSION_MISMATCH");
+      const version = intent.version;
+      intent = next(intent, "REJECTED_POLICY", "POLICY_VERSION_MISMATCH", {
+        intentPolicyVersion: intent.policyVersion, currentPolicyVersion: portfolio.policyVersion,
+      });
+      await persistTransition(intent, version);
       return intent;
     }
     if (!portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
@@ -251,7 +255,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
     if (!intent.quoteExpiresAt || Date.parse(intent.quoteExpiresAt) <= Date.now()) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
-      intent = next(intent, "QUOTE_REQUIRED", "QUOTE_EXPIRED_BEFORE_PAPER_SIMULATION");
+      intent = next(intent, "EXPIRED", "QUOTE_EXPIRED_BEFORE_PAPER_SIMULATION");
       await persistTransition(intent, version);
       return intent;
     }
@@ -279,7 +283,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
     if (!intent.quoteExpiresAt || Date.parse(intent.quoteExpiresAt) <= Date.now()) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
-      intent = next(intent, "QUOTE_REQUIRED", "QUOTE_EXPIRED_BEFORE_PAPER_FILL_COMMIT");
+      intent = next(intent, "EXPIRED", "QUOTE_EXPIRED_BEFORE_PAPER_FILL_COMMIT");
       await persistTransition(intent, version);
       return intent;
     }
@@ -292,7 +296,9 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
     if (!committed) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
-      intent = next(intent, "SECURITY_HOLD", "PAPER_FILL_COMMIT_FAILED");
+      const expired = !intent.quoteExpiresAt || Date.parse(intent.quoteExpiresAt) <= Date.now();
+      intent = next(intent, expired ? "EXPIRED" : "SECURITY_HOLD",
+        expired ? "QUOTE_EXPIRED_DURING_PAPER_FILL_COMMIT" : "PAPER_FILL_COMMIT_FAILED");
       await persistTransition(intent, version);
       return intent;
     }
