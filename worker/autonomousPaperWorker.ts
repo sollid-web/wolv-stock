@@ -2,9 +2,12 @@ import { randomUUID } from "node:crypto";
 import { getValidatedBinanceRoundTripQuote } from "../services/autonomy/binance-roundtrip-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
-  createExecutionIntent, transitionExecutionIntent,
+  createExecutionIntent, transitionExecutionIntent, evaluateRiskPolicy,
   type ExecutionIntent,
 } from "../services/autonomy/execution-domain.ts";
+import {
+  loadPortfolioPolicy, reservePortfolioBudget, releasePortfolioBudget, commitPaperQuoteFill,
+} from "../services/autonomy/supabase-portfolio-ledger.ts";
 import {
   acquireExecutionLease, compareAndSwapExecutionIntent,
   createExecutionIntentIfAbsent, releaseExecutionLease,
