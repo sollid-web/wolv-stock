@@ -349,7 +349,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
 async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMarketOpportunities>>[number]): Promise<string | null> {
   if (opportunity.stale || opportunity.status !== "ACTIVE" || opportunity.direction !== "DISCOUNT") return null;
   const utcDay = new Date().toISOString().slice(0, 10);
-  const idempotencyKey = [STRATEGY_ID, STRATEGY_VERSION, POLICY_VERSION, utcDay].join(":");
+  const idempotencyKey = [STRATEGY_ID, STRATEGY_VERSION, POLICY_VERSION, opportunity.tokenAddress.toLowerCase(), utcDay].join(":");
   const candidate = createExecutionIntent({
     id: randomUUID(), idempotencyKey, ownerId: OWNER_ID, walletAddress: WALLET,
     chainId: String(opportunity.chainId), tokenAddress: opportunity.tokenAddress,
