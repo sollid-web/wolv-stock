@@ -84,6 +84,11 @@ async function readPortfolioPolicy(intent: ExecutionIntent) {
   }
 }
 
+function portfolioMatchesIntent(portfolio: Awaited<ReturnType<typeof loadPortfolioPolicy>>, intent: ExecutionIntent): boolean {
+  return !!portfolio && portfolio.walletAddress === intent.walletAddress.toLowerCase() &&
+    portfolio.chainId === intent.chainId && portfolio.inputTokenAddress === intent.inputTokenAddress.toLowerCase();
+}
+
 async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> {
   if (intent.state === "QUALIFIED") {
     const version = intent.version;
@@ -146,6 +151,12 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       console.info("[autonomy-worker] quote-held " + intent.id + " blocker=PORTFOLIO_POLICY_NOT_CONFIGURED");
       return intent;
     }
+    if (!portfolioMatchesIntent(portfolio, intent)) {
+      const version = intent.version;
+      intent = next(intent, "REJECTED_POLICY", "PORTFOLIO_WALLET_OR_ASSET_MISMATCH");
+      await persistTransition(intent, version);
+      return intent;
+    }
     if (portfolio.policyVersion !== intent.policyVersion) {
       const version = intent.version;
       intent = next(intent, "REJECTED_POLICY", "POLICY_VERSION_MISMATCH", {
@@ -203,7 +214,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
   if (intent.state === "RISK_APPROVED") {
     const portfolio = await readPortfolioPolicy(intent);
     if (!portfolio) return intent;
-    if (portfolio.policyVersion !== intent.policyVersion || !portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
+    if (!portfolioMatchesIntent(portfolio, intent) || portfolio.policyVersion !== intent.policyVersion || !portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
       const version = intent.version;
       intent = next(intent, "REJECTED_POLICY", "PORTFOLIO_POLICY_CHANGED", { policyVersion: portfolio.policyVersion });
       await persistTransition(intent, version);
