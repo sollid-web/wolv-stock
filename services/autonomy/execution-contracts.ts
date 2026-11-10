@@ -1,29 +1,15 @@
 import type { ExecutionIntent, RiskPolicy } from "./execution-domain";
+import type { ValidatedBinanceQuote } from "./binance-quote";
+import type { ValidatedBinanceRfqOrder } from "./binance-rfq-order";
 
 /**
- * Storage and provider boundaries for the autonomous worker.
- * Implementations must be durable and tenant-scoped. These are contracts only:
- * no adapter in this file can access credentials, sign, or broadcast.
+ * Provider boundaries for WOLV's BSC RWA RFQ execution path.
+ * Contracts do not hold credentials or private keys. Implementations must be
+ * server-side, tenant-scoped, durable, and independently policy constrained.
  */
 
-export type ExecutableQuote = {
-  provider: string;
-  quoteId: string;
-  chainId: string;
-  ownerWallet: string;
-  inputTokenAddress: string;
-  outputTokenAddress: string;
-  amountIn: string;
-  expectedAmountOut: string;
-  minimumAmountOut: string;
-  slippageBps: number;
-  priceImpactBps: number;
-  gasCost: string;
-  observedAt: string;
-  expiresAt: string;
-  routeFingerprint: string;
-  rawEvidenceRef: string;
-};
+export type ExecutableQuote = ValidatedBinanceQuote;
+export type PreparedRfqOrder = ValidatedBinanceRfqOrder;
 
 export type SimulationResult = {
   success: boolean;
@@ -44,15 +30,19 @@ export type ReconciliationResult =
   | { status: "UNKNOWN"; checkedAt: string; reason: string };
 
 export interface ExecutionRepository {
-  /** Atomically create once per owner + idempotency key; return existing intent on duplicates. */
   createIfAbsent(intent: ExecutionIntent): Promise<{ created: boolean; intent: ExecutionIntent }>;
   getById(intentId: string, ownerId: string): Promise<ExecutionIntent | null>;
   getByIdempotencyKey(ownerId: string, idempotencyKey: string): Promise<ExecutionIntent | null>;
-  /** Compare-and-swap on version; stale worker writes must fail, not overwrite newer state. */
   compareAndSwap(next: ExecutionIntent, expectedVersion: number): Promise<boolean>;
-  /** Reserve and release must be atomic with respect to the owner's available budget. */
-  reserveBudget(input: { ownerId: string; intentId: string; amount: string; policyVersion: string }): Promise<{ reserved: boolean; reservationId?: string; reason?: string }>;
-  releaseBudget(input: { ownerId: string; intentId: string; reservationId: string; reason: string }): Promise<void>;
+  reserveBudget(input: {
+    ownerId: string; intentId: string; chainId: string; tokenAddress: string;
+    inputTokenAddress: string; amountIn: string; expectedAmountOut: string; policyVersion: string;
+  }): Promise<boolean>;
+  releaseBudget(input: { ownerId: string; intentId: string }): Promise<boolean>;
+  commitPaperFill(input: {
+    ownerId: string; intentId: string; quoteId: string;
+    amountOut: string; quoteObservedAt: string;
+  }): Promise<boolean>;
   appendAuditEvent(input: { ownerId: string; intentId: string; event: ExecutionIntent["events"][number] }): Promise<void>;
 }
 
@@ -64,34 +54,65 @@ export interface QuoteProvider {
     inputTokenAddress: string;
     outputTokenAddress: string;
     amountIn: string;
+    slippageBps: number;
   }): Promise<ExecutableQuote>;
 }
 
-export interface SimulationProvider {
-  /** Simulate the exact transaction fingerprint that the execution provider will submit. */
-  simulate(input: { ownerId: string; walletAddress: string; quote: ExecutableQuote }): Promise<SimulationResult>;
+export interface RfqOrderBuilder {
+  /** Builds and validates unsigned EIP-712 data; it must not sign or submit. */
+  build(input: {
+    ownerId: string;
+    walletAddress: string;
+    quote: ExecutableQuote;
+    slippageBps: number;
+    maxPriceImpactBps: number;
+  }): Promise<PreparedRfqOrder>;
 }
 
-export interface ExecutionProvider {
-  /** Provider implementation owns signing authority; callers never receive private keys. */
-  submit(input: { ownerId: string; intentId: string; idempotencyKey: string; quote: ExecutableQuote }): Promise<SubmissionResult>;
-  /** Must be safe to call repeatedly; UNKNOWN never authorizes a second submission. */
-  reconcile(input: { ownerId: string; intentId: string; idempotencyKey: string; providerOrderId?: string; transactionHash?: string }): Promise<ReconciliationResult>;
+export interface TypedDataSigner {
+  /** Signing authority is isolated behind a provider; private keys never leave it. */
+  signEip712(input: {
+    ownerId: string;
+    walletAddress: string;
+    chainId: string;
+    typedDataToSign: string;
+  }): Promise<{ signerAddress: string; signature: string }>;
+}
+
+export interface RfqExecutionProvider {
+  /** requestId must be a stable UUID v4 reused for retries of this same order. */
+  submit(input: {
+    ownerId: string;
+    intentId: string;
+    requestId: string;
+    order: PreparedRfqOrder;
+    signature: string;
+  }): Promise<SubmissionResult>;
+  /** Unknown outcomes are reconciled by requestId/provider order ID, never resubmitted blindly. */
+  reconcile(input: {
+    ownerId: string;
+    intentId: string;
+    requestId: string;
+    providerOrderId?: string;
+  }): Promise<ReconciliationResult>;
 }
 
 export type AutonomousWorkerDependencies = {
   repository: ExecutionRepository;
   quoteProvider: QuoteProvider;
-  simulationProvider: SimulationProvider;
-  executionProvider: ExecutionProvider;
+  rfqOrderBuilder: RfqOrderBuilder;
+  typedDataSigner: TypedDataSigner;
+  rfqExecutionProvider: RfqExecutionProvider;
+  /** Required only for execution modes that produce an EVM transaction. */
+  simulationProvider?: SimulationProvider;
   loadPolicy(ownerId: string, policyVersion: string): Promise<RiskPolicy>;
 };
 
-/**
- * A production worker must acquire a distributed per-intent lease before
- * processing, persist each transition with compareAndSwap, and reserve budget
- * before submission. Never implement these guarantees with process-local state.
- */
+export interface SimulationProvider {
+  /** Simulate the exact EVM transaction payload that the execution provider will submit. */
+  simulate(input: { ownerId: string; walletAddress: string; quote: ExecutableQuote }): Promise<SimulationResult>;
+}
+
 export type WorkerLease = {
   acquire(input: { ownerId: string; intentId: string; leaseMs: number }): Promise<{ acquired: boolean; leaseToken?: string }>;
   heartbeat(input: { ownerId: string; intentId: string; leaseToken: string; leaseMs: number }): Promise<boolean>;
