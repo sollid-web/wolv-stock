@@ -80,7 +80,7 @@ node --test scripts/binance-provider-probe.test.mjs
 node scripts/binance-provider-probe.mjs
 ```
 
-The live probe performs GET requests only. It does not invoke BAW, sign transactions, request approval calldata, submit orders, or broadcast transactions. When a wallet is configured, it reports quote field names and types without printing values. The worker quote adapter validates the documented RWA RFQ response, persists a redacted evidence event, and stops at `QUOTED`; it does not approve risk or execute.
+The live probe performs GET requests only. It does not invoke BAW, sign transactions, request approval calldata, submit orders, or broadcast transactions. When a wallet is configured, it reports quote field names and types without printing values. The worker quote adapter validates both a buy RFQ and a reverse sell RFQ for the exact buy output, calculates an indicative round-trip edge after a 2x default network-fee buffer, persists redacted evidence and stops at `QUOTED`; it does not approve risk or execute.
 
 ## Go / no-go criteria for autonomous execution
 
@@ -204,3 +204,6 @@ References:
 - [Binance Agentic Wallet external signing](https://github.com/binance/binance-skills-hub/blob/main/skills/binance-web3/binance-agentic-wallet/references/external-sign.md)
 - [Privy wallet policies and controls](https://docs.privy.io/security/wallet-infrastructure/policy-and-controls)
 - [Privy Node SDK EVM typed-data signing](https://app.unpkg.com/@privy-io/node@0.35.0/files/public-api/services/ethereum.d.mts)
+
+
+WOLV's round-trip validator (`services/autonomy/binance-roundtrip.ts`) rejects missing/stale reverse quotes, mismatched token direction/amount/decimals and non-zero intermediate RWA transfer taxes. This is a momentary exit-liquidity check, not an atomic two-leg arbitrage or guaranteed sale.
