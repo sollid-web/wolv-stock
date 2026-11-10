@@ -234,12 +234,37 @@ SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 WOLV_AUTONOMY_OWNER_ID=YOUR_OWNER_UUID
 WOLV_AUTONOMY_WALLET_ADDRESS=0xYourBscWallet
 WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS=0xYourInputToken
-WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS=1000000000000000000
+WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS=YOUR_ORDER_AMOUNT_IN_INPUT_TOKEN_BASE_UNITS
+WOLV_AUTONOMY_POLICY_VERSION=paper-policy-1
 WOLV_AUTONOMY_SLIPPAGE_BPS=50
 WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS=10000
+WOLV_AUTONOMY_ALLOWED_TOKEN_ADDRESSES=0xYourAllowlistedRwaToken
+WOLV_AUTONOMY_PAPER_BUDGET_BASE_UNITS=YOUR_VIRTUAL_PAPER_BUDGET
+WOLV_AUTONOMY_MAX_ORDER_BASE_UNITS=YOUR_MAX_ORDER
+WOLV_AUTONOMY_MAX_POSITION_BASE_UNITS=YOUR_MAX_POSITION
+WOLV_AUTONOMY_MAX_DAILY_SPEND_BASE_UNITS=YOUR_MAX_DAILY_SPEND
+WOLV_AUTONOMY_MAX_SLIPPAGE_BPS=50
+WOLV_AUTONOMY_MAX_PRICE_IMPACT_BPS=100
+WOLV_AUTONOMY_MAX_QUOTE_AGE_MS=20000
+WOLV_AUTONOMY_MAX_GAS_COST_USD=YOUR_MAX_NETWORK_FEE_USD
+WOLV_AUTONOMY_MIN_EXPECTED_EDGE_BPS=100
 BINANCE_API_KEY=YOUR_BINANCE_WEB3_API_KEY
 BINANCE_SECRET_KEY=YOUR_BINANCE_WEB3_API_SECRET
 ```
+
+Configure the owner-scoped paper policy. The setup command writes a disabled, emergency-stopped row by default:
+
+```bash
+npm run autonomy:configure-paper
+```
+
+After checking the allowlisted token, virtual budget, order/position/daily caps, slippage, price impact, quote age, fee cap and minimum edge, explicitly enable the paper agent:
+
+```bash
+npm run autonomy:configure-paper -- --enable-paper
+```
+
+The enable flag activates **paper mode only**. It does not authorize a live signer, submit a Binance order, or move real funds. Base-unit budgets and limits are denominated in the configured input token's smallest units. `WOLV_AUTONOMY_POLICY_VERSION` must match the portfolio row's policy version.
 
 Run the worker only after migrations are applied and the market-price worker is producing fresh opportunities:
 
