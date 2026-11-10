@@ -65,6 +65,7 @@ test("validates unsigned RFQ order against the exact quoted route", () => {
   assert.equal(result.walletAddress, wallet);
   assert.equal(result.approvalRequired, false);
   assert.match(result.typedDataHash, /^[a-f0-9]{64}$/);
+  assert.equal(result.typedDataToSign, "0x1901abcdef0123456789");
   assert.equal(result.quoteExpiresAt, quote.expiresAt);
 });
 
