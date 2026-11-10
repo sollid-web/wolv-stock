@@ -86,6 +86,8 @@ begin
       and e.value->'detail'->>'indicativeRoundTripEdgeBps' = p_roundtrip_edge_bps::text
       and (e.value->'detail'->>'bufferedNetworkFeesUsd')::numeric = p_buffered_network_fees_usd
       and e.value->'detail'->>'slippageBps' = p_slippage_bps::text
+      and (e.value->'detail'->>'buyObservedAt')::timestamptz = p_quote_observed_at
+      and (e.value->'detail'->>'sellObservedAt')::timestamptz = p_exit_quote_observed_at
   ) then return false; end if;
   if p_quote_observed_at > now() + interval '5 seconds'
      or p_exit_quote_observed_at > now() + interval '5 seconds' then return false; end if;
