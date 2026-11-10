@@ -51,7 +51,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       "enabled", "emergency_stop", "policy_version", "allowed_chain_ids",
       "allowed_token_addresses", "allowed_input_token_addresses",
       "paper_budget_amount_text:paper_budget_amount::text", "reserved_amount_text:reserved_amount::text",
-      "committed_amount_text:committed_amount::text", "daily_spend_amount_text:daily_spend_amount::text",
+      "committed_amount_text:committed_amount::text", "daily_spend_amount_text:daily_spend_amount::text", "daily_spend_date",
       "max_order_amount_text:max_order_amount::text", "max_position_amount_text:max_position_amount::text",
       "max_daily_spend_text:max_daily_spend::text", "max_slippage_bps", "max_price_impact_bps",
       "max_quote_age_ms", "max_gas_cost_usd_text:max_gas_cost_usd::text",
