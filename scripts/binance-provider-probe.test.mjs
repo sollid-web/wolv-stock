@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { buildSignedHeaders, parseEnvelope, runReadOnlyProbe } from "./binance-provider-probe.mjs";
+import { buildSignedHeaders, parseEnvelope, runReadOnlyProbe, summarizePayloadShape } from "./binance-provider-probe.mjs";
 
 test("signs the exact GET path including query parameters", () => {
   const now = new Date("2026-11-08T12:34:56.789Z");
@@ -55,4 +55,18 @@ test("live probe performs GET requests only and parses a RWA token fixture", asy
   assert.equal(result.checks.length, 3);
   assert.ok(calls.length === 3);
   assert.ok(calls.every((call) => call.method === "GET"));
+});
+
+test("summarizes provider quote schema without exposing field values", () => {
+  const shape = summarizePayloadShape({
+    quoteId: "secret-quote-id",
+    amountOut: "123456",
+    route: [{ tokenAddress: "0xsecret", amount: "999" }],
+    fees: { gas: "123", token: "0xfee" },
+  });
+  const serialized = JSON.stringify(shape);
+  assert.match(serialized, /quoteId/);
+  assert.match(serialized, /amountOut/);
+  assert.match(serialized, /route/);
+  assert.doesNotMatch(serialized, /secret-quote-id|0xsecret|123456|999/);
 });
