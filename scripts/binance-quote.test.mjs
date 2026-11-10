@@ -21,10 +21,10 @@ const route = () => ({
   priceImpactPercent: "-0.01",
   router: input + "--" + output,
   fromToken: {
-    tokenContractAddress: input, decimal: "6", isHoneyPot: false, taxRate: "0",
+    tokenContractAddress: input, tokenUnitPrice: "1", decimal: "6", isHoneyPot: false, taxRate: "0",
   },
   toToken: {
-    tokenContractAddress: output, decimal: "18", isHoneyPot: false, taxRate: "0",
+    tokenContractAddress: output, tokenUnitPrice: "100", decimal: "18", isHoneyPot: false, taxRate: "0",
   },
   executionMode: "RFQ",
   isBest: true,
@@ -43,6 +43,8 @@ test("normalizes a documented Binance BSC RWA RFQ quote", () => {
   assert.equal(quote.priceImpactBps, 1);
   assert.equal(quote.gasEstimateNativeUnits, "150000");
   assert.equal(quote.tradeFeeUsd, "0.12");
+  assert.equal(quote.inputTokenUsdPrice, "1");
+  assert.equal(quote.outputTokenUsdPrice, "100");
   assert.equal(Date.parse(quote.expiresAt) - Date.parse(quote.observedAt), 20_000);
   assert.match(quote.rawEvidenceRef, /^[a-f0-9]{64}$/);
 });
