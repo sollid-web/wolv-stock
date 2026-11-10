@@ -49,7 +49,7 @@ function nonEmpty(value: unknown, field: string): string {
 }
 function positiveInteger(value: unknown, field: string): string {
   const text = nonEmpty(value, field);
-  if (!INTEGER.test(text) || BigInt(text) <= 0n) throw new Error(`Binance quote has invalid ${field}`);
+  if (!INTEGER.test(text) || BigInt(text) <= BigInt(0)) throw new Error(`Binance quote has invalid ${field}`);
   return text;
 }
 function decimal(value: unknown, field: string): string {
@@ -63,7 +63,8 @@ function tokenAddress(value: unknown, field: string): string {
   return address.toLowerCase();
 }
 function decimalPercentToBps(value: unknown): number {
-  const text = decimal(value, "priceImpactPercent");
+  const text = nonEmpty(value, "priceImpactPercent");
+  if (!/^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$/.test(text)) throw new Error("Binance quote has invalid priceImpactPercent");
   const unsigned = text.startsWith("-") ? text.slice(1) : text;
   const [whole, fraction = ""] = unsigned.split(".");
   const padded = (fraction + "00").slice(0, 2);
@@ -109,7 +110,7 @@ export function parseBinanceRwaExecutableQuote(
   if (request.inputTokenAddress.toLowerCase() === request.outputTokenAddress.toLowerCase()) {
     throw new Error("Quote input and output tokens must differ");
   }
-  if (!INTEGER.test(request.amountIn) || BigInt(request.amountIn) <= 0n) {
+  if (!INTEGER.test(request.amountIn) || BigInt(request.amountIn) <= BigInt(0)) {
     throw new Error("Quote amount must be a positive base-unit integer");
   }
   if (!Number.isInteger(request.slippageBps) || request.slippageBps < 0 || request.slippageBps > 5000) {
