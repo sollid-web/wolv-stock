@@ -365,3 +365,44 @@ export async function getAutonomyAggregatorQuote(input: {
     userWalletAddress: input.userWalletAddress,
   }, true);
 }
+
+/**
+ * Build the unsigned Binance RFQ payload for a previously validated RWA quote.
+ * This GET call does not sign, submit, or broadcast the order.
+ */
+export async function getAutonomyAggregatorSwap(input: {
+  chainId: string;
+  fromTokenAddress: string;
+  toTokenAddress: string;
+  amount: string;
+  userWalletAddress: string;
+  quoteId: string;
+  slippageBps: number;
+  priceImpactProtectionBps: number;
+}) {
+  const addressPattern = /^0x[a-fA-F0-9]{40}$/;
+  if (input.chainId !== "56" ||
+      !addressPattern.test(input.fromTokenAddress) ||
+      !addressPattern.test(input.toTokenAddress) ||
+      !addressPattern.test(input.userWalletAddress) ||
+      input.fromTokenAddress.toLowerCase() === input.toTokenAddress.toLowerCase() ||
+      !/^(0|[1-9][0-9]*)$/.test(input.amount) || BigInt(input.amount) <= BigInt(0) ||
+      !/^[a-fA-F0-9]{32}$/.test(input.quoteId) ||
+      !Number.isInteger(input.slippageBps) || input.slippageBps < 0 || input.slippageBps > 5000 ||
+      !Number.isInteger(input.priceImpactProtectionBps) || input.priceImpactProtectionBps < 0 || input.priceImpactProtectionBps > 10000) {
+    throw new Error("Invalid autonomous Binance RFQ build request.");
+  }
+  const slippagePercent = (Math.floor(input.slippageBps / 100)).toString() + "." + String(input.slippageBps % 100).padStart(2, "0");
+  const priceImpactProtectionPercent = (Math.floor(input.priceImpactProtectionBps / 100)).toString() + "." + String(input.priceImpactProtectionBps % 100).padStart(2, "0");
+  return get("/api/v1/dex/aggregator/swap", {
+    binanceChainId: input.chainId,
+    fromTokenAddress: input.fromTokenAddress,
+    toTokenAddress: input.toTokenAddress,
+    amount: input.amount,
+    userWalletAddress: input.userWalletAddress,
+    quoteId: input.quoteId,
+    slippagePercent,
+    priceImpactProtectionPercent,
+    approveTransaction: "false",
+  }, true);
+}
