@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 const EVM_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const INTEGER = /^(0|[1-9][0-9]*)$/;
-const DECIMAL = /^(0|[1-9][0-9]*)(?:\\.([0-9]+))?$/;
+const DECIMAL = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/;
 const QUOTE_TTL_SAFETY_MS = 20_000;
 
 export type BinanceQuoteRequest = {
@@ -64,7 +64,7 @@ function tokenAddress(value: unknown, field: string): string {
 }
 function decimalPercentToBps(value: unknown): number {
   const text = nonEmpty(value, "priceImpactPercent");
-  if (!/^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$/.test(text)) throw new Error("Binance quote has invalid priceImpactPercent");
+  if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(text)) throw new Error("Binance quote has invalid priceImpactPercent");
   const unsigned = text.startsWith("-") ? text.slice(1) : text;
   const [whole, fraction = ""] = unsigned.split(".");
   const padded = (fraction + "00").slice(0, 2);
@@ -74,7 +74,7 @@ function decimalPercentToBps(value: unknown): number {
 }
 function tokenDecimals(token: Record<string, unknown>, field: string): number {
   const value = nonEmpty(token.decimal, field);
-  if (!/^\\d{1,2}$/.test(value)) throw new Error(`Binance quote has invalid ${field}`);
+  if (!/^\d{1,2}$/.test(value)) throw new Error(`Binance quote has invalid ${field}`);
   const parsed = Number(value);
   if (parsed > 36) throw new Error(`Binance quote has invalid ${field}`);
   return parsed;
@@ -104,7 +104,7 @@ export function parseBinanceRwaExecutableQuote(
       !EVM_ADDRESS.test(request.outputTokenAddress)) {
     throw new Error("Invalid quote request wallet or token address");
   }
-  if (!/^\\d+$/.test(request.chainId) || request.chainId !== "56") {
+  if (!/^\d+$/.test(request.chainId) || request.chainId !== "56") {
     throw new Error("Unsupported quote request chain");
   }
   if (request.inputTokenAddress.toLowerCase() === request.outputTokenAddress.toLowerCase()) {
