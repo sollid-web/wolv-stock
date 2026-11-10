@@ -62,7 +62,7 @@ export type ReferenceEdgeResult = {
 };
 
 /**
- * Conservative scenario return against the configured reference/target price.
+ * Conservative net edge against the supplied output valuation, which may be an executable exit quote or a reference target.
  * This is not guaranteed profit or an executable exit quote. Gas USD is required;
  * the function never treats a missing gas estimate as zero.
  */
