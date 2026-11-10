@@ -27,6 +27,7 @@ const route = () => ({
     tokenContractAddress: output, tokenUnitPrice: "100", decimal: "18", isHoneyPot: false, taxRate: "0",
   },
   executionMode: "RFQ",
+  approveTarget: null,
   isBest: true,
 });
 const response = (r = route(), timestamp = now) => ({
@@ -45,6 +46,7 @@ test("normalizes a documented Binance BSC RWA RFQ quote", () => {
   assert.equal(quote.tradeFeeUsd, "0.12");
   assert.equal(quote.inputTokenUsdPrice, "1");
   assert.equal(quote.outputTokenUsdPrice, "100");
+  assert.equal(quote.approvalTarget, null);
   assert.equal(Date.parse(quote.expiresAt) - Date.parse(quote.observedAt), 20_000);
   assert.match(quote.rawEvidenceRef, /^[a-f0-9]{64}$/);
 });
