@@ -19,7 +19,7 @@ const quote = {
   expectedAmountOut: "998500000000000000",
   priceImpactBps: 1,
   gasEstimateRaw: "150000",
-  tradeFeeUsd: "0.12",
+  estimatedNetworkFeeUsd: "0.12",
   inputTokenUsdPrice: "1",
   outputTokenUsdPrice: "100",
   approvalTarget: null,
