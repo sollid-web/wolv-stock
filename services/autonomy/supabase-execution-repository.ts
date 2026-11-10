@@ -59,17 +59,6 @@ export async function compareAndSwapExecutionIntent(next: ExecutionIntent, expec
   return result === true;
 }
 
-export async function appendExecutionAuditEvent(intent: ExecutionIntent, event: ExecutionIntent["events"][number]) {
-  await request("wolv_execution_events", {
-    method: "POST",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({
-      owner_id: intent.ownerId, intent_id: intent.id, event_type: event.type,
-      actor: event.actor, occurred_at: event.at, detail: event.detail ?? {},
-    }),
-  });
-}
-
 export async function acquireExecutionLease(ownerId: string, intentId: string, leaseMs = 30_000): Promise<string | null> {
   const result = await request("rpc/wolv_acquire_execution_lease", {
     method: "POST",
