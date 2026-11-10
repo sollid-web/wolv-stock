@@ -58,6 +58,20 @@ async function signedGet(path, params, credentials, fetchImpl = fetch) {
   return parseEnvelope(body, path);
 }
 
+export function summarizePayloadShape(value, depth = 0) {
+  if (Array.isArray(value)) {
+    return { type: "array", length: value.length, item: value.length ? summarizePayloadShape(value[0], depth) : null };
+  }
+  if (!value || typeof value !== "object") return { type: value === null ? "null" : typeof value };
+  const fields = {};
+  for (const key of Object.keys(value).sort()) {
+    const child = value[key];
+    if (depth < 2 && child && typeof child === "object") fields[key] = summarizePayloadShape(child, depth + 1);
+    else fields[key] = Array.isArray(child) ? "array" : child === null ? "null" : typeof child;
+  }
+  return { type: "object", fields };
+}
+
 function report(name, status, details = "") {
   console.log("[" + status + "] " + name + (details ? " — " + details : ""));
 }
@@ -121,8 +135,11 @@ export async function runReadOnlyProbe(env = process.env, fetchImpl = fetch) {
           amount: "100000000000000000000",
           userWalletAddress: wallet,
         }, credentials, fetchImpl);
-        if (!data || typeof data !== "object") throw new Error("missing quote payload");
-        return "quote returned; no transaction was built or submitted";
+        if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("missing quote object payload");
+        const shape = summarizePayloadShape(data);
+        // Report field names and value types only. Never print wallet, amounts,
+        // quote identifiers, route payloads, signatures, or raw provider data.
+        return "quote returned; payload shape (keys/types only): " + JSON.stringify(shape);
       });
     } else {
       report("Aggregator quote (read-only)", "SKIP", "set BINANCE_PROBE_WALLET_ADDRESS");
