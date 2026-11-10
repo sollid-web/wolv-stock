@@ -330,8 +330,14 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
     const detail = roundTripEvidence(intent);
     const committed = await commitPaperQuoteFill({
       ownerId: intent.ownerId, intentId: intent.id, quoteId: String(intent.quoteId),
+      sellQuoteId: evidenceString(detail, "sellQuoteId"),
       amountOut: evidenceString(detail, "expectedAmountOut"),
+      expectedExitAmountOut: evidenceString(detail, "expectedExitAmountOut"),
+      roundTripEdgeBps: evidenceNumber(detail, "indicativeRoundTripEdgeBps"),
+      bufferedNetworkFeesUsd: evidenceString(detail, "bufferedNetworkFeesUsd"),
+      slippageBps: evidenceNumber(detail, "slippageBps"),
       quoteObservedAt: evidenceString(detail, "buyObservedAt"),
+      exitQuoteObservedAt: evidenceString(detail, "sellObservedAt"),
     });
     if (!committed) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
