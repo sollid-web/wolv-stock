@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getValidatedBinanceRoundTripQuote } from "../services/autonomy/binance-roundtrip-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
-  createExecutionIntent, transitionExecutionIntent, evaluateRiskPolicy,
+  createExecutionIntent, transitionExecutionIntent, evaluateRiskPolicy, isTerminalExecutionState,
   type ExecutionIntent,
 } from "../services/autonomy/execution-domain.ts";
 import {
@@ -352,12 +352,24 @@ async function processExistingIntent(intent: ExecutionIntent) {
   finally { await releaseExecutionLease(OWNER_ID, intent.id, leaseToken); }
 }
 async function cycle() {
+  const processed = new Set<string>();
   const opportunities = await readMarketOpportunities({ status: "ACTIVE", limit: 100 });
   opportunities.sort((a, b) => Math.abs(b.deviationBps) - Math.abs(a.deviationBps));
   for (const opportunity of opportunities) {
-    try { await qualifyOpportunity(opportunity); }
-    catch (error) {
+    try {
+      const intentId = await qualifyOpportunity(opportunity);
+      if (intentId) processed.add(intentId);
+    } catch (error) {
       console.error("[autonomy-worker] opportunity processing failed:", error instanceof Error ? error.message : "unknown error");
+    }
+  }
+  // Recover non-terminal intents even if their original market signal has cleared.
+  const openIntents = await listOpenExecutionIntents(OWNER_ID, 150);
+  for (const intent of openIntents) {
+    if (processed.has(intent.id)) continue;
+    try { await processExistingIntent(intent); }
+    catch (error) {
+      console.error("[autonomy-worker] intent recovery failed:", error instanceof Error ? error.message : "unknown error");
     }
   }
 }
