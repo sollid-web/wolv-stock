@@ -317,7 +317,7 @@ Important limitations:
 - RWA routes return `RFQ`, not a normal router swap. The execution path must sign the returned typed data and submit the RFQ order, which is a distinct signer capability from broadcasting a standard swap transaction.
 - Quote IDs expire quickly. WOLV records a conservative 20-second deadline and must obtain a new quote before any later build/submit stage if the deadline has passed.
 
-The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED → RISK_APPROVED → BUDGET_RESERVED → SIMULATED → PAPER_FILLED` when an enabled owner policy passes. It records quote-based paper fills only. Remaining live-trading blockers are a policy-constrained EIP-712 signer, idempotent order submission, and settlement reconciliation.
+The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED → RISK_APPROVED → BUDGET_RESERVED → SIMULATED → PAPER_FILLED` when an enabled owner policy passes. `PAPER_FILLED` represents a simulated buy/entry and an indicative reverse quote; it does not represent a completed sell or realized profit. Remaining live-trading blockers are a policy-constrained EIP-712 signer, idempotent order submission, and settlement reconciliation.
 
 Official endpoint contract: [Binance Trading API — Get Aggregated Quote and RFQ flow](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
 
@@ -347,3 +347,6 @@ The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It 
 
 
 The paper-fill evidence migration (`20261110170000_extend_paper_fill_exit_evidence.sql`) adds the sell quote ID, minimum exit amount, round-trip edge, buffered network fees, slippage and exit-quote timestamp to each paper fill. The atomic commit RPC verifies both quote IDs and every stored round-trip field against the intent's immutable quote event before updating the paper position and budget.
+
+
+**Important paper-mode boundary:** the current ledger opens paper positions and stores a contemporaneous indicative exit quote. It does not yet run a holding/exit strategy, execute paper sells, or calculate realized P&L. Do not interpret `PAPER_FILLED` as a closed profitable round trip.
