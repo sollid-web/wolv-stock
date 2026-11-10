@@ -283,7 +283,7 @@ Implemented on the autonomy branch:
 - Opportunity qualification from cached market snapshots.
 - Strict Binance RWA RFQ quote normalization and validation, including buy and reverse sell quotes for a round-trip edge.
 - Strict unsigned RFQ `/swap` payload builder/parser, including EIP-712 metadata and approval detection; no signature or order submission.
-- Worker progression to `QUOTED` only after a fresh reverse RFQ quote validates; stores both quote IDs, output amounts, fee buffer, edge, expiry and redacted evidence.
+- Worker progression from `QUOTE_REQUIRED` through two-sided RFQ validation, deterministic risk approval, atomic paper-budget reservation, quote simulation and `PAPER_FILLED` commit; restart recovery scans non-terminal intents.
 - Exact decimal arithmetic for reference-price edge after token taxes, trade fees and an explicitly supplied gas USD cost.
 - Supabase portfolio policy schema, fail-closed defaults, atomic reservation/release RPCs, and idempotent paper-fill/position commit RPCs.
 - A read-only Binance capability probe; configured quote responses are summarized by field names and types only.
@@ -291,8 +291,8 @@ Implemented on the autonomy branch:
 Not implemented or proven:
 - Live response validation in the user's Binance environment.
 - Accurate gas/fee validation beyond Binance's estimated network fee, and conservative controls for non-atomic buy/sell execution.
-- Worker integration and an owner-configured portfolio policy row; no paper fill has been recorded.
-- Exact transaction construction and simulation.
+- The worker and portfolio policy service are connected, but no owner portfolio has been configured and no paper fill has been observed in the user's Supabase environment.
+- Live RFQ `/swap` preparation remains a separate adapter and is not yet invoked by the worker; no live signer or live order submission exists.
 - An unattended signer that Binance authorizes for WOLV's target swap class.
 - On-chain submission, receipt verification, balance reconciliation or unattended recovery.
 
@@ -317,7 +317,7 @@ Important limitations:
 - RWA routes return `RFQ`, not a normal router swap. The execution path must sign the returned typed data and submit the RFQ order, which is a distinct signer capability from broadcasting a standard swap transaction.
 - Quote IDs expire quickly. WOLV records a conservative 20-second deadline and must obtain a new quote before any later build/submit stage if the deadline has passed.
 
-The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED` and stops. It does not mark the intent `RISK_APPROVED`, reserve funds, simulate a fill, or submit an order. The next blockers are portfolio-aware policy evaluation, atomic capital reservation, accurate gas calculation, live RFQ build verification, authorized EIP-712 signing, idempotent order submission, and settlement reconciliation.
+The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED → RISK_APPROVED → BUDGET_RESERVED → SIMULATED → PAPER_FILLED` when an enabled owner policy passes. It records quote-based paper fills only. Remaining live-trading blockers are exact RFQ order preparation in the worker, a policy-constrained EIP-712 signer, idempotent order submission, and settlement reconciliation.
 
 Official endpoint contract: [Binance Trading API — Get Aggregated Quote and RFQ flow](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
 
@@ -328,7 +328,7 @@ Migration `20261110150000_create_autonomy_portfolio_ledger.sql` adds an owner-sc
 
 The PostgreSQL reservation function serializes per-owner budget decisions, enforces token/chain allowlists, order/position/daily limits and total paper budget, and requires the execution intent to be in `RISK_APPROVED`. The paper-fill commit function requires a matching unexpired quote on an intent in `SIMULATED`, commits once per intent, and updates the position ledger atomically. These RPCs do not touch real wallet balances or submit transactions.
 
-The server-only adapter is `services/autonomy/supabase-portfolio-ledger.ts`. It loads policy from Supabase and exposes reserve/release/commit operations. It is not yet connected to the worker's risk/quote lifecycle, and the migration has not been confirmed applied to the user's Supabase project.
+The server-only adapter is `services/autonomy/supabase-portfolio-ledger.ts`. It loads policy and exposure from Supabase and exposes reserve/release/commit operations. The worker now uses these operations for risk approval and paper fills. The migration has not been confirmed applied to the user's Supabase project.
 
 The exact-decimal helper `services/autonomy/reference-edge.ts` computes net edge from the reverse RFQ output amount, stablecoin USD valuation and buffered network fees. When the portfolio migration is applied and an enabled policy row is configured, the worker evaluates both quote legs, position exposure, daily spend, order size, slippage, impact, fee cap and minimum edge before approving a paper fill. The buy and sell legs are not atomic; the reverse quote is a momentary liquidity check, not a guaranteed later fill.
 
