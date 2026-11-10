@@ -146,7 +146,11 @@ begin
       and intent->>'amountIn' = p_amount_in::text
       and intent->>'quoteId' is not null
       and (intent->>'quoteExpiresAt')::timestamptz > now()
-      and (intent->'events'->(jsonb_array_length(intent->'events') - 1)->'detail'->>'expectedAmountOut') = p_expected_amount_out::text
+      and exists (
+        select 1 from jsonb_array_elements(intent->'events') as ev(value)
+        where ev.value->>'type' = 'BINANCE_EXECUTABLE_QUOTE_VALIDATED'
+          and ev.value->'detail'->>'expectedAmountOut' = p_expected_amount_out::text
+      )
   ) then return false; end if;
 
   if account.daily_spend_date < current_date then
