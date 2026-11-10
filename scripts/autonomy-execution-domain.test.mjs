@@ -35,7 +35,7 @@ const policy = {
   maxSlippageBps: 100,
   maxPriceImpactBps: 150,
   maxQuoteAgeMs: 30_000,
-  maxGasCost: "5000000000000000",
+  maxGasCostUsd: "0.005",
   minExpectedEdgeBps: 40,
 };
 
@@ -50,7 +50,7 @@ const candidate = {
   now,
   slippageBps: 50,
   priceImpactBps: 60,
-  gasCost: "1000000000000000",
+  gasCostUsd: "0.001",
   expectedEdgeBps: 90,
 };
 
@@ -75,7 +75,7 @@ test("rejects order, position, daily spend, gas, slippage and impact limit breac
   assert.equal(evaluateRiskPolicy(policy, { ...candidate, amountIn: "300000000" }).code, "ORDER_LIMIT_EXCEEDED");
   assert.equal(evaluateRiskPolicy(policy, { ...candidate, currentPosition: "450000000" }).code, "POSITION_LIMIT_EXCEEDED");
   assert.equal(evaluateRiskPolicy(policy, { ...candidate, dailySpend: "950000000" }).code, "DAILY_SPEND_LIMIT_EXCEEDED");
-  assert.equal(evaluateRiskPolicy(policy, { ...candidate, gasCost: "6000000000000000" }).code, "GAS_LIMIT_EXCEEDED");
+  assert.equal(evaluateRiskPolicy(policy, { ...candidate, gasCostUsd: "0.006" }).code, "GAS_LIMIT_EXCEEDED");
   assert.equal(evaluateRiskPolicy(policy, { ...candidate, slippageBps: 101 }).code, "SLIPPAGE_LIMIT_EXCEEDED");
   assert.equal(evaluateRiskPolicy(policy, { ...candidate, priceImpactBps: 151 }).code, "PRICE_IMPACT_LIMIT_EXCEEDED");
   assert.equal(evaluateRiskPolicy(policy, { ...candidate, expectedEdgeBps: 39 }).code, "EDGE_TOO_LOW");
@@ -132,7 +132,7 @@ test("ambiguous submissions are never eligible for blind retry", () => {
 
 test("allows a zero gas ceiling for explicitly gas-free simulations", () => {
   assert.deepEqual(
-    evaluateRiskPolicy({ ...policy, maxGasCost: "0" }, { ...candidate, gasCost: "0" }),
+    evaluateRiskPolicy({ ...policy, maxGasCostUsd: "0" }, { ...candidate, gasCostUsd: "0" }),
     { allowed: true, code: "RISK_APPROVED" },
   );
 });
