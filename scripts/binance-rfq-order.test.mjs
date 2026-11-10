@@ -18,7 +18,7 @@ const quote = {
   amountIn: "1000000",
   expectedAmountOut: "998500000000000000",
   priceImpactBps: 1,
-  gasEstimateNativeUnits: "150000",
+  gasEstimateRaw: "150000",
   tradeFeeUsd: "0.12",
   inputTokenUsdPrice: "1",
   outputTokenUsdPrice: "100",
