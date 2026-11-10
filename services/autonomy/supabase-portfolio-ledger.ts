@@ -190,8 +190,32 @@ export async function commitPaperQuoteFill(input: {
   ownerId: string;
   intentId: string;
   quoteId: string;
+  sellQuoteId: string;
   amountOut: string;
+  expectedExitAmountOut: string;
+  roundTripEdgeBps: number;
+  bufferedNetworkFeesUsd: string;
+  slippageBps: number;
   quoteObservedAt: string;
+  exitQuoteObservedAt: string;
+}): Promise<boolean> {
+  const result = await request("rpc/wolv_commit_autonomy_paper_fill", {
+    method: "POST",
+    body: JSON.stringify({
+      p_owner_id: input.ownerId,
+      p_intent_id: input.intentId,
+      p_quote_id: input.quoteId,
+      p_sell_quote_id: input.sellQuoteId,
+      p_amount_out: input.amountOut,
+      p_expected_exit_amount_out: input.expectedExitAmountOut,
+      p_roundtrip_edge_bps: input.roundTripEdgeBps,
+      p_buffered_network_fees_usd: input.bufferedNetworkFeesUsd,
+      p_slippage_bps: input.slippageBps,
+      p_quote_observed_at: input.quoteObservedAt,
+      p_exit_quote_observed_at: input.exitQuoteObservedAt,
+    }),
+  });
+  return result === true;
 }): Promise<boolean> {
   const result = await request("rpc/wolv_commit_autonomy_paper_fill", {
     method: "POST",
