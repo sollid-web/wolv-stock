@@ -1,6 +1,6 @@
 import { getValidatedBinanceRwaQuote } from "./binance-quote-provider";
 import {
-  validateRoundTripQuotes,
+  applySlippageFloor, validateRoundTripQuotes,
   type ValidatedRoundTripQuote,
 } from "./binance-roundtrip";
 
@@ -29,10 +29,11 @@ export async function getValidatedBinanceRoundTripQuote(input: {
     walletAddress: input.walletAddress,
     inputTokenAddress: buy.outputTokenAddress,
     outputTokenAddress: buy.inputTokenAddress,
-    amountIn: buy.expectedAmountOut,
+    amountIn: applySlippageFloor(buy.expectedAmountOut, input.slippageBps),
     slippageBps: input.slippageBps,
   });
   return validateRoundTripQuotes(buy, sell, {
     networkFeeBufferBps: input.networkFeeBufferBps,
+    slippageBps: input.slippageBps,
   });
 }
