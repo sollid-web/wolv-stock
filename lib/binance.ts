@@ -335,3 +335,33 @@ export async function submitOrder(
 export async function getOrderStatus(orderId: string) {
   return get(`/api/v1/dex/aggregator/order/${encodeURIComponent(orderId)}`, {}, true);
 }
+
+
+/**
+ * Generic read-only quote entry point for the autonomous BSC worker.
+ * No swap transaction is built, signed, or broadcast by this function.
+ */
+export async function getAutonomyAggregatorQuote(input: {
+  chainId: string;
+  fromTokenAddress: string;
+  toTokenAddress: string;
+  amount: string;
+  userWalletAddress: string;
+}) {
+  const addressPattern = /^0x[a-fA-F0-9]{40}$/;
+  if (input.chainId !== "56" ||
+      !addressPattern.test(input.fromTokenAddress) ||
+      !addressPattern.test(input.toTokenAddress) ||
+      !addressPattern.test(input.userWalletAddress) ||
+      input.fromTokenAddress.toLowerCase() === input.toTokenAddress.toLowerCase() ||
+      !/^(0|[1-9][0-9]*)$/.test(input.amount) || BigInt(input.amount) <= BigInt(0)) {
+    throw new Error("Invalid autonomous Binance quote request.");
+  }
+  return get("/api/v1/dex/aggregator/quote", {
+    binanceChainId: input.chainId,
+    fromTokenAddress: input.fromTokenAddress,
+    toTokenAddress: input.toTokenAddress,
+    amount: input.amount,
+    userWalletAddress: input.userWalletAddress,
+  }, true);
+}
