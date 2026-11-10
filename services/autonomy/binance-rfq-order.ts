@@ -31,7 +31,7 @@ export type ValidatedBinanceRfqOrder = {
   expectedAmountOut: string;
   typedDataHash: string;
   typedDataToSign: string;
-  typedDataFormat: "HEX_EIP712_PREIMAGE" | "JSON_TYPED_DATA";
+  typedDataFormat: "HEX_EIP712_PAYLOAD" | "JSON_TYPED_DATA";
   approvalTarget: string | null;
   routeFingerprint: string;
   rawEvidenceRef: string;
@@ -86,9 +86,9 @@ export function parseBinanceRfqOrderBuild(
   }
   const orderId = text(rfq.orderId, "rfq.orderId");
   const typedDataToSign = text(rfq.typedDataToSign, "rfq.typedDataToSign");
-  let typedDataFormat: "HEX_EIP712_PREIMAGE" | "JSON_TYPED_DATA";
+  let typedDataFormat: "HEX_EIP712_PAYLOAD" | "JSON_TYPED_DATA";
   if (/^0x(?:[0-9a-fA-F]{2})+$/.test(typedDataToSign) && typedDataToSign.length >= 10) {
-    typedDataFormat = "HEX_EIP712_PREIMAGE";
+    typedDataFormat = "HEX_EIP712_PAYLOAD";
   } else {
     let parsed: unknown;
     try { parsed = JSON.parse(typedDataToSign); }
