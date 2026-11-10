@@ -159,6 +159,9 @@ export async function readMarketOpportunities(options: {
     deviationBps: Number(row.deviation_bps), thresholdBps: Number(row.threshold_bps),
     providerTimestamp: String(row.provider_timestamp), status: String(row.status) as MarketOpportunity["status"],
     observedAt: String(row.observed_at),
+    stale: !Number.isFinite(Date.parse(String(row.provider_timestamp))) ||
+      Date.now() - Date.parse(String(row.provider_timestamp)) > MAX_DISPLAY_AGE_MS ||
+      Date.parse(String(row.provider_timestamp)) > Date.now() + 30_000,
   }));
 }
 
