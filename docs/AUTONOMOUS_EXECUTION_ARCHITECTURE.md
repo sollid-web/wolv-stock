@@ -1,6 +1,6 @@
 # WOLV Autonomous Execution Architecture
 
-**Status:** partially implemented; durable paper qualification only; no live execution enabled  
+**Status:** partially implemented; durable opportunity qualification and quote-required gating; executable quote validation, paper fills, signing and live execution are not enabled  
 **Baseline:** `ef67f625b5a67b528761b7832cb27e52174fb5dd`  
 **Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`
 
@@ -84,7 +84,7 @@ Any missing, stale, malformed or contradictory input fails closed. Policy change
 
 ### 5. Persistence and job runtime
 
-The current baseline is a Next.js application and does not yet establish a durable autonomous worker database/queue. Before unattended execution, add a persistent store and job runtime with:
+The autonomy branch now adds a Supabase/Postgres-backed execution-intent queue, append-only event records, compare-and-swap updates and distributed per-intent leases. This is infrastructure, not proof of a complete trading loop. Remaining persistence work includes:
 
 - Durable execution-intent and event records.
 - Per-user / per-wallet tenant isolation.
@@ -113,7 +113,7 @@ DISCOVERED
    -> SETTLEMENT_PENDING
    -> SETTLED
 
-Any stage may instead transition to:
+The current paper worker intentionally stops at `QUOTE_REQUIRED`: it does not treat the RWA reference-price dislocation as an executable quote and does not fabricate zero gas or slippage. The Binance Web3 quote response schema must be captured and validated before the worker can proceed.\n\nAny stage may instead transition to:
    REJECTED_POLICY
    EXPIRED
    PROVIDER_REJECTED
@@ -244,3 +244,23 @@ npm run autonomy:paper-worker
 ```
 
 Do not run this as a browser process or expose the service-role key. This worker records decisions only; it does not create paper fills or live transactions. Live execution remains disabled.
+
+
+## Current implementation boundary (2026-11-10)
+
+Implemented on the autonomy branch:
+- Supabase/Postgres persistence for intents, events and worker leases.
+- Versioned state transitions and compare-and-swap writes.
+- Opportunity qualification from cached market snapshots.
+- A fail-closed transition that blocks risk approval until an executable quote exists.
+- A read-only Binance capability probe. When `BINANCE_PROBE_WALLET_ADDRESS` is set, it reports the quote response's field names and data types only; it does not print quote values or submit transactions.
+
+Not implemented or proven:
+- Binance quote normalization against a live, observed response schema.
+- Net-edge calculation using executable output, all fees and gas.
+- Portfolio-wide atomic capital reservation and simulated fill/position ledger.
+- Exact transaction construction and simulation.
+- An unattended signer that Binance authorizes for WOLV's target swap class.
+- On-chain submission, receipt verification, balance reconciliation or unattended recovery.
+
+The Binance Web3 API is explicitly non-custodial: it returns unsigned transactions and does not hold or access user private keys. Therefore, adding quote and transaction-build calls alone cannot make WOLV autonomous. A separately authorized signer remains a hard dependency. See the official [Binance Web3 API announcement](https://www.binance.com/en/support/announcement/detail/a9f19002d4584183b83892b002d61f96).
