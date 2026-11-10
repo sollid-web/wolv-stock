@@ -182,3 +182,13 @@ test("validated quote must precede risk approval and capital reservation", () =>
     type: "BYPASS_RESERVATION", at: "2026-11-08T12:00:05.000Z", actor: "worker",
   }), /Invalid execution transition/);
 });
+
+test("gas risk comparison uses exact decimal USD values", () => {
+  assert.equal(evaluateRiskPolicy(policy, { ...candidate, gasCostUsd: "0.005001" }).code, "GAS_LIMIT_EXCEEDED");
+  assert.equal(evaluateRiskPolicy(policy, { ...candidate, gasCostUsd: "not-a-number" }).code, "INVALID_NUMERIC_INPUT");
+  assert.deepEqual(
+    evaluateRiskPolicy({ ...policy, maxGasCostUsd: "0.000000000000000001" },
+      { ...candidate, gasCostUsd: "0.000000000000000001" }),
+    { allowed: true, code: "RISK_APPROVED" },
+  );
+});
