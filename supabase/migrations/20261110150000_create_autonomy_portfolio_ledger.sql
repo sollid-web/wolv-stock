@@ -127,9 +127,9 @@ begin
   for update;
   if not found or not account.enabled or account.emergency_stop then return false; end if;
   if account.policy_version <> p_policy_version then return false; end if;
-  if p_chain_id <> all(account.allowed_chain_ids) and not (p_chain_id = any(account.allowed_chain_ids)) then return false; end if;
-  if not (lower(p_token_address) = any(select lower(x) from unnest(account.allowed_token_addresses) x)) then return false; end if;
-  if not (lower(p_input_token_address) = any(select lower(x) from unnest(account.allowed_input_token_addresses) x)) then return false; end if;
+  if not (p_chain_id = any(account.allowed_chain_ids)) then return false; end if;
+  if not exists(select 1 from unnest(account.allowed_token_addresses) as a(value) where lower(a.value) = lower(p_token_address)) then return false; end if;
+  if not exists(select 1 from unnest(account.allowed_input_token_addresses) as a(value) where lower(a.value) = lower(p_input_token_address)) then return false; end if;
   if lower(p_input_token_address) <> lower(account.input_token_address) or p_chain_id <> account.chain_id then return false; end if;
   if p_amount_in > account.max_order_amount then return false; end if;
 
@@ -231,11 +231,22 @@ begin
   where owner_id = p_owner_id
   for update;
   if not found then return false; end if;
+  if not account.enabled or account.emergency_stop then return false; end if;
+  if account.policy_version <> reservation.policy_version then return false; end if;
+  if not exists (
+    select 1 from public.wolv_execution_intents
+    where owner_id = p_owner_id and id = p_intent_id
+      and intent->>'state' = 'SIMULATED' and intent->>'quoteId' = p_quote_id
+  ) then return false; end if;
+  if p_quote_observed_at > now() + interval '5 seconds' then return false; end if;
   if account.daily_spend_date < current_date then
     update public.wolv_autonomy_portfolios
       set daily_spend_amount = 0, daily_spend_date = current_date
       where owner_id = p_owner_id;
+    account.daily_spend_amount := 0;
   end if;
+  if p_quote_observed_at < now() - (account.max_quote_age_ms * interval '1 millisecond') then return false; end if;
+  if account.daily_spend_amount + reservation.amount_in > account.max_daily_spend then return false; end if;
 
   insert into public.wolv_autonomy_paper_fills(
     owner_id, intent_id, quote_id, chain_id, token_address, input_token_address,
