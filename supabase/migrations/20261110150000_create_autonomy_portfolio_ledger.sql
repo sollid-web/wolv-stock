@@ -149,7 +149,7 @@ begin
       and (intent->>'quoteExpiresAt')::timestamptz > now()
       and exists (
         select 1 from jsonb_array_elements(intent->'events') as ev(value)
-        where ev.value->>'type' = 'BINANCE_EXECUTABLE_QUOTE_VALIDATED'
+        where ev.value->>'type' = 'BINANCE_ROUNDTRIP_QUOTES_VALIDATED'
           and ev.value->'detail'->>'expectedAmountOut' = p_expected_amount_out::text
       )
   ) then return false; end if;
