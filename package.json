@@ -13,6 +13,7 @@
     "market:worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types worker/marketPriceWorker.ts",
     "test:market-cache": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/market-price-cache.test.mjs",
     "test:opportunity-scanner": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/opportunity-scanner.test.mjs",
+    "autonomy:configure-paper": "node scripts/configure-autonomy-paper-portfolio.mjs",
     "autonomy:paper-worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types worker/autonomousPaperWorker.ts"
   },
   "dependencies": {
