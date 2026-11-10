@@ -19,7 +19,7 @@ export type MarketOpportunity = {
   chainId: number; tokenAddress: string; ticker: string;
   direction: "DISCOUNT" | "PREMIUM"; marketPriceUsd: string; referencePriceUsd: string;
   deviationBps: number; thresholdBps: number; providerTimestamp: string;
-  status: "ACTIVE" | "CLEARED"; observedAt: string;
+  status: "ACTIVE" | "CLEARED"; observedAt: string; stale?: boolean;
 };
 
 export type MarketPriceInput = Omit<MarketPrice, "ageMs" | "stale"> & {
@@ -147,7 +147,7 @@ export async function readMarketOpportunities(options: {
 } = {}): Promise<MarketOpportunity[]> {
   const query = new URLSearchParams({
     select: "chain_id,token_address,ticker,direction,market_price_usd,reference_price_usd,deviation_bps,threshold_bps,provider_timestamp,status,observed_at",
-    order: "abs.deviation_bps.desc,observed_at.desc",
+    order: "observed_at.desc",
     limit: String(Math.min(100, Math.max(1, Math.floor(options.limit ?? 50)))),
   });
   if (options.status && options.status !== "ALL") query.set("status", `eq.${options.status}`);
