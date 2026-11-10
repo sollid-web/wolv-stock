@@ -1,5 +1,5 @@
 const SCALE = BigInt("1000000000000000000");
-const DECIMAL_RE = /^(0|[1-9][0-9]*)(?:\\.([0-9]+))?$/;
+const DECIMAL_RE = /^(0|[1-9][0-9]*)(?:\.([0-9]+))?$/;
 const INTEGER_RE = /^(0|[1-9][0-9]*)$/;
 
 function parseScaled(value: string, field: string, allowZero = true): bigint {
