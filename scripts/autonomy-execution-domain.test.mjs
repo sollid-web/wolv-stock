@@ -102,8 +102,8 @@ test("rejects illegal, backward-time and post-terminal transitions", () => {
   assert.throws(() => transitionExecutionIntent(intent, "QUALIFIED", { type: "OLD", at: "2026-11-08T11:59:00.000Z", actor: "worker" }), /cannot move backwards/);
 
   const path = [
-    "QUALIFIED", "RISK_APPROVED", "BUDGET_RESERVED", "QUOTED",
-    "SIMULATED", "SUBMISSION_PENDING", "SUBMITTED",
+    "QUALIFIED", "QUOTE_REQUIRED", "QUOTED", "RISK_APPROVED",
+    "BUDGET_RESERVED", "SIMULATED", "SUBMISSION_PENDING", "SUBMITTED",
     "SETTLEMENT_PENDING", "SETTLED",
   ];
   let current = intent;
@@ -156,5 +156,29 @@ test("qualified intent requires an executable quote before risk approval", () =>
   assert.equal(quoteRequired.state, "QUOTE_REQUIRED");
   assert.throws(() => transitionExecutionIntent(qualified, "RISK_APPROVED", {
     type: "RISK_APPROVED", at: "2026-11-10T12:00:02.000Z", actor: "worker",
+  }), /Invalid execution transition/);
+});
+
+
+test("validated quote must precede risk approval and capital reservation", () => {
+  const start = baseIntent();
+  const qualified = transitionExecutionIntent(start, "QUALIFIED", {
+    type: "QUALIFIED", at: "2026-11-08T12:00:01.000Z", actor: "worker",
+  });
+  const required = transitionExecutionIntent(qualified, "QUOTE_REQUIRED", {
+    type: "QUOTE_REQUIRED", at: "2026-11-08T12:00:02.000Z", actor: "worker",
+  });
+  const quoted = transitionExecutionIntent(required, "QUOTED", {
+    type: "VALIDATED_QUOTE", at: "2026-11-08T12:00:03.000Z", actor: "provider",
+  });
+  const approved = transitionExecutionIntent(quoted, "RISK_APPROVED", {
+    type: "RISK_APPROVED", at: "2026-11-08T12:00:04.000Z", actor: "worker",
+  });
+  assert.equal(approved.state, "RISK_APPROVED");
+  assert.throws(() => transitionExecutionIntent(required, "RISK_APPROVED", {
+    type: "BYPASS_QUOTE", at: "2026-11-08T12:00:03.000Z", actor: "worker",
+  }), /Invalid execution transition/);
+  assert.throws(() => transitionExecutionIntent(approved, "SIMULATED", {
+    type: "BYPASS_RESERVATION", at: "2026-11-08T12:00:05.000Z", actor: "worker",
   }), /Invalid execution transition/);
 });
