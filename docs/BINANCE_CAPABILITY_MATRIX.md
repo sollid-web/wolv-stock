@@ -28,9 +28,9 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | Wallet sign-in / session | BAW CLI | QR-based sign-in, session expiry, sign-out/revocation | Requires interactive user onboarding |
 | BAW balances / settings / quota | BAW CLI | Read-only wallet commands | Can be monitored by worker while session is valid |
 | BAW market-order quote | BAW CLI | Read-only quote | Probe separately from Web3 API quote |
-| BAW market-order swap | BAW CLI + Secure Auto Sign | Binance FAQ says Secure Auto Sign, once enabled and authorised, can execute supported transactions without individual confirmations; confirm exact market-order coverage on the target account | **Promising; must prove end-to-end** |
+| BAW market-order swap | BAW CLI + Secure Auto Sign | Secure Auto Sign is limited to supported transaction classes; no evidence yet that it can sign Binance RWA RFQ typed data in a headless worker | **Not proven for WOLV RWA RFQ** |
 | BAW limit orders | BAW CLI | Order lifecycle and cancellation commands documented | Validate unattended trigger behavior and session constraints |
-| BAW external transaction signing | BAW CLI / Developer Mode | Contract-call preview and execute are a two-step flow; explicit confirmation is required, and some calls may still become App-pending | **Not suitable as the default unattended custom-call signer** |
+| BAW external transaction / EIP-712 signing | BAW CLI / Developer Mode | Official Agentic Wallet skill requires sign-message preview, display of parsed message and risks, explicit user confirmation, then sign-message execute; result may remain PENDING_CONFIRMATION | **Not suitable for unattended RWA RFQ signing** |
 | BSC testnet through BAW | BAW | Public docs list BSC mainnet chain ID 56; no BSC testnet support established here | Unverified; do not assume |
 | BAW onboarding | Binance App / supported agent | Binance FAQ says each user currently has one Agentic Wallet and warns against scanning third-party website QR codes; direct WOLV-hosted QR onboarding is not an acceptable assumption | **Integration approval / supported-agent path required** |\n| Multi-user unattended worker | WOLV | Requires per-user session isolation, revocation handling, leases, durable idempotency and reconciliation; one BAW wallet per user constrains agent tenancy | Not proven |
 
@@ -39,6 +39,8 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 ### 1. Autonomous authorization
 
 BAW's wallet security settings are controlled by the user in Binance. The public wallet overview describes market swaps as quote → user confirmation → execution; high-risk operations may be rejected or sent for App confirmation. Therefore, **do not assume that a background worker can execute every trade without a confirmation prompt**.
+
+For WOLV's RWA route, Binance Web3 API returns executionMode=RFQ and requires EIP-712 signing. The official BAW external-sign skill mandates a preview, risk display and explicit user confirmation before executing sign-message; this is a human gate, not the desired unattended path. A BAW market-order flow may still be tested separately for ordinary supported swaps, but it must not be assumed to cover RFQ.
 
 A BAW capability test must establish, with a dedicated low-value test wallet and explicit consent:
 - Whether the intended trade type executes unattended under configured wallet policy.
@@ -50,7 +52,7 @@ If BAW requires per-trade confirmation, it can still be a supported custody adap
 
 ### 3. Signing authority
 
-Web3 API API-key/secret authentication authenticates WOLV to Binance's API. It does not grant WOLV the user's private key. The Web3 broadcast endpoint accepts a signed transaction. WOLV must supply an independently authorized signing provider (BAW external signing, an EIP-7702 delegated session, or another user-controlled smart-account signer).
+Web3 API API-key/secret authentication authenticates WOLV to Binance's API. It does not grant WOLV the user's private key. RFQ execution requires an EIP-712 signature from the exact wallet used in /quote. WOLV needs a server-side signer authorized once and constrained by wallet-level policy. Privy is a candidate because its EVM SDK exposes signTypedData and its policy engine can constrain typed-data actions; it requires a dedicated WOLV trading wallet or a user-authorized delegated signer. This custody path is not connected or approved.
 
 ### 4. Session and user isolation
 
@@ -191,3 +193,14 @@ This ledger is not connected to the worker yet and the migration has not been co
 
 
 WOLV also now contains a read-only RFQ order-preparation adapter. It builds the swap response with approval construction disabled, validates route/token/amount/vendor consistency against the quote, checks EIP-712 metadata, hashes the typed-data payload and flags unexpected approval data. It does not sign or submit. The polling worker currently stops at the validated quote; the order-preparation adapter is not yet connected to that loop.
+
+## RFQ signing-provider decision
+
+BAW's external EIP-712 signing path is not a valid unattended default: the official Binance Agentic Wallet skill instructs agents to preview the message, display risks, obtain explicit user confirmation, and only then execute the signature. A pending App confirmation may still occur.
+
+Privy is the current candidate for a separately authorized RFQ signer because its official Node SDK exposes EVM typed-data signing and its wallet policy engine supports constraints on typed-data signatures, contract allowlists and spend limits. This is not a drop-in connection to the existing Reown wallet. It requires a deliberate custody/authorization design (preferably a separate bounded WOLV trading wallet), policy configuration, BSC compatibility validation and a user-approved onboarding step. No wallet has been imported, created, funded or connected by this implementation.
+
+References:
+- [Binance Agentic Wallet external signing](https://github.com/binance/binance-skills-hub/blob/main/skills/binance-web3/binance-agentic-wallet/references/external-sign.md)
+- [Privy wallet policies and controls](https://docs.privy.io/security/wallet-infrastructure/policy-and-controls)
+- [Privy Node SDK EVM typed-data signing](https://app.unpkg.com/@privy-io/node@0.35.0/files/public-api/services/ethereum.d.mts)
