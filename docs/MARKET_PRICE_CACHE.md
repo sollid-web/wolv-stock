@@ -9,6 +9,12 @@ WOLV reuses its existing Supabase-hosted PostgreSQL database. This feature adds 
 3. The frontend reads `GET /api/market/prices`, which queries only the compact latest-price table. It does not call Binance on every page load.
 4. The response includes `ageMs` and `stale`. Stale data may be displayed as cached/reference information, never used as a fresh execution quote.
 
+## Opportunity scanner
+
+After each price refresh, the worker runs a deterministic reference-price dislocation scan. It records discount/premium signals and marks them ACTIVE or CLEARED against `WOLV_SCANNER_MIN_EDGE_BPS` (default 100 bps). The scanner rejects stale/future-dated prices and missing reference values. Signals are research candidates only: they are not executable quotes, guaranteed profit, risk approval, or trade orders. Read them from `GET /api/market/opportunities?status=ACTIVE`.
+
+Set `WOLV_SCANNER_MIN_EDGE_BPS=100` to configure the threshold in basis points.
+
 ## Tables
 
 - `wolv_market_prices_latest`: one current row per (chain, token); optimized for fast frontend reads.
