@@ -62,23 +62,23 @@ test("requires both buy and executable reverse RFQ quotes and calculates buffere
 
 test("rejects non-reversed token routes, wrong amount and inconsistent decimals", () => {
   assert.throws(() => validateRoundTripQuotes(buy, { ...sell, outputTokenAddress: rwa }, { now, networkFeeBufferBps: 0, slippageBps: 0 }), /reverse/);
-  assert.throws(() => validateRoundTripQuotes(buy, { ...sell, amountIn: "1" }, { now, networkFeeBufferBps: 0 }), /exactly match/);
-  assert.throws(() => validateRoundTripQuotes(buy, { ...sell, outputTokenDecimals: 18 }, { now, networkFeeBufferBps: 0 }), /decimal/);
+  assert.throws(() => validateRoundTripQuotes(buy, { ...sell, amountIn: "1" }, { now, networkFeeBufferBps: 0, slippageBps: 0 }), /exactly match/);
+  assert.throws(() => validateRoundTripQuotes(buy, { ...sell, outputTokenDecimals: 18 }, { now, networkFeeBufferBps: 0, slippageBps: 0 }), /decimal/);
 });
 
 test("rejects non-zero intermediate RWA transfer taxes and expired quotes", () => {
   assert.throws(() => validateRoundTripQuotes(
-    { ...buy, outputTokenTaxRate: "0.01" }, sell, { now, networkFeeBufferBps: 0 },
+    { ...buy, outputTokenTaxRate: "0.01" }, sell, { now, networkFeeBufferBps: 0, slippageBps: 0 },
   ), /transfer tax/);
   assert.throws(() => validateRoundTripQuotes(
-    buy, { ...sell, expiresAt: new Date(now - 1).toISOString() }, { now, networkFeeBufferBps: 0 },
+    buy, { ...sell, expiresAt: new Date(now - 1).toISOString() }, { now, networkFeeBufferBps: 0, slippageBps: 0 },
   ), /expired/);
 });
 
 test("flags approval requirements on either leg", () => {
   const result = validateRoundTripQuotes(
     buy, { ...sell, approvalTarget: "0x4444444444444444444444444444444444444444" },
-    { now, networkFeeBufferBps: 0 },
+    { now, networkFeeBufferBps: 0, slippageBps: 0 },
   );
   assert.equal(result.approvalRequired, true);
 });
