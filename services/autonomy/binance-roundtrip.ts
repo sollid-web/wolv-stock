@@ -8,6 +8,9 @@ export type ValidatedRoundTripQuote = {
   buy: ValidatedBinanceQuote;
   sell: ValidatedBinanceQuote;
   indicativeRoundTripEdgeBps: number;
+  slippageBps: number;
+  buyMinimumAmountOut: string;
+  sellMinimumAmountOut: string;
   bufferedNetworkFeesUsd: string;
   approvalRequired: boolean;
   expiresAt: string;
@@ -23,9 +26,13 @@ export type ValidatedRoundTripQuote = {
 export function validateRoundTripQuotes(
   buy: ValidatedBinanceQuote,
   sell: ValidatedBinanceQuote,
-  input: { now?: number; networkFeeBufferBps: number },
+  input: { now?: number; networkFeeBufferBps: number; slippageBps: number },
 ): ValidatedRoundTripQuote {
   const now = input.now ?? Date.now();
+  if (!Number.isInteger(input.slippageBps) || input.slippageBps < 0 || input.slippageBps > 5000) {
+    throw new Error("Invalid round-trip slippage policy");
+  }
+  const buyMinimumAmountOut = applySlippageFloor(buy.expectedAmountOut, input.slippageBps);
   if (Date.parse(buy.expiresAt) <= now || Date.parse(sell.expiresAt) <= now) {
     throw new Error("One side of the Binance round-trip quote has expired");
   }
@@ -36,7 +43,7 @@ export function validateRoundTripQuotes(
       buy.outputTokenAddress !== sell.inputTokenAddress) {
     throw new Error("Sell quote token direction does not reverse the buy quote");
   }
-  if (buy.expectedAmountOut !== sell.amountIn) {
+  if (buyMinimumAmountOut !== sell.amountIn) {
     throw new Error("Sell quote amount must exactly match the buy quote output");
   }
   if (buy.inputTokenDecimals !== sell.outputTokenDecimals ||
@@ -52,12 +59,13 @@ export function validateRoundTripQuotes(
   const buyFee = applyNetworkFeeBuffer(buy.estimatedNetworkFeeUsd, input.networkFeeBufferBps);
   const sellFee = applyNetworkFeeBuffer(sell.estimatedNetworkFeeUsd, input.networkFeeBufferBps);
   const bufferedNetworkFeesUsd = sumUsdAmounts([buyFee, sellFee]);
+  const sellMinimumAmountOut = applySlippageFloor(sell.expectedAmountOut, input.slippageBps);
   const edge = calculateNetEdge({
     inputAmount: buy.amountIn,
     inputDecimals: buy.inputTokenDecimals,
     inputTokenUsdPrice: buy.inputTokenUsdPrice,
     inputTokenTaxRate: buy.inputTokenTaxRate,
-    outputAmount: sell.expectedAmountOut,
+    outputAmount: sellMinimumAmountOut,
     outputDecimals: sell.outputTokenDecimals,
     outputTokenUsdPrice: sell.outputTokenUsdPrice,
     outputTokenTaxRate: sell.outputTokenTaxRate,
@@ -77,10 +85,23 @@ export function validateRoundTripQuotes(
     buy,
     sell,
     indicativeRoundTripEdgeBps: edge.expectedEdgeBps,
+    slippageBps: input.slippageBps,
+    buyMinimumAmountOut,
+    sellMinimumAmountOut,
     bufferedNetworkFeesUsd,
     approvalRequired: buy.approvalTarget !== null || sell.approvalTarget !== null,
     expiresAt,
     routeFingerprint,
     rawEvidenceRef,
   };
+}
+
+export function applySlippageFloor(amount: string, slippageBps: number): string {
+  if (!/^(0|[1-9][0-9]*)$/.test(amount) || BigInt(amount) <= BigInt(0) ||
+      !Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > 5000) {
+    throw new Error("Invalid amount or slippage for minimum output calculation");
+  }
+  const minimum = BigInt(amount) * BigInt(10_000 - slippageBps) / BigInt(10_000);
+  if (minimum <= BigInt(0)) throw new Error("Slippage policy reduces minimum output to zero");
+  return minimum.toString();
 }
