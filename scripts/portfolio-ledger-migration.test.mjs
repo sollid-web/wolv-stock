@@ -12,11 +12,14 @@ test("portfolio defaults fail closed and keep paper budget isolated", () => {
   assert.match(sql, /emergency_stop boolean not null default true/);
   assert.match(sql, /paper_budget_amount numeric\(78,0\)/);
   assert.match(sql, /reserved_amount \+ committed_amount <= paper_budget_amount/);
+  assert.match(sql, /network_fee_buffer_bps integer not null default 10000/);
 });
 
 test("budget reservation enforces allowlists, portfolio caps and risk-approved intent", () => {
   assert.match(sql, /wolv_reserve_autonomy_budget/);
   assert.match(sql, /intent->>'state' = 'RISK_APPROVED'/);
+  assert.match(sql, /BINANCE_ROUNDTRIP_QUOTES_VALIDATED/);
+  assert.match(sql, /buyQuoteId/);
   assert.match(sql, /account\.max_order_amount/);
   assert.match(sql, /account\.max_position_amount/);
   assert.match(sql, /account\.max_daily_spend/);
