@@ -21,3 +21,15 @@ export function applyNetworkFeeBuffer(
   const decimal = (buffered % SCALE).toString().padStart(18, "0").replace(/0+$/, "");
   return whole.toString() + (decimal ? "." + decimal : "");
 }
+
+export function sumUsdAmounts(values: string[]): string {
+  const total = values.reduce((sum, value) => {
+    const match = DECIMAL.exec(value);
+    if (!match) throw new Error("Invalid USD amount");
+    const fraction = (match[2] ?? "").padEnd(18, "0");
+    return sum + BigInt(match[1]) * SCALE + BigInt(fraction || "0");
+  }, BigInt(0));
+  const whole = total / SCALE;
+  const decimal = (total % SCALE).toString().padStart(18, "0").replace(/0+$/, "");
+  return whole.toString() + (decimal ? "." + decimal : "");
+}
