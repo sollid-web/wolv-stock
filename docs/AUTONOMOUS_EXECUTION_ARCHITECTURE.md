@@ -259,6 +259,7 @@ Implemented on the autonomy branch:
 - Versioned state transitions and compare-and-swap writes.
 - Opportunity qualification from cached market snapshots.
 - Strict Binance RWA RFQ quote normalization and validation.
+- Strict unsigned RFQ `/swap` payload builder/parser, including EIP-712 metadata and approval detection; no signature or order submission.
 - Worker progression to `QUOTED`, with quote ID, expiry and redacted audit evidence.
 - Exact decimal arithmetic for reference-price edge after token taxes, trade fees and an explicitly supplied gas USD cost.
 - Supabase portfolio policy schema, fail-closed defaults, atomic reservation/release RPCs, and idempotent paper-fill/position commit RPCs.
@@ -293,7 +294,7 @@ Important limitations:
 - RWA routes return `RFQ`, not a normal router swap. The execution path must sign the returned typed data and submit the RFQ order, which is a distinct signer capability from broadcasting a standard swap transaction.
 - Quote IDs expire quickly. WOLV records a conservative 20-second deadline and must obtain a new quote before any later build/submit stage if the deadline has passed.
 
-The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED` and stops. It does not mark the intent `RISK_APPROVED`, reserve funds, simulate a fill, or submit an order. The next blockers are portfolio-aware policy evaluation, atomic capital reservation, accurate gas calculation, RFQ typed-data construction/signing, and settlement reconciliation.
+The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED` and stops. It does not mark the intent `RISK_APPROVED`, reserve funds, simulate a fill, or submit an order. The next blockers are portfolio-aware policy evaluation, atomic capital reservation, accurate gas calculation, live RFQ build verification, authorized EIP-712 signing, idempotent order submission, and settlement reconciliation.
 
 Official endpoint contract: [Binance Trading API — Get Aggregated Quote and RFQ flow](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
 
@@ -307,3 +308,10 @@ The PostgreSQL reservation function serializes per-owner budget decisions, enfor
 The server-only adapter is `services/autonomy/supabase-portfolio-ledger.ts`. It loads policy from Supabase and exposes reserve/release/commit operations. It is not yet connected to the worker's risk/quote lifecycle, and the migration has not been confirmed applied to the user's Supabase project.
 
 The exact-decimal helper `services/autonomy/reference-edge.ts` computes a target-price scenario after input/output token taxes, quoted trade fee and an explicit USD gas cost. It intentionally rejects missing gas cost. This is a reference-price scenario, not guaranteed profit or a verified executable exit; the worker must obtain a trustworthy exit valuation and accurate gas cost before risk approval.
+
+
+## Unsigned RFQ order preparation
+
+WOLV now has a separate read-only adapter for Binance `GET /api/v1/dex/aggregator/swap`. It requests `approveTransaction=false`, uses the same quote ID, wallet, token direction and input amount, and passes configured slippage and price-impact protection. The validator requires the response to remain in `RFQ` mode, checks the returned route and amounts against the original quote, checks the RFQ vendor and EIP-712 signing metadata, hashes the typed-data payload, and flags any auxiliary approval data.
+
+This adapter is not yet called by the polling worker. It does not sign typed data, submit an RFQ order, or broadcast a transaction. Binance's documented RFQ flow requires EIP-712 signing, then `POST /order/submit` with a UUID idempotency key, followed by polling the order status until `FILLED` or `FAILED`. The Binance API's request ID idempotency must be preserved across retries; ambiguous submissions must be reconciled rather than assigned a new request ID.
