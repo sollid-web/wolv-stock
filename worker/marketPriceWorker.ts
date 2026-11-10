@@ -1,6 +1,7 @@
 import { getRWAPrice, getRWATokenList } from "../lib/binance.ts";
 import { isRwaAssetListResponse } from "../lib/rwaAssetResponse.ts";
-import { parseBinanceRwaPrices, upsertMarketPrices } from "../services/marketPriceCache.ts";
+import { parseBinanceRwaPrices, upsertMarketPrices, upsertMarketOpportunities } from "../services/marketPriceCache.ts";
+import { scanMarketDislocations } from "../services/autonomy/opportunity-scanner.ts";
 
 const INTERVAL_MS = Math.max(15_000, Number(process.env.WOLV_MARKET_REFRESH_MS ?? 30_000));
 const BATCH_SIZE = 20;
@@ -40,6 +41,19 @@ async function refreshOnce() {
     const response = await getRWAPrice(batch.map((asset) => asset.tokenAddress), "56");
     const rows = parseBinanceRwaPrices(response, batch);
     stored += await upsertMarketPrices(rows);
+    const now = new Date().toISOString();
+    const signals = scanMarketDislocations(rows.map((row) => ({
+      chainId: row.chainId, tokenAddress: row.tokenAddress, ticker: row.ticker,
+      priceUsd: row.priceUsd, referencePriceUsd: row.referencePriceUsd,
+      providerTimestamp: row.providerTimestamp,
+      stale: !Number.isFinite(Date.parse(row.providerTimestamp)) ||
+        Date.now() - Date.parse(row.providerTimestamp) > 5 * 60_000 ||
+        Date.parse(row.providerTimestamp) > Date.now() + 30_000,
+    })), {
+      minDeviationBps: Math.max(1, Math.min(10_000, Number(process.env.WOLV_SCANNER_MIN_EDGE_BPS ?? 100))),
+      now,
+    });
+    await upsertMarketOpportunities(signals);
     if (rows.length !== batch.length) {
       console.warn(`[market-worker] parsed ${rows.length}/${batch.length} price rows in batch`);
     }
