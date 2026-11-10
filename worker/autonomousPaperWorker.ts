@@ -67,6 +67,9 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
   });
   const created = await createExecutionIntentIfAbsent(candidate);
   let intent = created.intent;
+  // A daily strategy key may already belong to a different top-ranked asset.
+  // Never apply the current loop item to an intent created for another token.
+  if (intent.tokenAddress.toLowerCase() !== opportunity.tokenAddress.toLowerCase()) return;
   if (intent.state !== "DISCOVERED") return;
   const lease = await acquireExecutionLease(OWNER_ID, intent.id, LEASE_MS);
   if (!lease) return;
