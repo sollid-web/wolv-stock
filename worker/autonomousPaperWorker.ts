@@ -10,7 +10,7 @@ import {
 } from "../services/autonomy/supabase-portfolio-ledger.ts";
 import {
   acquireExecutionLease, compareAndSwapExecutionIntent,
-  createExecutionIntentIfAbsent, releaseExecutionLease,
+  createExecutionIntentIfAbsent, releaseExecutionLease, listOpenExecutionIntents,
 } from "../services/autonomy/supabase-execution-repository.ts";
 
 const INTERVAL_MS = Math.max(10_000, Number(process.env.WOLV_AUTONOMY_POLL_MS ?? 15_000));
