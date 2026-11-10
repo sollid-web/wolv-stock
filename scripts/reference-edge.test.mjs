@@ -35,7 +35,7 @@ test("applies token taxes conservatively and floors positive edge", () => {
 
 test("negative edge is floored rather than rounded toward zero", () => {
   const result = calculateReferenceEdge({ ...base, referencePriceUsd: "90" });
-  assert.equal(result.expectedEdgeBps, -1089);
+  assert.equal(result.expectedEdgeBps, -1090);
 });
 
 test("requires explicit gas cost and rejects malformed amounts, prices and taxes", () => {
