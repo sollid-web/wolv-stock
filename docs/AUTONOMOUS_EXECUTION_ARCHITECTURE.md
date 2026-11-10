@@ -215,7 +215,7 @@ The autonomy branch now includes:
 - A continuously polling paper-only worker that consumes fresh ACTIVE discount signals, ranks candidates by absolute deviation, and applies the deterministic policy engine.
 - A conservative one-intent-per-strategy-per-UTC-day idempotency key until portfolio-wide exposure accounting and atomic budget reservations are implemented.
 
-The worker stops at `RISK_APPROVED` or `REJECTED_POLICY`. **RISK_APPROVED is not a quote, order, fill, settlement, or authorization to submit a transaction.** The worker has no signer or execution-provider import and cannot broadcast. It uses zero assumed current position and daily spend only because this slice permits at most one candidate intent per strategy per UTC day and creates no fills; this is not a substitute for a portfolio exposure ledger before paper fills or live execution.
+The current worker stops at `QUOTE_REQUIRED`. A reference-price dislocation is not an executable quote and is never treated as risk approval. The next required implementation is a fresh wallet-and-size-specific executable quote adapter, followed by deterministic fee/slippage/impact checks and exact transaction simulation. No order, fill, settlement, or live transaction is created. The worker has no signer or execution-provider import and cannot broadcast. It uses zero assumed current position and daily spend only because this slice permits at most one candidate intent per strategy per UTC day and creates no fills; this is not a substitute for a portfolio exposure ledger before paper fills or live execution.
 
 ### Apply and configure
 
