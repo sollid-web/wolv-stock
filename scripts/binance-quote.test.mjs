@@ -43,7 +43,7 @@ test("normalizes a documented Binance BSC RWA RFQ quote", () => {
   assert.equal(quote.expectedAmountOut, "998500000000000000");
   assert.equal(quote.priceImpactBps, 1);
   assert.equal(quote.gasEstimateRaw, "150000");
-  assert.equal(quote.tradeFeeUsd, "0.12");
+  assert.equal(quote.estimatedNetworkFeeUsd, "0.12");
   assert.equal(quote.inputTokenUsdPrice, "1");
   assert.equal(quote.outputTokenUsdPrice, "100");
   assert.equal(quote.approvalTarget, null);
