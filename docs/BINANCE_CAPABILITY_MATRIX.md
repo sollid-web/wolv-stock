@@ -21,7 +21,7 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | RWA price / reference price | Web3 API | Signed GET `/api/v1/dex/market/rwa/price` | Documented; probe required |
 | Underlying company and market data | Web3 API | Signed GET `/api/v1/dex/market/rwa/underlying-profile` and `underlying-market` | Documented; probe required |
 | Candles / token market data | Web3 API | Signed GET market endpoints | Existing main-branch adapter; validate schema/freshness |
-| Aggregator quote | Web3 API | Read-only quote endpoint; requires wallet address for some RWA/RFQ routes | Documented in existing main-branch code; probe required |
+| Aggregator quote | Web3 API | `/api/v1/dex/aggregator/quote`; RWA routes are RFQ, include quote ID (~30s TTL), exact amounts, vendor, impact and estimated fees | Strict parser and worker quote stage implemented; live response still requires user-environment validation |
 | Swap transaction construction | Web3 API | Returns unsigned transaction data | Not signing authority |
 | Transaction simulation | Web3 API | Pre-transaction simulation endpoint | Must be performed immediately before signing |
 | Transaction broadcast | Web3 API | Accepts an already signed transaction | Requires separate wallet signer |
@@ -62,7 +62,7 @@ A provider's `success: true` or order ID means submission, not settlement. Track
 
 ## Read-only probe
 
-The repository includes `scripts/binance-provider-probe.mjs`.
+The repository includes `scripts/binance-provider-probe.mjs` and a strict quote normalizer at `services/autonomy/binance-quote.ts`.
 
 Required environment:
 - `BINANCE_API_KEY`
@@ -78,7 +78,7 @@ node --test scripts/binance-provider-probe.test.mjs
 node scripts/binance-provider-probe.mjs
 ```
 
-The live probe performs GET requests only. It does not invoke BAW, sign transactions, request approval calldata, submit orders, or broadcast transactions. It reports endpoint-level outcomes and exits non-zero on failed required checks.
+The live probe performs GET requests only. It does not invoke BAW, sign transactions, request approval calldata, submit orders, or broadcast transactions. When a wallet is configured, it reports quote field names and types without printing values. The worker quote adapter validates the documented RWA RFQ response, persists a redacted evidence event, and stops at `QUOTED`; it does not approve risk or execute.
 
 ## Go / no-go criteria for autonomous execution
 
@@ -169,3 +169,15 @@ No live trading or funds movement is authorised by this document.
 - [Binance Agent OS MCP Server documentation](https://developers.binance.com/en/docs/agent-native/mcp-server/agentic)
 - [Binance Agent OS announcement](https://www.binance.com/en-AE/support/announcement/detail/07d45cdd3831498f8a4ff339031a8480)
 - [Binance Agentic Wallet FAQ, updated 2026-11-05](https://www.binance.com/en/support/faq/detail/3ff00e2d488a41c4aaa4aabb6fc36763)
+
+## Quote endpoint contract and current WOLV implementation
+
+Binance's current Trading API documentation states that:
+- `/api/v1/dex/aggregator/quote` returns one route per vendor, sorted by output amount; each route has a `quoteId` with an approximately 30-second TTL.
+- RWA/equity assets return `executionMode: RFQ`. The wallet address is required for RFQ routes and must match the wallet signing the subsequent typed-data order.
+- The response includes `fromTokenAmount`, `toTokenAmount`, `tradeFee`, `estimateGasFee`, `priceImpactPercent`, token metadata, route/vendor and honeypot flags.
+- Binance explicitly describes `tradeFee` and `estimateGasFee` as estimates; accurate gas requires the separate gas-price and gas-limit endpoints.
+
+WOLV now validates the chain, wallet and token identities, amount, RFQ mode, quote freshness, quote ID, route, output, fee/gas estimate, price impact, token decimals/taxes and honeypot flags. It stores only normalized fields, hashes and a conservative 20-second expiry in the execution event. A successful quote is **not** risk approval and is not a transaction or fill.
+
+Official reference: [Binance Web3 Trading API](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
