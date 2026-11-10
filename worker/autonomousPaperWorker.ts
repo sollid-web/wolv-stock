@@ -256,7 +256,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
   if (intent.state === "BUDGET_RESERVED") {
     const portfolio = await readPortfolioPolicy(intent);
     if (!portfolio) return intent;
-    if (portfolio.policyVersion !== intent.policyVersion || !portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
+    if (!portfolioMatchesIntent(portfolio, intent) || portfolio.policyVersion !== intent.policyVersion || !portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
       intent = next(intent, "SECURITY_HOLD", "PAPER_BUDGET_HELD_BY_POLICY_CHANGE");
@@ -292,7 +292,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
   if (intent.state === "SIMULATED") {
     const portfolio = await readPortfolioPolicy(intent);
     if (!portfolio) return intent;
-    if (portfolio.policyVersion !== intent.policyVersion || !portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
+    if (!portfolioMatchesIntent(portfolio, intent) || portfolio.policyVersion !== intent.policyVersion || !portfolio.riskPolicy.enabled || portfolio.emergencyStop) {
       await releasePortfolioBudget(intent.ownerId, intent.id);
       const version = intent.version;
       intent = next(intent, "SECURITY_HOLD", "PAPER_FILL_BLOCKED_BY_POLICY_CHANGE");
