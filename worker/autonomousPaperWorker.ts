@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
-  createExecutionIntent, evaluateRiskPolicy, transitionExecutionIntent,
-  type ExecutionIntent, type RiskPolicy,
+  createExecutionIntent, transitionExecutionIntent,
+  type ExecutionIntent,
 } from "../services/autonomy/execution-domain.ts";
 import {
   acquireExecutionLease, compareAndSwapExecutionIntent,
@@ -24,22 +24,12 @@ function required(name: string): string {
   if (!value) throw new Error(`${name} is required.`);
   return value;
 }
-function parsePolicy(): RiskPolicy {
-  const raw = required("WOLV_AUTONOMY_RISK_POLICY_JSON");
-  const policy = JSON.parse(raw) as RiskPolicy;
-  if (!policy || typeof policy !== "object" || !Array.isArray(policy.allowedChainIds) ||
-      !Array.isArray(policy.allowedTokenAddresses) || !Array.isArray(policy.allowedInputTokenAddresses)) {
-    throw new Error("WOLV_AUTONOMY_RISK_POLICY_JSON is malformed.");
-  }
-  return policy;
-}
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(OWNER_ID)) {
   throw new Error("WOLV_AUTONOMY_OWNER_ID must be a UUID.");
 }
 if (!/^0x[a-fA-F0-9]{40}$/.test(WALLET) || !/^0x[a-fA-F0-9]{40}$/.test(INPUT_TOKEN)) {
   throw new Error("WOLV_AUTONOMY_WALLET_ADDRESS and WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS must be EVM addresses.");
 }
-const POLICY = parsePolicy();
 
 function next(intent: ExecutionIntent, state: Parameters<typeof transitionExecutionIntent>[1], type: string, detail?: Record<string, unknown>) {
   return transitionExecutionIntent(intent, state, {
@@ -82,18 +72,15 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
     });
     await persistTransition(intent, originalVersion);
 
-    const decision = evaluateRiskPolicy(POLICY, {
-      chainId: String(opportunity.chainId), tokenAddress: opportunity.tokenAddress,
-      inputTokenAddress: INPUT_TOKEN, amountIn: AMOUNT_IN,
-      currentPosition: "0", dailySpend: "0",
-      quoteObservedAt: opportunity.providerTimestamp, now: new Date().toISOString(),
-      slippageBps: 0, priceImpactBps: 0, gasCost: "0",
-      expectedEdgeBps: Math.abs(opportunity.deviationBps),
-    });
+    // A reference-price dislocation is not an executable quote. Do not mark
+    // this candidate RISK_APPROVED until a fresh Binance executable quote has
+    // been validated for this wallet, size, route, fees, slippage and expiry.
     const version = intent.version;
-    intent = decision.allowed
-      ? next(intent, "RISK_APPROVED", "PAPER_RISK_APPROVED", { code: decision.code, mode: "PAPER_ONLY" })
-      : next(intent, "REJECTED_POLICY", "PAPER_POLICY_REJECTED", { code: decision.code, reason: decision.reason });
+    intent = next(intent, "QUOTE_REQUIRED", "EXECUTABLE_QUOTE_REQUIRED", {
+      mode: "PAPER_ONLY",
+      blocker: "NO_EXECUTABLE_QUOTE_PROVIDER",
+      referenceDeviationBps: opportunity.deviationBps,
+    });
     await persistTransition(intent, version);
     console.info(`[autonomy-worker] ${decision.allowed ? "risk-approved" : "rejected"} ${intent.id} ${opportunity.ticker} mode=PAPER_ONLY`);
   } finally {
