@@ -22,7 +22,7 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | Underlying company and market data | Web3 API | Signed GET `/api/v1/dex/market/rwa/underlying-profile` and `underlying-market` | Documented; probe required |
 | Candles / token market data | Web3 API | Signed GET market endpoints | Existing main-branch adapter; validate schema/freshness |
 | Aggregator quote | Web3 API | `/api/v1/dex/aggregator/quote`; RWA routes are RFQ, include quote ID (~30s TTL), exact amounts, vendor, impact and estimated fees | Strict parser and worker quote stage implemented; live response still requires user-environment validation |
-| Swap transaction construction | Web3 API | Returns unsigned transaction data | Not signing authority |
+| Swap / RFQ order construction | Web3 API | `/api/v1/dex/aggregator/swap` builds unsigned EVM swap data or RFQ EIP-712 payload | Quote and RFQ payload validators implemented; not yet live-verified or signed |
 | Transaction simulation | Web3 API | Pre-transaction simulation endpoint | Must be performed immediately before signing |
 | Transaction broadcast | Web3 API | Accepts an already signed transaction | Requires separate wallet signer |
 | Wallet sign-in / session | BAW CLI | QR-based sign-in, session expiry, sign-out/revocation | Requires interactive user onboarding |
@@ -188,3 +188,6 @@ Official reference: [Binance Web3 Trading API](https://web3.binance.com/en/dev-d
 The autonomy branch now includes a Supabase migration for owner-scoped paper portfolios, allowlists, budget reservations, positions and idempotent paper quote fills. Defaults are deliberately disabled with emergency stop enabled and zero budget. Reservation RPCs require an execution intent already in `RISK_APPROVED`; paper-fill commit requires `SIMULATED`, the same unexpired quote ID and exact expected output amount.
 
 This ledger is not connected to the worker yet and the migration has not been confirmed applied. It does not move real funds. The exact-decimal reference-edge calculator is also present, but a reliable USD gas cost and conservative exit valuation are still required before the risk engine can approve an opportunity.
+
+
+WOLV also now contains a read-only RFQ order-preparation adapter. It builds the swap response with approval construction disabled, validates route/token/amount/vendor consistency against the quote, checks EIP-712 metadata, hashes the typed-data payload and flags unexpected approval data. It does not sign or submit. The polling worker currently stops at the validated quote; the order-preparation adapter is not yet connected to that loop.
