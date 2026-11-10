@@ -103,7 +103,8 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
       throw new Error("Binance executable quote expired before it could be persisted.");
     }
     const version = intent.version;
-    intent = next(intent, "QUOTED", "BINANCE_EXECUTABLE_QUOTE_VALIDATED", {
+    intent = {
+      ...next(intent, "QUOTED", "BINANCE_EXECUTABLE_QUOTE_VALIDATED", {
       provider: quote.provider, quoteId: quote.quoteId, vendorName: quote.vendorName,
       executionMode: quote.executionMode, amountIn: quote.amountIn,
       expectedAmountOut: quote.expectedAmountOut, slippageBps: SLIPPAGE_BPS,
@@ -113,7 +114,10 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
       outputTokenTaxRate: quote.outputTokenTaxRate, observedAt: quote.observedAt,
       expiresAt: quote.expiresAt, routeFingerprint: quote.routeFingerprint,
       rawEvidenceRef: quote.rawEvidenceRef,
-    });
+      }),
+      quoteId: quote.quoteId,
+      quoteExpiresAt: quote.expiresAt,
+    };
     await persistTransition(intent, version);
     console.info("[autonomy-worker] quote-validated " + intent.id + " " + opportunity.ticker +
       " vendor=" + quote.vendorName + " impactBps=" + quote.priceImpactBps +
