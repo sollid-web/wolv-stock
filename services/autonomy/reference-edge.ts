@@ -29,6 +29,9 @@ function floorDiv(numerator: bigint, denominator: bigint): bigint {
   const remainder = numerator % denominator;
   return remainder !== BigInt(0) && numerator < BigInt(0) ? quotient - BigInt(1) : quotient;
 }
+function ceilPositiveDiv(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator - BigInt(1)) / denominator;
+}
 function formatScaled(value: bigint): string {
   const negative = value < BigInt(0);
   const absolute = negative ? -value : value;
@@ -74,10 +77,12 @@ export function calculateReferenceEdge(input: ReferenceEdgeInput): ReferenceEdge
   const gasCost = parseScaled(input.gasCostUsd, "gasCostUsd");
   if (inputTax > SCALE || outputTax > SCALE) throw new Error("Token tax rate must be between 0 and 1");
 
-  const inputNotional = inputAmount * inputPrice / pow10(input.inputDecimals);
-  const inputTaxCost = inputNotional * inputTax / SCALE;
+  // Round costs upward and proceeds downward so fractional units cannot
+  // make an otherwise unprofitable candidate appear eligible.
+  const inputNotional = ceilPositiveDiv(inputAmount * inputPrice, pow10(input.inputDecimals));
+  const inputTaxCost = ceilPositiveDiv(inputNotional * inputTax, SCALE);
   const outputGross = outputAmount * targetPrice / pow10(input.outputDecimals);
-  const outputTaxCost = outputGross * outputTax / SCALE;
+  const outputTaxCost = ceilPositiveDiv(outputGross * outputTax, SCALE);
   const outputNet = outputGross - outputTaxCost;
   const totalFees = tradeFee + gasCost;
   const totalCost = inputNotional + inputTaxCost + totalFees;
