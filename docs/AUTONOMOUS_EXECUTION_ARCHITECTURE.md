@@ -162,7 +162,7 @@ The dashboard is observability and policy management; it is not required to rema
 2. Calculate conservative expected edge from executable RFQ output, independent price references, token taxes, route fees and accurate gas; reject candidates without a trustworthy exit valuation.
 3. Fetch accurate BSC gas price/limit, build the RFQ order, validate its typed-data domain and fields, and simulate supported steps.
 4. Prove Binance Agentic Wallet Secure Auto Sign for the actual RFQ signing path, including approved trusted-agent onboarding, headless session persistence, expiry and revocation.
-5. Build paper fills and reconciliation against actual quote/order data before connecting any signer.
+5. Paper quote fills and position accounting are implemented; validate them against the user's live Binance/Supabase environment before connecting any signer.
 6. Only then evaluate capped live execution, with explicit user authorization, a hard kill switch and independently enforced wallet limits.
 
 ## Non-goals for this phase
@@ -288,7 +288,7 @@ Validation includes:
 - SHA-256 fingerprints for route and quote evidence.
 
 Important limitations:
-- Binance documents `tradeFee` as a USD estimate and `estimateGasFee` as an estimate that may be inaccurate. The quote is therefore evidence for screening, not sufficient by itself for risk approval or transaction execution. Accurate gas requires the separate gas-price and gas-limit endpoints, and the exact swap/RFQ request must be built and simulated before signing.
+- Binance documents `tradeFee` as a USD estimate and `estimateGasFee` as an estimate that may be inaccurate. The quote is therefore evidence for paper screening only, not sufficient for live execution. The paper worker applies a 2x default or owner-configured fee buffer and requires a fresh reverse RFQ quote; exact gas and live RFQ execution still require further provider validation.
 - RWA routes return `RFQ`, not a normal router swap. The execution path must sign the returned typed data and submit the RFQ order, which is a distinct signer capability from broadcasting a standard swap transaction.
 - Quote IDs expire quickly. WOLV records a conservative 20-second deadline and must obtain a new quote before any later build/submit stage if the deadline has passed.
 
@@ -318,4 +318,4 @@ This adapter is not yet called by the polling worker. It does not sign typed dat
 The portfolio policy includes `network_fee_buffer_bps` (default 10000 = 100% uplift) for Binance's estimated USD network fee. The worker loads this value and applies it to both legs before comparing the total against `max_gas_cost_usd` or calculating round-trip edge. This mitigates underestimation but does not turn Binance's estimate into an exact gas quote; missing fee data still fails closed.
 
 
-The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It requires the reverse quote's input amount to equal the buy quote's exact output amount, rejects non-zero intermediate RWA transfer taxes until vendor tax treatment is verified, and fails closed if either quote or fee estimate is missing/stale. It applies a configurable network-fee buffer (worker environment variable `WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS`, default 10000 bps = 2x) to both estimated USD network fees. The portfolio table has the same policy field; worker-to-policy integration is still pending. It does not claim atomic execution or guaranteed profit.
+The round-trip adapter is `services/autonomy/binance-roundtrip-provider.ts`. It requires the reverse quote's input amount to equal the buy quote's exact output amount, rejects non-zero intermediate RWA transfer taxes until vendor tax treatment is verified, and fails closed if either quote or fee estimate is missing/stale. It applies a configurable network-fee buffer (worker environment variable `WOLV_AUTONOMY_NETWORK_FEE_BUFFER_BPS`, default 10000 bps = 2x) to both estimated USD network fees. The portfolio table stores the same fee-buffer policy and the worker loads it when available; an environment default is used only when the portfolio row is not yet available. It does not claim atomic execution or guaranteed profit.
