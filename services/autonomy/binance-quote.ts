@@ -28,7 +28,7 @@ export type ValidatedBinanceQuote = {
   expectedAmountOut: string;
   priceImpactBps: number;
   gasEstimateRaw: string;
-  tradeFeeUsd: string;
+  estimatedNetworkFeeUsd: string;
   inputTokenUsdPrice: string;
   outputTokenUsdPrice: string;
   approvalTarget: string | null;
@@ -152,7 +152,7 @@ export function parseBinanceRwaExecutableQuote(
   }
   const approvalTarget = route.approveTarget == null ? null : tokenAddress(route.approveTarget, "approveTarget");
   const gasEstimateRaw = positiveInteger(route.estimateGasFee, "estimateGasFee");
-  const tradeFeeUsd = decimal(route.tradeFee, "tradeFee");
+  const estimatedNetworkFeeUsd = decimal(route.tradeFee, "tradeFee");
   const priceImpactBps = decimalPercentToBps(route.priceImpactPercent);
   const routeText = nonEmpty(route.router, "router");
   const inputTokenUsdPrice = decimal(route.fromToken.tokenUnitPrice, "fromToken.tokenUnitPrice");
@@ -175,7 +175,7 @@ export function parseBinanceRwaExecutableQuote(
     walletAddress: request.walletAddress.toLowerCase(),
     inputTokenAddress, outputTokenAddress,
     amountIn, expectedAmountOut, priceImpactBps,
-    gasEstimateRaw, tradeFeeUsd, inputTokenUsdPrice, outputTokenUsdPrice, approvalTarget,
+    gasEstimateRaw, estimatedNetworkFeeUsd, inputTokenUsdPrice, outputTokenUsdPrice, approvalTarget,
     inputTokenDecimals, outputTokenDecimals,
     inputTokenTaxRate, outputTokenTaxRate,
     route: routeText,
