@@ -289,6 +289,7 @@ Implemented on the autonomy branch:
 - A read-only Binance capability probe; configured quote responses are summarized by field names and types only.
 
 Not implemented or proven:
+- Position holding/exit strategy, sell-side paper fills, mark-to-market and realized P&L.
 - Live response validation in the user's Binance environment.
 - Accurate gas/fee validation beyond Binance's estimated network fee, and conservative controls for non-atomic buy/sell execution.
 - The worker and portfolio policy service are connected, but no owner portfolio has been configured and no paper fill has been observed in the user's Supabase environment.
