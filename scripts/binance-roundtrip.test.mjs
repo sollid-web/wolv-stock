@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateRoundTripQuotes } from "../services/autonomy/binance-roundtrip.ts";
+import { applySlippageFloor, validateRoundTripQuotes } from "../services/autonomy/binance-roundtrip.ts";
 
 const now = Date.UTC(2026, 10, 10, 12, 0, 0);
 const wallet = "0x1111111111111111111111111111111111111111";
@@ -50,7 +50,7 @@ const sell = {
 };
 
 test("requires both buy and executable reverse RFQ quotes and calculates buffered net edge", () => {
-  const result = validateRoundTripQuotes(buy, sell, { now, networkFeeBufferBps: 10_000 });
+  const result = validateRoundTripQuotes(buy, sell, { now, networkFeeBufferBps: 10_000, slippageBps: 0 });
   assert.equal(result.indicativeRoundTripEdgeBps, 52);
   assert.equal(result.bufferedNetworkFeesUsd, "0.48");
   assert.equal(result.approvalRequired, false);
@@ -61,7 +61,7 @@ test("requires both buy and executable reverse RFQ quotes and calculates buffere
 });
 
 test("rejects non-reversed token routes, wrong amount and inconsistent decimals", () => {
-  assert.throws(() => validateRoundTripQuotes(buy, { ...sell, outputTokenAddress: rwa }, { now, networkFeeBufferBps: 0 }), /reverse/);
+  assert.throws(() => validateRoundTripQuotes(buy, { ...sell, outputTokenAddress: rwa }, { now, networkFeeBufferBps: 0, slippageBps: 0 }), /reverse/);
   assert.throws(() => validateRoundTripQuotes(buy, { ...sell, amountIn: "1" }, { now, networkFeeBufferBps: 0 }), /exactly match/);
   assert.throws(() => validateRoundTripQuotes(buy, { ...sell, outputTokenDecimals: 18 }, { now, networkFeeBufferBps: 0 }), /decimal/);
 });
@@ -81,4 +81,21 @@ test("flags approval requirements on either leg", () => {
     { now, networkFeeBufferBps: 0 },
   );
   assert.equal(result.approvalRequired, true);
+});
+
+test("slippage haircuts round down to conservative minimum token amounts", () => {
+  assert.equal(applySlippageFloor("1000000", 50), "995000");
+  assert.throws(() => applySlippageFloor("1", 50), /reduces minimum output to zero/);
+  assert.throws(() => applySlippageFloor("100", 10_000), /Invalid/);
+});
+
+test("uses slippage-adjusted buy minimum as the reverse quote input", () => {
+  const buyMin = applySlippageFloor(buy.expectedAmountOut, 50);
+  const sellWithMinimumInput = { ...sell, amountIn: buyMin, expectedAmountOut: "101000000" };
+  const result = validateRoundTripQuotes(buy, sellWithMinimumInput, {
+    now, networkFeeBufferBps: 10_000, slippageBps: 50,
+  });
+  assert.equal(result.buyMinimumAmountOut, buyMin);
+  assert.equal(result.sellMinimumAmountOut, applySlippageFloor("101000000", 50));
+  assert.ok(result.indicativeRoundTripEdgeBps < 52);
 });
