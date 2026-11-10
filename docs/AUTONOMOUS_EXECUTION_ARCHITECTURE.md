@@ -15,10 +15,11 @@ Human involvement remains appropriate for initial account authorization, changin
 Binance currently exposes three different products that must not be conflated:
 
 - **Binance Web3 API:** market/RWA data, quotes, unsigned transaction construction, simulation and broadcast. It does not provide a user's signing authority.
-- **Binance Agentic Wallet (BAW):** an isolated on-chain MPC wallet with Secure Auto Sign for supported transaction classes. This is the leading candidate for supported BSC swaps, but a durable, headless WOLV cloud-worker session is not yet proven.
-- **Binance MCP Server / Agent OS:** a remote MCP integration for a Binance Agentic *exchange sub-account*. Binance's current docs require user confirmation for every trade, cancel and internal transfer. It has no withdrawal scope and is therefore unsuitable as WOLV's unattended execution rail.
+- **Binance Agentic Wallet (BAW):** an isolated on-chain MPC wallet with Secure Auto Sign for supported transaction classes. It may support some ordinary BSC swaps, but WOLV's RWA strategy uses Binance RFQ orders that require EIP-712 `sign-message`. Binance's current Agentic Wallet skill requires a preview, risk display and explicit user confirmation before external signing; Developer Mode also expires. That is not an unattended signing path.
+- **Binance MCP Server / Agent OS:** a remote MCP integration for a Binance Agentic *exchange sub-account*. Its trade/cancel/internal-transfer confirmation workflow is unsuitable for WOLV's unattended execution rail.
+- **Delegated signer candidate:** Privy supports server-side EVM `signTypedData` and a policy engine that can constrain typed-data signatures, contracts and spend limits. It is a viable candidate for a separately authorized WOLV trading wallet, but wallet ownership, import/funding, policy configuration and BSC RFQ compatibility must be verified before adoption.
 
-WOLV must not use the Binance MCP Server as a workaround for BAW's on-chain signing limitations. See `BINANCE_CAPABILITY_MATRIX.md` for the evidence and provider decision.
+WOLV will not treat BAW Secure Auto Sign as RFQ signing authority or bypass its external-sign confirmation flow. The execution signer must be a dedicated, policy-constrained server signer authorized once by the wallet owner, not a browser session or a private key copied into worker environment variables. See `BINANCE_CAPABILITY_MATRIX.md` for the provider evidence.
 
 ## System planes
 
@@ -84,16 +85,12 @@ Any missing, stale, malformed or contradictory input fails closed. Policy change
 
 ### 5. Persistence and job runtime
 
-The autonomy branch now adds a Supabase/Postgres-backed execution-intent queue, append-only event records, compare-and-swap updates and distributed per-intent leases. This is infrastructure, not proof of a complete trading loop. Remaining persistence work includes:
+The autonomy branch now adds a Supabase/Postgres-backed execution-intent queue, append-only event records, compare-and-swap updates and distributed per-intent leases. A separate migration adds fail-closed portfolio policy, atomic budget reservations, positions and idempotent paper-fill commit RPCs. Remaining persistence work includes:
 
-- Durable execution-intent and event records.
-- Per-user / per-wallet tenant isolation.
-- Unique idempotency keys for strategy intent and provider submission.
-- Worker leases and heartbeat to prevent concurrent execution.
-- Outbox/inbox pattern for reliable provider calls and webhook/poll events.
-- Encrypted provider credentials/session references; never store raw secrets in logs.
-- Append-only audit trail for strategy version, input snapshot, policy version, quote, simulation, provider response and settlement.
-- Recovery after worker crash, deploy, timeout, rate limit or provider outage.
+- Worker integration with portfolio policy, risk evaluation and reservation RPCs.
+- Durable outbox/inbox handling for provider writes and reconciliation.
+- Encrypted provider session references and rotation/revocation handling.
+- Complete recovery paths for worker crash, provider timeout, rate limit and ambiguous order submission.
 
 Do not rely on in-memory queues, process-local locks, browser state, or a Vercel request handler as the durable scheduler. The storage/queue technology should be selected after inspecting the deployment and existing persistence choices; do not introduce a second database without a reason.
 
