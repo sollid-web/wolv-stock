@@ -15,6 +15,13 @@ export type MarketPrice = {
   stale: boolean;
 };
 
+export type MarketOpportunity = {
+  chainId: number; tokenAddress: string; ticker: string;
+  direction: "DISCOUNT" | "PREMIUM"; marketPriceUsd: string; referencePriceUsd: string;
+  deviationBps: number; thresholdBps: number; providerTimestamp: string;
+  status: "ACTIVE" | "CLEARED"; observedAt: string;
+};
+
 export type MarketPriceInput = Omit<MarketPrice, "ageMs" | "stale"> & {
   payload: Record<string, unknown>;
 };
@@ -116,6 +123,43 @@ export async function readLatestMarketPrices(options: {
       stale: futureTimestamp || !Number.isFinite(providerTime) || ageMs > MAX_DISPLAY_AGE_MS,
     };
   });
+}
+
+export async function upsertMarketOpportunities(rows: MarketOpportunity[]): Promise<number> {
+  if (!rows.length) return 0;
+  const payload = rows.map((row) => ({
+    chain_id: row.chainId, token_address: row.tokenAddress.toLowerCase(), ticker: row.ticker,
+    direction: row.direction, market_price_usd: row.marketPriceUsd,
+    reference_price_usd: row.referencePriceUsd, deviation_bps: row.deviationBps,
+    threshold_bps: row.thresholdBps, provider_timestamp: row.providerTimestamp,
+    status: row.status, observed_at: row.observedAt,
+  }));
+  await rest("wolv_market_opportunities?on_conflict=chain_id,token_address", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(payload),
+  });
+  return rows.length;
+}
+
+export async function readMarketOpportunities(options: {
+  status?: "ACTIVE" | "CLEARED" | "ALL"; limit?: number;
+} = {}): Promise<MarketOpportunity[]> {
+  const query = new URLSearchParams({
+    select: "chain_id,token_address,ticker,direction,market_price_usd,reference_price_usd,deviation_bps,threshold_bps,provider_timestamp,status,observed_at",
+    order: "abs.deviation_bps.desc,observed_at.desc",
+    limit: String(Math.min(100, Math.max(1, Math.floor(options.limit ?? 50)))),
+  });
+  if (options.status && options.status !== "ALL") query.set("status", `eq.${options.status}`);
+  const rows = await rest(`wolv_market_opportunities?${query.toString()}`, { method: "GET" }) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    chainId: Number(row.chain_id), tokenAddress: String(row.token_address), ticker: String(row.ticker),
+    direction: String(row.direction) as MarketOpportunity["direction"],
+    marketPriceUsd: String(row.market_price_usd), referencePriceUsd: String(row.reference_price_usd),
+    deviationBps: Number(row.deviation_bps), thresholdBps: Number(row.threshold_bps),
+    providerTimestamp: String(row.provider_timestamp), status: String(row.status) as MarketOpportunity["status"],
+    observedAt: String(row.observed_at),
+  }));
 }
 
 export function parseBinanceRwaPrices(
