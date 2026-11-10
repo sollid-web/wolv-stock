@@ -22,7 +22,7 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | Underlying company and market data | Web3 API | Signed GET `/api/v1/dex/market/rwa/underlying-profile` and `underlying-market` | Documented; probe required |
 | Candles / token market data | Web3 API | Signed GET market endpoints | Existing main-branch adapter; validate schema/freshness |
 | Aggregator quote | Web3 API | `/api/v1/dex/aggregator/quote`; RWA routes are RFQ, include quote ID (~30s TTL), exact amounts, vendor, impact and estimated network fee | Strict parser, buy/reverse quote, slippage haircut, buffered edge and paper risk integration implemented; live quote still requires user-environment validation |
-| Swap / RFQ order construction | Web3 API | `/api/v1/dex/aggregator/swap` builds unsigned EVM swap data or RFQ EIP-712 payload | Quote and RFQ payload validators implemented; not yet live-verified or signed |
+| Swap / RFQ order construction | Web3 API | `/api/v1/dex/aggregator/swap` builds unsigned EVM swap data or RFQ EIP-712 payload | Quote and RFQ payload validators are invoked by paper worker; live response remains unverified and no signature is produced |
 | Transaction simulation | Web3 API | Pre-transaction simulation endpoint | Must be performed immediately before signing |
 | Transaction broadcast | Web3 API | Accepts an already signed transaction | Requires separate wallet signer |
 | Wallet sign-in / session | BAW CLI | QR-based sign-in, session expiry, sign-out/revocation | Requires interactive user onboarding |
@@ -194,7 +194,7 @@ The autonomy branch now includes a Supabase migration for owner-scoped paper por
 The ledger and policy adapter are connected to the paper worker. The migration has not been confirmed applied and no owner portfolio policy is configured in this repository. Defaults are disabled with emergency stop enabled and zero paper budget. The exact-decimal edge calculator uses a fresh reverse RFQ output and a 2x default network-fee buffer for paper screening; this is not an exact gas quote or a guarantee of a later sale.
 
 
-WOLV also now contains a read-only RFQ order-preparation adapter. It builds the swap response with approval construction disabled, validates route/token/amount/vendor consistency against the quote, checks EIP-712 metadata, hashes the typed-data payload and flags unexpected approval data. It does not sign or submit. The polling worker currently stops at quote-based paper fills; the order-preparation adapter is not yet connected to the loop.
+WOLV also now contains a read-only RFQ order-preparation adapter. It builds the swap response with approval construction disabled, validates route/token/amount/vendor consistency against the quote, checks EIP-712 metadata, hashes the typed-data payload and flags unexpected approval data. It does not sign or submit. The polling worker builds and validates the unsigned RFQ order when policy is enabled, then stops at quote-based paper fills; it does not sign or submit.
 
 ## RFQ signing-provider decision
 
