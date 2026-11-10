@@ -24,8 +24,8 @@ if (direct) {
     console.error("Usage: node scripts/run-worker.mjs worker/<worker-file>.ts");
     process.exitCode = 2;
   } else {
-    loadEnvFile(".env");
     loadEnvFile(".env.local");
+    loadEnvFile(".env");
     await import(pathToFileURL(resolve(process.cwd(), target)).href);
   }
 }
