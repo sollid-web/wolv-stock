@@ -45,7 +45,7 @@ export function validateRoundTripQuotes(
   }
   // Until transfer-tax behavior is proven for the RFQ vendors, reject taxed
   // intermediate RWA assets instead of guessing whether quotes include tax.
-  if (buy.outputTokenTaxRate !== "0" || sell.inputTokenTaxRate !== "0") {
+  if (Number(buy.outputTokenTaxRate) !== 0 || Number(sell.inputTokenTaxRate) !== 0) {
     throw new Error("Non-zero RWA transfer tax is not supported by the round-trip evaluator");
   }
 
