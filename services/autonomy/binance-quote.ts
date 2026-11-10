@@ -68,7 +68,9 @@ function decimalPercentToBps(value: unknown): number {
   const unsigned = text.startsWith("-") ? text.slice(1) : text;
   const [whole, fraction = ""] = unsigned.split(".");
   const padded = (fraction + "00").slice(0, 2);
-  const bps = Number(whole) * 100 + Number(padded);
+  const remainder = fraction.slice(2);
+  const roundUp = /[1-9]/.test(remainder);
+  const bps = Number(whole) * 100 + Number(padded) + (roundUp ? 1 : 0);
   if (!Number.isSafeInteger(bps) || bps > 100_000) throw new Error("Binance quote has invalid priceImpactPercent");
   return bps;
 }
