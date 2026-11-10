@@ -1,4 +1,4 @@
-import type { ExecutionIntent } from "./execution-domain";
+import { isTerminalExecutionState, type ExecutionIntent } from "./execution-domain";
 
 function config() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
@@ -72,4 +72,18 @@ export async function releaseExecutionLease(ownerId: string, intentId: string, l
     method: "POST",
     body: JSON.stringify({ p_owner_id: ownerId, p_intent_id: intentId, p_lease_token: leaseToken }),
   });
+}
+
+/** Load non-terminal intents for restart recovery, scoped to one owner. */
+export async function listOpenExecutionIntents(ownerId: string, limit = 100): Promise<ExecutionIntent[]> {
+  const query = new URLSearchParams({
+    select: "intent",
+    owner_id: `eq.${ownerId}`,
+    order: "updated_at.asc",
+    limit: String(Math.min(250, Math.max(1, Math.floor(limit)))),
+  });
+  const rows = await request(`wolv_execution_intents?${query}`) as Array<{ intent: ExecutionIntent }>;
+  return rows.map((row) => row.intent).filter((intent) =>
+    intent && typeof intent.state === "string" && !isTerminalExecutionState(intent.state),
+  );
 }
