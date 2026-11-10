@@ -32,7 +32,9 @@ Do not treat BAW CLI success, a Web3 API quote, or an unsigned transaction as pr
 | BAW limit orders | BAW CLI | Order lifecycle and cancellation commands documented | Validate unattended trigger behavior and session constraints |
 | BAW external transaction / EIP-712 signing | BAW CLI / Developer Mode | Official Agentic Wallet skill requires sign-message preview, display of parsed message and risks, explicit user confirmation, then sign-message execute; result may remain PENDING_CONFIRMATION | **Not suitable for unattended RWA RFQ signing** |
 | BSC testnet through BAW | BAW | Public docs list BSC mainnet chain ID 56; no BSC testnet support established here | Unverified; do not assume |
-| BAW onboarding | Binance App / supported agent | Binance FAQ says each user currently has one Agentic Wallet and warns against scanning third-party website QR codes; direct WOLV-hosted QR onboarding is not an acceptable assumption | **Integration approval / supported-agent path required** |\n| Multi-user unattended worker | WOLV | Requires per-user session isolation, revocation handling, leases, durable idempotency and reconciliation; one BAW wallet per user constrains agent tenancy | Not proven |
+| BAW onboarding | Binance App / supported agent | Binance FAQ says each user currently has one Agentic Wallet and warns against scanning third-party website QR codes; direct WOLV-hosted QR onboarding is not an acceptable assumption | **Integration approval / supported-agent path required** |
+| Privy EVM server wallet | Privy | Official Node SDK exposes EVM `signTypedData`; wallet policies can constrain typed-data signatures, contracts and spending | **Signer candidate; not connected or approved** |
+| Multi-user unattended worker | WOLV | Requires per-user session isolation, revocation handling, leases, durable idempotency and reconciliation; one BAW wallet per user constrains agent tenancy | Not proven |
 
 ## Hard roadblocks to resolve
 
