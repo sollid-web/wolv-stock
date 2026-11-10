@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getValidatedBinanceRoundTripQuote } from "../services/autonomy/binance-roundtrip-provider.ts";
+import { buildValidatedBinanceRfqOrder } from "../services/autonomy/binance-rfq-order-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
   createExecutionIntent, transitionExecutionIntent, evaluateRiskPolicy, isTerminalExecutionState,
@@ -115,6 +116,9 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       throw new Error("Binance round-trip quotes expired before they could be persisted.");
     }
     const quote = roundTrip.buy;
+    const rfqOrder = feePolicy?.riskPolicy.enabled && feePolicy.policyVersion === intent.policyVersion
+      ? await buildValidatedBinanceRfqOrder({ quote, slippageBps: SLIPPAGE_BPS, maxPriceImpactBps: feePolicy.riskPolicy.maxPriceImpactBps })
+      : null;
     const version = intent.version;
     intent = {
       ...next(intent, "QUOTED", "BINANCE_ROUNDTRIP_QUOTES_VALIDATED", {
@@ -135,6 +139,12 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
         bufferedNetworkFeesUsd: roundTrip.bufferedNetworkFeesUsd,
         approvalRequired: roundTrip.approvalRequired, slippageBps: roundTrip.slippageBps,
         buyMinimumAmountOut: roundTrip.buyMinimumAmountOut, sellMinimumAmountOut: roundTrip.sellMinimumAmountOut,
+        rfqOrderPrepared: !!rfqOrder,
+        rfqOrderId: rfqOrder?.orderId ?? null, rfqVendor: rfqOrder?.vendor ?? null,
+        rfqSigningScheme: rfqOrder?.signingScheme ?? null, rfqTypedDataHash: rfqOrder?.typedDataHash ?? null,
+        rfqTypedDataFormat: rfqOrder?.typedDataFormat ?? null,
+        rfqApprovalRequired: rfqOrder?.approvalRequired ?? null, rfqApprovalTarget: rfqOrder?.approvalTarget ?? null,
+        rfqPreparedAt: rfqOrder?.preparedAt ?? null, rfqRawEvidenceRef: rfqOrder?.rawEvidenceRef ?? null,
         expiresAt: roundTrip.expiresAt, routeFingerprint: roundTrip.routeFingerprint,
         rawEvidenceRef: roundTrip.rawEvidenceRef,
       }),
