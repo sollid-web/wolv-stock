@@ -223,7 +223,7 @@ The worker stops at `QUOTED`. It does not run portfolio-aware risk approval, res
 
 ### Apply and configure
 
-Apply the new migration after the market cache and opportunity migrations:
+Apply all pending migrations, including the portfolio ledger migration after the execution queue migration:
 
 ```bash
 npx supabase db push
@@ -260,12 +260,14 @@ Implemented on the autonomy branch:
 - Opportunity qualification from cached market snapshots.
 - Strict Binance RWA RFQ quote normalization and validation.
 - Worker progression to `QUOTED`, with quote ID, expiry and redacted audit evidence.
+- Exact decimal arithmetic for reference-price edge after token taxes, trade fees and an explicitly supplied gas USD cost.
+- Supabase portfolio policy schema, fail-closed defaults, atomic reservation/release RPCs, and idempotent paper-fill/position commit RPCs.
 - A read-only Binance capability probe; configured quote responses are summarized by field names and types only.
 
 Not implemented or proven:
 - Live response validation in the user's Binance environment.
-- Net-edge calculation using executable output, all fees and gas.
-- Portfolio-wide atomic capital reservation and simulated fill/position ledger.
+- Live net-edge evaluation: the exact arithmetic module exists, but the worker still needs a reliable USD gas-cost input and a conservative exit-price model.
+- Worker integration and an owner-configured portfolio policy row; no paper fill has been recorded.
 - Exact transaction construction and simulation.
 - An unattended signer that Binance authorizes for WOLV's target swap class.
 - On-chain submission, receipt verification, balance reconciliation or unattended recovery.
@@ -294,3 +296,14 @@ Important limitations:
 The worker currently transitions through `DISCOVERED → QUALIFIED → QUOTE_REQUIRED → QUOTED` and stops. It does not mark the intent `RISK_APPROVED`, reserve funds, simulate a fill, or submit an order. The next blockers are portfolio-aware policy evaluation, atomic capital reservation, accurate gas calculation, RFQ typed-data construction/signing, and settlement reconciliation.
 
 Official endpoint contract: [Binance Trading API — Get Aggregated Quote and RFQ flow](https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api).
+
+
+## Portfolio policy and paper ledger
+
+Migration `20261110150000_create_autonomy_portfolio_ledger.sql` adds an owner-scoped portfolio policy row, budget reservations, token positions and idempotent paper-fill records. The default policy is disabled, emergency-stopped, has zero paper budget and empty allowlists. It cannot trade until an owner-specific policy is deliberately configured.
+
+The PostgreSQL reservation function serializes per-owner budget decisions, enforces token/chain allowlists, order/position/daily limits and total paper budget, and requires the execution intent to be in `RISK_APPROVED`. The paper-fill commit function requires a matching unexpired quote on an intent in `SIMULATED`, commits once per intent, and updates the position ledger atomically. These RPCs do not touch real wallet balances or submit transactions.
+
+The server-only adapter is `services/autonomy/supabase-portfolio-ledger.ts`. It loads policy from Supabase and exposes reserve/release/commit operations. It is not yet connected to the worker's risk/quote lifecycle, and the migration has not been confirmed applied to the user's Supabase project.
+
+The exact-decimal helper `services/autonomy/reference-edge.ts` computes a target-price scenario after input/output token taxes, quoted trade fee and an explicit USD gas cost. It intentionally rejects missing gas cost. This is a reference-price scenario, not guaranteed profit or a verified executable exit; the worker must obtain a trustworthy exit valuation and accurate gas cost before risk approval.
