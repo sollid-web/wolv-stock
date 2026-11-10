@@ -161,12 +161,12 @@ The dashboard is observability and policy management; it is not required to rema
 
 ## Immediate engineering sequence
 
-1. Keep the existing read-only Binance probe and add quote retrieval once a public wallet address is configured.
-2. Build provider contracts and a deterministic execution state machine with mocked providers; test retries, duplicate intents, stale quotes, policy rejection and ambiguous submission.
-3. Build the durable persistence/worker layer after confirming current deployment infrastructure.
-4. Conduct BAW trusted-agent and Secure Auto Sign proof-of-capability outside the production WOLV wallet flow.
-5. Implement the BAW adapter only if the supported session and unattended operation requirements pass.
-6. If BAW cannot support the required autonomous route, evaluate a dedicated policy-enforcing smart-account/session-key signer. Do not weaken the product back to manual approval on every trade and do not bypass Binance controls.
+1. Build the portfolio ledger and atomic capital reservation layer in the existing Supabase database.
+2. Calculate conservative expected edge from executable RFQ output, independent price references, token taxes, route fees and accurate gas; reject candidates without a trustworthy exit valuation.
+3. Fetch accurate BSC gas price/limit, build the RFQ order, validate its typed-data domain and fields, and simulate supported steps.
+4. Prove Binance Agentic Wallet Secure Auto Sign for the actual RFQ signing path, including approved trusted-agent onboarding, headless session persistence, expiry and revocation.
+5. Build paper fills and reconciliation against actual quote/order data before connecting any signer.
+6. Only then evaluate capped live execution, with explicit user authorization, a hard kill switch and independently enforced wallet limits.
 
 ## Non-goals for this phase
 
@@ -211,15 +211,15 @@ These are TypeScript contracts, not connected implementations. A real database a
 
 ## Implemented durable queue and paper qualification worker
 
-The autonomy branch now includes:
+The autonomy branch includes:
 - Supabase-backed execution-intent records with owner-scoped idempotency.
-- Version compare-and-swap through a PostgreSQL RPC; stale workers cannot overwrite a newer intent.
-- Database-backed per-intent leases with expiry and token-checked release.
-- Audit-event insertion in the same database transaction as intent creation/state changes.
-- A continuously polling paper-only worker that consumes fresh ACTIVE discount signals, ranks candidates by absolute deviation, and applies the deterministic policy engine.
-- A conservative one-intent-per-strategy-per-UTC-day idempotency key until portfolio-wide exposure accounting and atomic budget reservations are implemented.
+- PostgreSQL compare-and-swap state updates and per-intent worker leases.
+- Audit-event insertion in the same transaction as intent creation/state changes.
+- A continuously polling paper-only worker that consumes fresh ACTIVE discount opportunities.
+- Binance RWA RFQ quote retrieval and strict response validation; the worker records quote ID, expiry, vendor, route fingerprint, amounts, fees, gas estimate and safety metadata.
+- Restart recovery for intents in `DISCOVERED`, `QUALIFIED` and `QUOTE_REQUIRED`.
 
-The current worker reaches `QUOTED` after validating a fresh Binance RWA RFQ quote. It does not yet evaluate portfolio-aware risk, reserve capital, create paper fills, sign, submit or broadcast. It has no signer or execution-provider import. The one-intent-per-strategy-per-UTC-day guard is only a temporary throttle, not a substitute for portfolio-wide exposure accounting.
+The worker stops at `QUOTED`. It does not run portfolio-aware risk approval, reserve capital, create paper fills, sign, submit or broadcast. Quote gas and trade fees are provider estimates and cannot be treated as final execution costs. A one-intent-per-strategy-per-UTC-day key is a temporary throttle, not a portfolio ledger.
 
 ### Apply and configure
 
