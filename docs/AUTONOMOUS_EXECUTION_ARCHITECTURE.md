@@ -203,3 +203,44 @@ The provider/storage boundary is now also captured in `services/autonomy/executi
 - Distributed worker lease / heartbeat contract.
 
 These are TypeScript contracts, not connected implementations. A real database and queue/lease backend must implement the atomicity guarantees before a worker is allowed to submit orders. Provider responses explicitly distinguish submitted, rejected and unknown outcomes; unknown outcomes must be reconciled, never blindly retried.
+
+
+## Implemented durable queue and paper qualification worker
+
+The autonomy branch now includes:
+- Supabase-backed execution-intent records with owner-scoped idempotency.
+- Version compare-and-swap through a PostgreSQL RPC; stale workers cannot overwrite a newer intent.
+- Database-backed per-intent leases with expiry and token-checked release.
+- Audit-event insertion in the same database transaction as intent creation/state changes.
+- A continuously polling paper-only worker that consumes fresh ACTIVE discount signals, ranks candidates by absolute deviation, and applies the deterministic policy engine.
+- A conservative one-intent-per-strategy-per-UTC-day idempotency key until portfolio-wide exposure accounting and atomic budget reservations are implemented.
+
+The worker stops at `RISK_APPROVED` or `REJECTED_POLICY`. **RISK_APPROVED is not a quote, order, fill, settlement, or authorization to submit a transaction.** The worker has no signer or execution-provider import and cannot broadcast. It uses zero assumed current position and daily spend only because this slice permits at most one candidate intent per strategy per UTC day and creates no fills; this is not a substitute for a portfolio exposure ledger before paper fills or live execution.
+
+### Apply and configure
+
+Apply the new migration after the market cache and opportunity migrations:
+
+```bash
+npx supabase db push
+```
+
+Add server-only values to the worker environment (never expose the service-role key to the browser):
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+WOLV_AUTONOMY_OWNER_ID=YOUR_OWNER_UUID
+WOLV_AUTONOMY_WALLET_ADDRESS=0xYourBscWallet
+WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS=0xYourInputToken
+WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS=1000000000000000000
+WOLV_AUTONOMY_RISK_POLICY_JSON={"enabled":true,"allowedChainIds":["56"],"allowedTokenAddresses":["0xYourAllowlistedToken"],"allowedInputTokenAddresses":["0xYourInputToken"],"maxOrderAmount":"1000000000000000000","maxPositionAmount":"1000000000000000000","maxDailySpend":"1000000000000000000","maxSlippageBps":50,"maxPriceImpactBps":100,"maxQuoteAgeMs":300000,"maxGasCost":"0","minExpectedEdgeBps":100}
+```
+
+Run the worker only after migrations are applied and the market-price worker is producing fresh opportunities:
+
+```bash
+npm run autonomy:paper-worker
+```
+
+Do not run this as a browser process or expose the service-role key. This worker records decisions only; it does not create paper fills or live transactions. Live execution remains disabled.
