@@ -47,7 +47,7 @@ export type ReferenceEdgeInput = {
   inputTokenTaxRate: string;
   outputAmount: string;
   outputDecimals: number;
-  referencePriceUsd: string;
+  outputTokenUsdPrice: string;
   outputTokenTaxRate: string;
   tradeFeeUsd: string;
   gasCostUsd: string;
@@ -66,11 +66,11 @@ export type ReferenceEdgeResult = {
  * This is not guaranteed profit or an executable exit quote. Gas USD is required;
  * the function never treats a missing gas estimate as zero.
  */
-export function calculateReferenceEdge(input: ReferenceEdgeInput): ReferenceEdgeResult {
+export function calculateNetEdge(input: ReferenceEdgeInput): ReferenceEdgeResult {
   const inputAmount = parseAmount(input.inputAmount, input.inputDecimals, "inputAmount");
   const outputAmount = parseAmount(input.outputAmount, input.outputDecimals, "outputAmount");
   const inputPrice = parseScaled(input.inputTokenUsdPrice, "inputTokenUsdPrice", false);
-  const targetPrice = parseScaled(input.referencePriceUsd, "referencePriceUsd", false);
+  const targetPrice = parseScaled(input.outputTokenUsdPrice, "outputTokenUsdPrice", false);
   const inputTax = parseScaled(input.inputTokenTaxRate, "inputTokenTaxRate");
   const outputTax = parseScaled(input.outputTokenTaxRate, "outputTokenTaxRate");
   const tradeFee = parseScaled(input.tradeFeeUsd, "tradeFeeUsd");
