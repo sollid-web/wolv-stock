@@ -31,6 +31,7 @@ export type ValidatedBinanceRfqOrder = {
   expectedAmountOut: string;
   typedDataHash: string;
   typedDataToSign: string;
+  approvalTarget: string | null;
   routeFingerprint: string;
   rawEvidenceRef: string;
   approvalRequired: boolean;
@@ -88,7 +89,8 @@ export function parseBinanceRfqOrderBuild(
     throw new Error("RFQ build typedDataToSign is not a valid hex payload");
   }
   const signatureData = rfq.signatureData;
-  const approvalRequired = Array.isArray(signatureData) && signatureData.length > 0;
+  const approvalTarget = route.approveTarget == null ? quote.approvalTarget : address(route.approveTarget, "routerResult.approveTarget");
+  const approvalRequired = approvalTarget !== null || (Array.isArray(signatureData) && signatureData.length > 0);
   return {
     provider: "binance-web3-aggregator",
     quoteId: quote.quoteId,
@@ -103,6 +105,7 @@ export function parseBinanceRfqOrderBuild(
     expectedAmountOut: quote.expectedAmountOut,
     typedDataHash: hash(typedDataToSign),
     typedDataToSign,
+    approvalTarget,
     routeFingerprint: quote.routeFingerprint,
     rawEvidenceRef: hash({ routerResult: route, rfq: { ...rfq, typedDataToSign: "[REDACTED]" } }),
     approvalRequired,
