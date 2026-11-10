@@ -40,12 +40,35 @@ alter table public.wolv_execution_leases enable row level security;
 revoke all on public.wolv_execution_intents, public.wolv_execution_events, public.wolv_execution_leases from anon, authenticated;
 grant all on public.wolv_execution_intents, public.wolv_execution_events, public.wolv_execution_leases to service_role;
 
+-- Initial event is committed atomically with the intent row.
+create or replace function public.wolv_record_initial_execution_event()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+declare event_data jsonb;
+begin
+  event_data := coalesce(new.intent->'events'->0, '{}'::jsonb);
+  insert into public.wolv_execution_events(owner_id, intent_id, event_type, actor, occurred_at, detail)
+  values (
+    new.owner_id, new.id, coalesce(event_data->>'type', 'INTENT_CREATED'),
+    coalesce(event_data->>'actor', 'worker'),
+    coalesce((event_data->>'at')::timestamptz, new.created_at),
+    coalesce(event_data->'detail', '{}'::jsonb)
+  );
+  return new;
+end;
+$$;
+drop trigger if exists wolv_execution_intent_initial_event on public.wolv_execution_intents;
+create trigger wolv_execution_intent_initial_event
+  after insert on public.wolv_execution_intents
+  for each row execute function public.wolv_record_initial_execution_event();
+
+-- Version compare, state update and audit append are one database transaction.
 create or replace function public.wolv_execution_intent_cas(
   p_owner_id uuid, p_intent_id uuid, p_expected_version integer, p_intent jsonb
 ) returns boolean
 language plpgsql security definer set search_path = public
 as $$
-declare changed integer;
+declare changed integer; event_data jsonb;
 begin
   update public.wolv_execution_intents
   set intent = p_intent,
@@ -54,7 +77,14 @@ begin
       updated_at = (p_intent->>'updatedAt')::timestamptz
   where owner_id = p_owner_id and id = p_intent_id and version = p_expected_version;
   get diagnostics changed = row_count;
-  return changed = 1;
+  if changed = 0 then return false; end if;
+  event_data := p_intent->'events'->(jsonb_array_length(p_intent->'events') - 1);
+  insert into public.wolv_execution_events(owner_id, intent_id, event_type, actor, occurred_at, detail)
+  values (
+    p_owner_id, p_intent_id, event_data->>'type', event_data->>'actor',
+    (event_data->>'at')::timestamptz, coalesce(event_data->'detail', '{}'::jsonb)
+  );
+  return true;
 end;
 $$;
 
@@ -97,6 +127,7 @@ begin
 end;
 $$;
 
+revoke all on function public.wolv_record_initial_execution_event() from public, anon, authenticated;
 revoke all on function public.wolv_execution_intent_cas(uuid,uuid,integer,jsonb) from public, anon, authenticated;
 revoke all on function public.wolv_acquire_execution_lease(uuid,uuid,integer) from public, anon, authenticated;
 revoke all on function public.wolv_release_execution_lease(uuid,uuid,uuid) from public, anon, authenticated;
