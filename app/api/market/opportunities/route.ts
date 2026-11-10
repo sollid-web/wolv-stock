@@ -14,7 +14,8 @@ export async function GET(request: Request) {
     const opportunities = await readMarketOpportunities({ status, limit: Number(url.searchParams.get("limit") ?? 50) });
     return NextResponse.json({
       ok: true, source: "supabase-opportunity-scanner", opportunities,
-      activeCount: opportunities.filter((item) => item.status === "ACTIVE").length,
+      activeCount: opportunities.filter((item) => item.status === "ACTIVE" && !item.stale).length,
+      staleCount: opportunities.filter((item) => item.stale).length,
       asOf: new Date().toISOString(),
       disclaimer: "Reference-price dislocations are research signals, not executable quotes or guaranteed profit.",
     }, { headers: { "Cache-Control": "public, s-maxage=2, stale-while-revalidate=5" } });
