@@ -82,7 +82,7 @@ async function qualifyOpportunity(opportunity: Awaited<ReturnType<typeof readMar
       referenceDeviationBps: opportunity.deviationBps,
     });
     await persistTransition(intent, version);
-    console.info(`[autonomy-worker] ${decision.allowed ? "risk-approved" : "rejected"} ${intent.id} ${opportunity.ticker} mode=PAPER_ONLY`);
+    console.info(`[autonomy-worker] quote-required ${intent.id} ${opportunity.ticker} mode=PAPER_ONLY blocker=NO_EXECUTABLE_QUOTE_PROVIDER`);
   } finally {
     await releaseExecutionLease(OWNER_ID, intent.id, lease);
   }
