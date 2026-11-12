@@ -215,6 +215,7 @@ function harness(options = {}) {
   const transitions = [];
   const calls = { reserve: 0, create: 0, gas: 0, simulation: 0, sign: 0, submit: 0, release: 0, unboundRelease: 0 };
   const repository = {
+    async findActive() { return options.activeAttempt ? structuredClone(options.activeAttempt) : null; },
     async reserve() { calls.reserve += 1; return options.reserveResult ?? true; },
     async create() { calls.create += 1; return structuredClone(current); },
     async transition(input) {
@@ -368,6 +369,18 @@ test("does not re-submit an attempt that is already in the submission state", as
     ownerId, intentId, outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
   });
   assert.equal(result.status, "RECOVERY_REQUIRED");
+  assert.equal(h.calls.sign, 0);
+  assert.equal(h.calls.submit, 0);
+});
+
+test("returns the existing active attempt before reserving new capital", async () => {
+  const existing = attempt({ status: "SUBMISSION_UNKNOWN", version: 6 });
+  const h = harness({ activeAttempt: existing });
+  const result = await h.orchestrator.execute({
+    ownerId, intentId, outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
+  });
+  assert.equal(result.status, "RECOVERY_REQUIRED");
+  assert.equal(h.calls.reserve, 0);
   assert.equal(h.calls.sign, 0);
   assert.equal(h.calls.submit, 0);
 });
