@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { getValidatedBinanceRoundTripQuote } from "../services/autonomy/binance-roundtrip-provider.ts";
-import { getValidatedBinanceRwaQuote } from "../services/autonomy/binance-quote-provider.ts";
+import { autonomyProviderRegistry } from "../services/autonomy/provider-registry.ts";
 import { applyNetworkFeeBuffer } from "../services/autonomy/network-fee.ts";
 import { evaluatePaperExit } from "../services/autonomy/paper-exit-policy.ts";
 import { conservativeExitProceeds, usdFeeToTokenUnits, calculateExitReturnBps } from "../services/autonomy/paper-exit-valuation.ts";
-import { buildValidatedBinanceRfqOrder } from "../services/autonomy/binance-rfq-order-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
   createExecutionIntent, transitionExecutionIntent, evaluateRiskPolicy, isTerminalExecutionState,
@@ -61,7 +59,7 @@ async function persistTransition(intent: ExecutionIntent, expectedVersion: numbe
 }
 
 function roundTripEvidence(intent: ExecutionIntent): Record<string, unknown> {
-  const event = [...intent.events].reverse().find((item) => item.type === "BINANCE_ROUNDTRIP_QUOTES_VALIDATED");
+  const event = [...intent.events].reverse().find((item) => item.type === "PROVIDER_ROUNDTRIP_QUOTES_VALIDATED");
   if (!event || !event.detail || typeof event.detail !== "object") {
     throw new Error("Execution intent is missing its immutable round-trip quote evidence.");
   }
@@ -99,30 +97,26 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
   if (intent.state === "QUALIFIED") {
     const version = intent.version;
     intent = next(intent, "QUOTE_REQUIRED", "EXECUTABLE_QUOTE_REQUIRED", {
-      mode: "PAPER_ONLY", blocker: "AWAITING_VALIDATED_BINANCE_ROUNDTRIP_QUOTES",
+      mode: "PAPER_ONLY", blocker: "AWAITING_VALIDATED_PROVIDER_ROUNDTRIP_QUOTES",
     });
     await persistTransition(intent, version);
   }
 
   if (intent.state === "QUOTE_REQUIRED") {
-    if (!process.env.BINANCE_API_KEY?.trim() || !process.env.BINANCE_SECRET_KEY?.trim()) {
-      console.info("[autonomy-worker] quote-required " + intent.id + " blocker=BINANCE_API_CREDENTIALS_MISSING");
-      return intent;
-    }
     const feePolicy = await readPortfolioPolicy(intent);
     const feeBufferBps = feePolicy?.networkFeeBufferBps ?? NETWORK_FEE_BUFFER_BPS;
-    const roundTrip = await getValidatedBinanceRoundTripQuote({
+    const { adapter, result: roundTrip } = await autonomyProviderRegistry.getRoundTripQuote({
       chainId: intent.chainId, walletAddress: intent.walletAddress,
       inputTokenAddress: intent.inputTokenAddress, outputTokenAddress: intent.tokenAddress,
       amountIn: intent.amountIn, slippageBps: SLIPPAGE_BPS,
       networkFeeBufferBps: feeBufferBps,
     });
     if (Date.parse(roundTrip.expiresAt) <= Date.now()) {
-      throw new Error("Binance round-trip quotes expired before they could be persisted.");
+      throw new Error("Provider round-trip quotes expired before they could be persisted.");
     }
     const quote = roundTrip.buy;
     const rfqOrder = feePolicy?.riskPolicy.enabled && feePolicy.policyVersion === intent.policyVersion
-      ? await buildValidatedBinanceRfqOrder({ quote, slippageBps: SLIPPAGE_BPS, maxPriceImpactBps: feePolicy.riskPolicy.maxPriceImpactBps })
+      ? await adapter.buildOrder({ quote, slippageBps: SLIPPAGE_BPS, maxPriceImpactBps: feePolicy.riskPolicy.maxPriceImpactBps })
       : null;
     const version = intent.version;
     intent = {
@@ -434,7 +428,8 @@ async function processPaperExits() {
   for (const position of positions) {
     if (position.chainId !== portfolio.chainId || !allowed.has(position.tokenAddress)) continue;
     try {
-      const quote = await getValidatedBinanceRwaQuote({
+      const adapter = autonomyProviderRegistry.select(position.chainId);
+      const quote = await adapter.getQuote({
         chainId: position.chainId, walletAddress: portfolio.walletAddress,
         inputTokenAddress: position.tokenAddress,
         outputTokenAddress: portfolio.inputTokenAddress,
