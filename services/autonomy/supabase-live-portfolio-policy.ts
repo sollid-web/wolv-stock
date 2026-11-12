@@ -27,6 +27,7 @@ export interface LiveExecutionPolicy {
   maxQuoteAgeMs: number;
   maxGasCostUsd: string;
   minExpectedEdgeBps: number;
+  networkFeeBufferBps: number;
 }
 
 function config() {
@@ -118,7 +119,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
       "live_min_native_gas_balance_wei_text:live_min_native_gas_balance_wei::text",
       "live_max_slippage_bps", "live_max_price_impact_bps",
       "live_max_quote_age_ms", "live_max_gas_cost_usd_text:live_max_gas_cost_usd::text",
-      "live_min_expected_edge_bps",
+      "live_min_expected_edge_bps", "network_fee_buffer_bps",
     ].join(","),
     owner_id: "eq." + ownerId,
     limit: "1",
@@ -171,6 +172,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
     maxQuoteAgeMs: integer(row.live_max_quote_age_ms, "live_max_quote_age_ms", 0, 3600000),
     maxGasCostUsd: decimal(row.live_max_gas_cost_usd_text, "live_max_gas_cost_usd"),
     minExpectedEdgeBps: integer(row.live_min_expected_edge_bps, "live_min_expected_edge_bps", -10000, 100000),
+    networkFeeBufferBps: integer(row.network_fee_buffer_bps, "network_fee_buffer_bps", 0, 100000),
   };
 
   if (policy.enabled && (
