@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const migration = fs.readFileSync(
-  new URL("../supabase/migrations/20261112190000_index_live_execution_event_owner_intent.sql", import.meta.url),
+  new URL("../supabase/migrations/20261112194339_index_live_execution_event_owner_intent.sql", import.meta.url),
   "utf8",
 );
 
