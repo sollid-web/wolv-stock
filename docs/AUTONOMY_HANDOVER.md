@@ -143,7 +143,7 @@ A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9.
 
 ## Additional risk controls still required before live mode
 
-The owner policy and atomic reservation RPC now enforce order size, per-token position cost basis, daily spend, maximum concurrent token positions, daily realized paper-loss stop, chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Still required before live execution: maximum concurrent order count (separate from open positions), portfolio-wide exposure/concentration limits, a native-gas reserve floor, an operator-wide global kill switch, and a live-loss ledger based on independently settled trades. These controls must be deterministic and independently tested.
+The owner policy and atomic reservation RPC now enforce order size, per-token position cost basis, daily spend, maximum concurrent token positions, daily realized paper-loss stop, chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Still required before live execution: maximum concurrent order count (separate from open positions), portfolio-wide exposure/concentration limits, a native-gas reserve floor, and a live-loss ledger based on independently settled trades. These controls must be deterministic and independently tested.
 
 ## Provider-neutral execution and BSC preflight update (2026-11-12)
 
