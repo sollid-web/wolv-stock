@@ -452,3 +452,13 @@ export async function recordLiveExecutionSimulation(input: {
   });
   return result === true;
 }
+
+
+export async function releaseUnboundLiveExecutionReservation(ownerId: string, intentId: string): Promise<boolean> {
+  if (!UUID.test(ownerId) || !UUID.test(intentId)) throw new Error("Invalid unbound live reservation identifiers");
+  const result = await request("rpc/wolv_release_unbound_live_execution_reservation", {
+    method: "POST",
+    body: JSON.stringify({ p_owner_id: ownerId, p_intent_id: intentId }),
+  });
+  return result === true;
+}
