@@ -135,7 +135,7 @@ export function canRetryUnknownSubmission(
 
 export function assertLiveExecutionSignerEvidence(input: {
   walletAddress: string;
-  signerAddress?: string | null;
+  signerAddress: string | null;
   signerOperationId?: string | null;
   preparedPayloadHash?: string | null;
 }): void {
@@ -145,9 +145,9 @@ export function assertLiveExecutionSignerEvidence(input: {
   if (!input.preparedPayloadHash || !/^[a-f0-9]{64}$/i.test(input.preparedPayloadHash)) {
     throw new Error("A prepared-payload SHA-256 fingerprint is required before signing.");
   }
-  if (input.signerAddress &&
-      (!/^0x[0-9a-f]{40}$/i.test(input.signerAddress) ||
-       input.signerAddress.toLowerCase() !== input.walletAddress.toLowerCase())) {
+  if (!input.signerAddress ||
+      !/^0x[0-9a-f]{40}$/i.test(input.signerAddress) ||
+      input.signerAddress.toLowerCase() !== input.walletAddress.toLowerCase()) {
     throw new Error("Signer address does not match the wallet bound to the quote.");
   }
 }
