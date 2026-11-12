@@ -72,6 +72,8 @@ export type RiskPolicy = {
   maxQuoteAgeMs: number;
   maxGasCostUsd: string;
   minExpectedEdgeBps: number;
+  maxOpenPositions?: number;
+  maxDailyRealizedLoss?: string;
 };
 
 export type RiskCandidate = {
@@ -87,6 +89,8 @@ export type RiskCandidate = {
   priceImpactBps: number;
   gasCostUsd: string;
   expectedEdgeBps: number;
+  currentOpenPositions?: number;
+  dailyRealizedLoss?: string;
 };
 
 export type RiskDecision =
@@ -206,6 +210,8 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   let maxDailySpend: bigint;
   let gasCostUsd: bigint;
   let maxGasCostUsd: bigint;
+  let dailyRealizedLoss: bigint | null = null;
+  let maxDailyRealizedLoss: bigint | null = null;
 
   try {
     amount = parsePositiveDecimal(candidate.amountIn, "candidate.amountIn");
@@ -216,6 +222,10 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
     maxDailySpend = parsePositiveDecimal(policy.maxDailySpend, "policy.maxDailySpend");
     gasCostUsd = parseFixedDecimal(candidate.gasCostUsd, "candidate.gasCostUsd");
     maxGasCostUsd = parseFixedDecimal(policy.maxGasCostUsd, "policy.maxGasCostUsd");
+    if (policy.maxDailyRealizedLoss !== undefined) {
+      dailyRealizedLoss = parseNonNegativeDecimal(candidate.dailyRealizedLoss ?? "0", "candidate.dailyRealizedLoss");
+      maxDailyRealizedLoss = parsePositiveDecimal(policy.maxDailyRealizedLoss, "policy.maxDailyRealizedLoss");
+    }
   } catch (error) {
     return { allowed: false, code: "INVALID_NUMERIC_INPUT", reason: error instanceof Error ? error.message : "Invalid numeric input" };
   }
@@ -226,6 +236,18 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   if (amount > maxOrder) return { allowed: false, code: "ORDER_LIMIT_EXCEEDED", reason: "Order exceeds the maximum order amount" };
   if (position + amount > maxPosition) return { allowed: false, code: "POSITION_LIMIT_EXCEEDED", reason: "Order would exceed the maximum position" };
   if (dailySpend + amount > maxDailySpend) return { allowed: false, code: "DAILY_SPEND_LIMIT_EXCEEDED", reason: "Order would exceed the daily spend limit" };
+  if (policy.maxOpenPositions !== undefined) {
+    if (!Number.isSafeInteger(policy.maxOpenPositions) || policy.maxOpenPositions < 1 ||
+        !Number.isSafeInteger(candidate.currentOpenPositions) || (candidate.currentOpenPositions as number) < 0) {
+      return { allowed: false, code: "INVALID_POSITION_COUNT", reason: "Open-position policy evidence is missing or invalid" };
+    }
+    if ((candidate.currentPosition === "0") && (candidate.currentOpenPositions as number) >= policy.maxOpenPositions) {
+      return { allowed: false, code: "MAX_OPEN_POSITIONS_REACHED", reason: "Maximum concurrent open positions reached" };
+    }
+  }
+  if (dailyRealizedLoss !== null && maxDailyRealizedLoss !== null && dailyRealizedLoss >= maxDailyRealizedLoss) {
+    return { allowed: false, code: "DAILY_REALIZED_LOSS_LIMIT_REACHED", reason: "Daily realized-loss stop has been reached" };
+  }
   if (gasCostUsd > maxGasCostUsd) return { allowed: false, code: "GAS_LIMIT_EXCEEDED", reason: "Estimated gas USD cost exceeds the configured maximum" };
 
   const quoteAge = validTimestamp(candidate.now, "candidate.now") - validTimestamp(candidate.quoteObservedAt, "candidate.quoteObservedAt");
