@@ -199,6 +199,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       amountIn: intent.amountIn, currentPosition: portfolio.currentPositionInputUnits,
       dailySpend: portfolio.dailySpendIncludingReservations,
       currentOpenPositions: portfolio.currentOpenPositions,
+      currentOpenOrders: portfolio.currentOpenOrders,
       dailyRealizedLoss: portfolio.dailyRealizedLoss,
       quoteObservedAt: new Date(observedAtMs).toISOString(), now: new Date().toISOString(),
       slippageBps: evidenceNumber(detail, "slippageBps"),
