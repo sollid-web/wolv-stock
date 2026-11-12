@@ -778,6 +778,7 @@ export interface AgentMemoryStorePort {
   listSchedules(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
+  claimDueAutonomousAgentSchedules(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   claimExecution(input: {
     claimId: string;
     scheduleId: string;
@@ -2409,6 +2410,41 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     }));
   }
 
+  async claimDueAutonomousAgentSchedules(now: number, limit = 20): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    if (!Number.isSafeInteger(now) || now <= 0) throw new TypeError("Schedule claim time is invalid.");
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const rows = await this.sql`
+      UPDATE wolv_agent_schedules SET last_run_at = ${new Date(now)},
+        next_run_at = ${new Date(now)} + interval_seconds * interval '1 second',
+        updated_at = ${new Date(now)}
+      WHERE schedule_id IN (
+        SELECT schedule_id FROM wolv_agent_schedules
+        WHERE enabled = true
+          AND execution_mode = 'AUTONOMOUS'
+          AND strategy_type = 'BSC_AGENT_TRADE'
+          AND next_run_at <= ${new Date(now)}
+        ORDER BY next_run_at ASC
+        LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING schedule_id, owner_address, name, interval_seconds, policy_version, policy_hash,
+        strategy_type, execution_mode, strategy_config, next_run_at, last_run_at
+    `;
+    return rows.map((row) => ({
+      scheduleId: String(row.schedule_id),
+      ownerAddress: String(row.owner_address),
+      name: String(row.name),
+      intervalSeconds: Number(row.interval_seconds),
+      policyVersion: String(row.policy_version),
+      policyHash: String(row.policy_hash),
+      strategyType: String(row.strategy_type),
+      executionMode: String(row.execution_mode),
+      strategyConfig: parseJson<AgentStrategyConfig>(row.strategy_config),
+      nextRunAt: Number(row.next_run_at),
+      lastRunAt: Number(row.last_run_at),
+    }));
+  }
   async claimExecution(input: Parameters<AgentMemoryStorePort["claimExecution"]>[0]): Promise<{ claimId: string | null }> {
     await this.ready;
     const owner = requireOwnerAddress(input.ownerAddress);
