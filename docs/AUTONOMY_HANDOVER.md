@@ -24,10 +24,11 @@ The LLM is not the risk engine and cannot override wallet policy, token allowlis
 - Atomic owner-scoped paper exit ledger with cost-basis release and realized paper P&L.
 - Binance RFQ submit/status adapter and BSC transaction-detail settlement verifier as isolated provider building blocks.
 - Provider registry used by the autonomous worker for entry round-trip quotes, unsigned order building and paper exit quotes; configured provider preference and fail-closed chain/configuration selection.
-- Vendor-neutral quote/prepared-payload contracts and isolated 1inch Classic BNB quote/unsigned transaction adapter with strict request binding and parser tests; documented separately because its execution model and risk evidence are not interchangeable with Binance RFQ.
+- Vendor-neutral quote/prepared-payload contracts, a normalized provider registry, and common-contract adapters for Binance RFQ and 1inch Classic. Provider fallback occurs before accepting a quote; quote evidence cannot be prepared by another provider.
+- Read-only BSC RPC client for chain verification, gas/native/ERC-20 balance reads, exact unsigned EVM transaction simulation and mined receipt validation; an adapter exposes it through the common EVM simulator contract.
 - Tests covering domain rules, provider response parsers, exit calculations, migration safety and configuration.
 
-1inch Classic adapter implementation and integration gates: [ONEINCH_CLASSIC_ADAPTER.md](./ONEINCH_CLASSIC_ADAPTER.md). It is not yet active in the worker; Binance's legacy worker adapter has not yet migrated to the new common contract. Provider-independence status and adapter contract: see [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md). Binance is currently the only registered adapter; no second provider is active.
+The common-contract registry now registers both Binance and 1inch adapters (`WOLV_AUTONOMY_NORMALIZED_PROVIDER_ORDER`, default `binance-web3-aggregator,1inch-classic`). This registry is not yet used by the autonomous worker: the worker still uses the legacy Binance round-trip interface because 1inch does not yet satisfy the full two-sided tax, price-impact, USD gas-fee and settlement-evidence requirements. The BSC RPC simulator is also not yet wired into worker state transitions. See [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md), [ONEINCH_CLASSIC_ADAPTER.md](./ONEINCH_CLASSIC_ADAPTER.md), and [BSC_RPC_PREFLIGHT.md](./BSC_RPC_PREFLIGHT.md).
 
 ## Not yet production-ready
 
@@ -74,7 +75,7 @@ npm run lint
 npm run build
 ```
 
-The test script runs `scripts/*.test.mjs`, including the newly added paper-exit, RFQ execution and BSC settlement-verifier tests. These commands have not yet been run against the current branch.
+The test script runs `scripts/*.test.mjs`, including normalized provider registry, BSC RPC, EVM simulation, paper-exit, RFQ execution and BSC settlement-verifier tests. These commands have not yet been run against the current branch.
 
 ## Paper worker configuration
 
@@ -87,6 +88,7 @@ The worker requires server-side environment variables, including:
 - `WOLV_AUTONOMY_WALLET_ADDRESS`
 - `WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS`
 - `WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS`
+- `WOLV_BSC_RPC_URL` (optional until the BSC RPC preflight/simulator is wired; remote endpoints must use HTTPS)
 
 The paper portfolio configuration script also requires the budget, allowlists, max order/position/daily spend, slippage, price-impact, quote-age, gas-cost, network-fee-buffer and minimum-edge variables described in `docs/AUTONOMOUS_EXECUTION_ARCHITECTURE.md`.
 
@@ -140,3 +142,14 @@ A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9.
 ## Additional risk controls still required before live mode
 
 The current owner policy enforces order size, per-token position cost basis, daily spend, chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. It does not yet enforce a daily realized-loss stop, maximum concurrent positions/orders, portfolio-wide token concentration, minimum native-gas reserve or a separate operator-wide global kill switch. These must be implemented and tested before live execution; they must not be delegated to an LLM or inferred from strategy prompts.
+
+## Provider-neutral execution and BSC preflight update (2026-11-12)
+
+The branch now contains:
+- `services/autonomy/provider-contracts.ts`: normalized quote and prepared-payload types for EVM transactions and EIP-712 orders.
+- `services/autonomy/normalized-provider-registry.ts`: configured-provider ordering, request/response binding and quote freshness checks. Fallback is attempted only before a quote is accepted.
+- `services/autonomy/binance-execution-adapter.ts`: maps Binance's strict RFQ quote parser and unsigned RFQ order builder to the normalized contract.
+- `services/autonomy/provider-registry.ts`: registers Binance and 1inch in the normalized registry, separately from the legacy registry used by the current paper worker.
+- `services/autonomy/bsc-rpc.ts` and `services/autonomy/bsc-evm-simulator.ts`: read-only BSC chain checks, balance/gas reads, exact unsigned EVM simulation and receipt validation.
+
+Tests added: `scripts/normalized-provider-registry.test.mjs`, `scripts/bsc-rpc.test.mjs`, and `scripts/bsc-evm-simulator.test.mjs`. They have **not** been executed in this environment. The BSC RPC layer has no signing or broadcast method. The worker remains paper-only; no signer, live queue, or live transaction path has been activated.
