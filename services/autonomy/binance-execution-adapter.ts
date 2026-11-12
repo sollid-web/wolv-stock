@@ -67,6 +67,22 @@ function restoreQuote(quote: NormalizedExecutionQuote): ValidatedBinanceQuote {
       !Number.isSafeInteger(quote.tokenMetadata.outputDecimals)) {
     throw new Error("Binance normalized quote has invalid token decimals");
   }
+  const priceImpactBps = integerEvidence(quote, "priceImpactBps");
+  const gasEstimateRaw = requiredEvidence(quote, "gasEstimateRaw");
+  const estimatedNetworkFeeUsd = requiredEvidence(quote, "estimatedNetworkFeeUsd");
+  const inputTokenTaxRate = requiredEvidence(quote, "inputTokenTaxRate");
+  const outputTokenTaxRate = requiredEvidence(quote, "outputTokenTaxRate");
+  const inputTokenUsdPrice = requiredEvidence(quote, "inputTokenUsdPrice");
+  const outputTokenUsdPrice = requiredEvidence(quote, "outputTokenUsdPrice");
+  const decimalPattern = /^(0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
+  if (priceImpactBps > 100_000 || !positiveInteger.test(gasEstimateRaw) || BigInt(gasEstimateRaw) <= BigInt(0) ||
+      !decimalPattern.test(estimatedNetworkFeeUsd) || Number(estimatedNetworkFeeUsd) < 0 ||
+      !decimalPattern.test(inputTokenTaxRate) || Number(inputTokenTaxRate) < 0 || Number(inputTokenTaxRate) > 1 ||
+      !decimalPattern.test(outputTokenTaxRate) || Number(outputTokenTaxRate) < 0 || Number(outputTokenTaxRate) > 1 ||
+      !decimalPattern.test(inputTokenUsdPrice) || Number(inputTokenUsdPrice) <= 0 ||
+      !decimalPattern.test(outputTokenUsdPrice) || Number(outputTokenUsdPrice) <= 0) {
+    throw new Error("Binance normalized quote has incomplete or unsafe fee, tax, price or impact evidence");
+  }
   return {
     provider: ID,
     quoteId: requiredEvidence(quote, "quoteId"),
