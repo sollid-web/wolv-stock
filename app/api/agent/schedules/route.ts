@@ -5,6 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { hashAgentPolicy } from "@/lib/agentPolicyHash";
 import { createAgentPublicClient, getAgentSmartAccountConfig } from "@/lib/smartAccount";
 import { createViemValidatorReader } from "@/services/agentWorker";
+import { resolveAgentExecutionNetwork } from "@/services/agentExecutor";
 import { authorizeBawWalletRequest, getBawWalletSession } from "@/services/bawWalletAuth";
 import { AgentMemoryStore } from "@/services/agentMemoryStore";
 
@@ -12,6 +13,31 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const HEADERS = { "Cache-Control": "no-store" };
+
+function getWorkerReadiness() {
+  const missing = [
+    !process.env.AGENT_PRIVATE_KEY ? "AGENT_PRIVATE_KEY" : null,
+    !process.env.AGENT_MARKET_DATA_MODULE ? "AGENT_MARKET_DATA_MODULE" : null,
+    !process.env.AGENT_OWNER_VALIDATOR_MODULE ? "AGENT_OWNER_VALIDATOR_MODULE" : null,
+    !process.env.REDIS_URL ? "REDIS_URL" : null,
+  ].filter((value): value is string => Boolean(value));
+  try {
+    const network = resolveAgentExecutionNetwork(getAgentSmartAccountConfig().chain.id);
+    return {
+      workerReady: missing.length === 0,
+      workerConfigIssues: missing,
+      executionGateEnabled: network.allowed,
+      executionGateReason: network.allowed ? null : network.reason,
+    };
+  } catch (error) {
+    return {
+      workerReady: false,
+      workerConfigIssues: [...missing, error instanceof Error ? error.message : "Smart-account worker configuration is incomplete."],
+      executionGateEnabled: false,
+      executionGateReason: "Smart-account execution configuration is incomplete.",
+    };
+  }
+}
 
 export async function GET(request: Request) {
   const token = process.env.BAW_WALLET_API_TOKEN;
@@ -189,6 +215,7 @@ export async function POST(request: Request) {
       executionMode,
       execution: strategyType === "BSC_AGENT_TRADE" ? "AUTONOMOUS_SCHEDULED" : "BLOCKED",
       policyHash,
+      ...getWorkerReadiness(),
     }, { status: 201, headers: HEADERS });
   } catch {
     return Response.json({ error: "Schedule could not be persisted." }, { status: 503, headers: HEADERS });
