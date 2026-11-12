@@ -54,3 +54,10 @@ test("global kill switch defaults stopped and is checked atomically for entries 
   assert.match(migration, /wolv_set_autonomy_global_kill_switch/);
   assert.match(migration, /grant execute on function public\.wolv_set_autonomy_global_kill_switch\(boolean, text\) to service_role/);
 });
+
+
+test("global kill switch is locked before reservation rows and committed fills remain idempotent", () => {
+  const commit = migration.slice(migration.lastIndexOf("create or replace function public.wolv_commit_autonomy_paper_fill"));
+  assert.ok(commit.indexOf("select kill_switch into global_kill_switch") < commit.indexOf("select * into reservation"));
+  assert.ok(commit.indexOf("if reservation.status = 'COMMITTED'") < commit.indexOf("if global_kill_switch then return false"));
+});
