@@ -77,7 +77,7 @@ npm run lint
 npm run build
 ```
 
-The test script runs `scripts/*.test.mjs`, including normalized provider registry, Binance normalized adapter, BSC RPC, EVM simulation, BSC ERC-20 settlement verifier, portfolio hard-stop, global kill-switch, paper-exit and RFQ execution tests. These commands have not yet been run against the current branch.
+The test script runs `scripts/*.test.mjs`, including normalized provider registry, Binance normalized adapter, Binance RFQ schema probe, BSC RPC, EVM simulation, BSC ERC-20 settlement verifier, portfolio hard-stop, global kill-switch, paper-exit and RFQ execution tests. These commands have not yet been run against the current branch.
 
 ## Paper worker configuration
 
@@ -180,3 +180,7 @@ npm run autonomy:global-stop -- --release
 ```
 
 Release is an explicit operator action and should occur only after verifying the portfolio policy, provider health, RPC, signer status (for any future live mode) and intended operating environment. The command requires the Supabase service-role key on the server and writes an audit reason. No global switch was released as part of this implementation.
+
+## Binance RFQ schema evidence
+
+A safe read-only RFQ schema probe is available as `npm run autonomy:rfq-schema-probe`. It builds a fresh quote and unsigned RFQ order using local server credentials, then prints only schema metadata and hashes—not raw typed data. This is the next evidence step before a signer can be implemented. If the payload is opaque hex, the current policy deliberately rejects it.
