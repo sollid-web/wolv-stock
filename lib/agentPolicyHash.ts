@@ -12,6 +12,10 @@ export type AgentPolicyHashInput = {
     maxTradeValue: bigint
     expiresAt: bigint
     intentSigner: Address
+    amountBnb: bigint
+    entryPriceMicros: bigint
+    slippageBps: number
+    maxPriceImpactBps: number
 }
 
 const MAX_TRADE_VALUE = BigInt("500000000000000000")
@@ -36,9 +40,29 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
     if (input.expiresAt <= BigInt(0) || input.expiresAt > MAX_UINT64) {
         throw new RangeError("Policy expiry must fit uint64 and be greater than zero.")
     }
+    if (input.amountBnb <= BigInt(0) || input.amountBnb > input.maxTradeValue) {
+        throw new RangeError("Strategy amount must be positive and no greater than the on-chain trade cap.")
+    }
+    if (input.entryPriceMicros <= BigInt(0)) {
+        throw new RangeError("Strategy entry-price threshold must be greater than zero.")
+    }
+    if (!Number.isInteger(input.slippageBps) || input.slippageBps < 1 || input.slippageBps > 500) {
+        throw new RangeError("Strategy slippage must be between 1 and 500 basis points.")
+    }
+    if (!Number.isInteger(input.maxPriceImpactBps) || input.maxPriceImpactBps < 1 || input.maxPriceImpactBps > 300) {
+        throw new RangeError("Strategy maximum price impact must be between 1 and 300 basis points.")
+    }
 
     return keccak256(encodeAbiParameters(
-        [{ type: "string" }, { type: "string" }, { type: "address" }, { type: "uint192" }, { type: "uint64" }, { type: "address" }],
-        ["WOLV_AGENT_POLICY_V2", input.strategyId, targetToken, input.maxTradeValue, input.expiresAt, intentSigner]
+        [
+            { type: "string" }, { type: "string" }, { type: "address" },
+            { type: "uint192" }, { type: "uint64" }, { type: "address" },
+            { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" }
+        ],
+        [
+            "WOLV_AGENT_POLICY_V2", input.strategyId, targetToken,
+            input.maxTradeValue, input.expiresAt, intentSigner,
+            input.amountBnb, input.entryPriceMicros, input.slippageBps, input.maxPriceImpactBps
+        ]
     ))
 }
