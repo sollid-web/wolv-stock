@@ -132,3 +132,41 @@ export function canRetryUnknownSubmission(
   const deadline = Date.parse(retryNotAfter);
   return Number.isFinite(deadline) && deadline > nowMs;
 }
+
+export function assertLiveExecutionSignerEvidence(input: {
+  walletAddress: string;
+  signerAddress?: string | null;
+  signerOperationId?: string | null;
+  preparedPayloadHash?: string | null;
+}): void {
+  if (!input.signerOperationId || input.signerOperationId.trim().length < 8) {
+    throw new Error("A durable signer operation ID is required before signing.");
+  }
+  if (!input.preparedPayloadHash || !/^[a-f0-9]{64}$/i.test(input.preparedPayloadHash)) {
+    throw new Error("A prepared-payload SHA-256 fingerprint is required before signing.");
+  }
+  if (input.signerAddress &&
+      (!/^0x[0-9a-f]{40}$/i.test(input.signerAddress) ||
+       input.signerAddress.toLowerCase() !== input.walletAddress.toLowerCase())) {
+    throw new Error("Signer address does not match the wallet bound to the quote.");
+  }
+}
+
+export function assertProviderFillEvidence(input: {
+  providerOrderId?: string | null;
+  transactionHash?: string | null;
+  amountIn?: string | null;
+  amountOut?: string | null;
+}): void {
+  if (!input.providerOrderId || input.providerOrderId.trim().length < 2) {
+    throw new Error("Provider-filled state requires a provider order ID.");
+  }
+  if (!input.transactionHash || !/^0x[0-9a-f]{64}$/i.test(input.transactionHash)) {
+    throw new Error("Provider-filled state requires a valid transaction hash.");
+  }
+  for (const [label, value] of [["input", input.amountIn], ["output", input.amountOut]] as const) {
+    if (!value || !/^[1-9][0-9]*$/.test(value)) {
+      throw new Error(`Provider-filled state requires a positive actual ${label} amount.`);
+    }
+  }
+}
