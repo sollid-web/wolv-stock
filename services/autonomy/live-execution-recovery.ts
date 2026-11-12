@@ -133,21 +133,17 @@ export function createLiveExecutionRecovery(dependencies: {
         requestId: attempt.request_id,
         providerOrderId: attempt.provider_order_id,
       });
-    } catch (error) {
+    } catch {
+      // Preserve the last known state on transport failure. A same-state transition
+      // is intentionally not allowed by the database state machine.
       report.errors += 1;
       report.unchanged += 1;
-      await transition(attempt, attempt.status, "LIVE_PROVIDER_RECONCILIATION_ERROR", {
-        errorCode: errorCode(error),
-      }, { last_error_code: errorCode(error) });
       return;
     }
 
     report.reconciled += 1;
     if (providerResult.status === "UNKNOWN") {
       report.unchanged += 1;
-      await transition(attempt, attempt.status, "LIVE_PROVIDER_STATUS_UNKNOWN", {
-        reason: providerResult.reason.slice(0, 180),
-      }, { last_error_code: "PROVIDER_STATUS_UNKNOWN" });
       return;
     }
 
