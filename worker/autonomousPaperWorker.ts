@@ -213,6 +213,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       intent = next(intent, target, decision.code, {
         reason: decision.reason, policyVersion: portfolio.policyVersion,
         expectedEdgeBps: candidate.expectedEdgeBps, gasCostUsd: candidate.gasCostUsd,
+        currentOpenPositions: candidate.currentOpenPositions, dailyRealizedLoss: candidate.dailyRealizedLoss,
       });
       await persistTransition(intent, version);
       return intent;
@@ -220,7 +221,8 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
     intent = next(intent, "RISK_APPROVED", "RISK_POLICY_APPROVED", {
       policyVersion: portfolio.policyVersion, expectedEdgeBps: candidate.expectedEdgeBps,
       bufferedNetworkFeesUsd: candidate.gasCostUsd, priceImpactBps: candidate.priceImpactBps,
-      slippageBps: candidate.slippageBps, mode: "PAPER_ONLY",
+      slippageBps: candidate.slippageBps, currentOpenPositions: candidate.currentOpenPositions,
+      dailyRealizedLoss: candidate.dailyRealizedLoss, mode: "PAPER_ONLY",
     });
     await persistTransition(intent, version);
   }
