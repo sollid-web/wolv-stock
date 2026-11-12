@@ -405,34 +405,6 @@ export async function releaseLiveExecutionBudget(ownerId: string, attemptId: str
 }
 
 
-export async function recordLiveExecutionSimulation(input: {
-  ownerId: string;
-  attemptId: string;
-  orderHash: string;
-  simulationFingerprint: string;
-  simulatedAt: string;
-}): Promise<boolean> {
-  if (!UUID.test(input.ownerId) || !UUID.test(input.attemptId) ||
-      !/^[a-f0-9]{64}$/i.test(input.orderHash) ||
-      !/^[a-f0-9]{64}$/i.test(input.simulationFingerprint)) {
-    throw new Error("Invalid live order simulation evidence");
-  }
-  const simulatedAt = Date.parse(input.simulatedAt);
-  if (!Number.isFinite(simulatedAt) || simulatedAt > Date.now() + 5_000 || Date.now() - simulatedAt > 15_000) {
-    throw new Error("Live order simulation evidence is stale or future-dated");
-  }
-  const result = await request("rpc/wolv_record_live_execution_simulation", {
-    method: "POST",
-    body: JSON.stringify({
-      p_owner_id: input.ownerId,
-      p_attempt_id: input.attemptId,
-      p_order_hash: input.orderHash,
-      p_simulation_fingerprint: input.simulationFingerprint,
-      p_simulated_at: input.simulatedAt,
-    }),
-  });
-  return result === true;
-}
 
 export async function listSettledLiveExecutionAttempts(
   ownerId: string,
