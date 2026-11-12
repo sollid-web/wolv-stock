@@ -122,22 +122,20 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
   });
   const dailyReservations = await request("wolv_autonomy_reservations?" + dailyReservationQuery) as Array<Record<string, unknown>>;
   dailySpendIncludingReservations = (BigInt(persistedDailySpend) + BigInt(sumIntegerRows(dailyReservations, "amount_in_text"))).toString();
-  const openPositionsQuery = new URLSearchParams({
-    select: "chain_id,token_address", owner_id: "eq." + ownerId,
-    amount_units: "gt.0", limit: "1001",
-  });
-  const openPositions = await request("wolv_autonomy_positions?" + openPositionsQuery) as Array<Record<string, unknown>>;
-  if (openPositions.length > 1000) throw new Error("Open-position count exceeds supported safety bound");
-  const dailyLossQuery = new URLSearchParams({
-    select: "realized_pnl_text:realized_pnl_input_units::text", owner_id: "eq." + ownerId,
-    realized_pnl_input_units: "lt.0", created_at: "gte." + midnightUtc.toISOString(),
-  });
-  const dailyLossRows = await request("wolv_autonomy_paper_exits?" + dailyLossQuery) as Array<Record<string, unknown>>;
-  const dailyRealizedLoss = dailyLossRows.reduce((sum, item) => {
-    const value = String(item.realized_pnl_text);
-    if (!/^-[1-9][0-9]*$/.test(value)) throw new Error("Paper exit ledger has invalid realized loss");
-    return sum + BigInt(value.slice(1));
-  }, BigInt(0)).toString();
+  const riskRows = await request("rpc/wolv_get_autonomy_risk_snapshot", {
+    method: "POST", body: JSON.stringify({ p_owner_id: ownerId }),
+  }) as Array<Record<string, unknown>>;
+  if (!Array.isArray(riskRows) || riskRows.length !== 1) {
+    throw new Error("Portfolio risk snapshot RPC returned an invalid result");
+  }
+  const currentOpenPositions = Number(riskRows[0].open_positions);
+  if (!Number.isSafeInteger(currentOpenPositions) || currentOpenPositions < 0) {
+    throw new Error("Portfolio risk snapshot has an invalid open-position count");
+  }
+  const dailyRealizedLoss = String(riskRows[0].daily_realized_loss);
+  if (!/^(0|[1-9][0-9]*)$/.test(dailyRealizedLoss)) {
+    throw new Error("Portfolio risk snapshot has an invalid daily realized-loss total");
+  }
   const snapshot: PortfolioPolicySnapshot = {
     ownerId: String(row.owner_id),
     walletAddress: String(row.wallet_address).toLowerCase(),
