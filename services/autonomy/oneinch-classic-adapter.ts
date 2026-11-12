@@ -12,7 +12,7 @@ export function createOneInchClassicAdapter(
   return {
     id: "1inch-classic",
     supportedChainIds: ["56"],
-    isConfigured: () => !!process.env.ONEINCH_API_KEY?.trim(),
+    isConfigured: client.isConfigured,
     async getQuote(input): Promise<NormalizedExecutionQuote> {
       const quote = await client.getQuote(input);
       return {
