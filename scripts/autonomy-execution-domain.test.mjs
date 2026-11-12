@@ -256,3 +256,15 @@ test("rejects a new reservation when the concurrent outstanding-order cap is rea
   );
   assert.equal(evaluateRiskPolicy(bounded, candidate).code, "INVALID_OPEN_ORDER_COUNT");
 });
+
+
+test("rejects entries when the wallet native BNB gas reserve is below policy", () => {
+  const bounded = { ...policy, minNativeGasBalanceWei: "10000000000000000" };
+  assert.equal(evaluateRiskPolicy(bounded, { ...candidate, nativeGasBalanceWei: "9999999999999999" }).code,
+    "NATIVE_GAS_RESERVE_LOW");
+  assert.deepEqual(
+    evaluateRiskPolicy(bounded, { ...candidate, nativeGasBalanceWei: "10000000000000000" }),
+    { allowed: true, code: "RISK_APPROVED" },
+  );
+  assert.equal(evaluateRiskPolicy(bounded, candidate).code, "INVALID_NUMERIC_INPUT");
+});
