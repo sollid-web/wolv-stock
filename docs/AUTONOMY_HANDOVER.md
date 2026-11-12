@@ -128,3 +128,7 @@ Running these commands is not required to review the source. Do not run them aga
 - `docs/BINANCE_CAPABILITY_MATRIX.md`
 - `docs/RFQ_SIGNER_ACCEPTANCE_PLAN.md`
 - `docs/MARKET_PRICE_CACHE.md`
+
+## Review vehicle
+
+A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9. It is not mergeable yet because the implementation branch is 32 commits behind the current `main`; reconcile and review that divergence before merge.
