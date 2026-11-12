@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createOneInchClassicAdapter } from "../services/autonomy/oneinch-classic-adapter.ts";
 import {
   createOneInchClassicClient,
   parseOneInchClassicQuote,
@@ -111,4 +112,26 @@ test("rejects a swap response with a changed input amount or missing gas price",
   assert.throws(() => parseOneInchClassicTransaction({
     ...base, srcAmount: "1000000", tx: { ...base.tx, gasPrice: undefined },
   }, quote, 50, request.now + 1), /gasPrice/);
+});
+
+test("1inch adapter implements vendor-neutral quote and EVM transaction contracts", async () => {
+  const client = createOneInchClassicClient({
+    apiKey: "test-key",
+    now: () => request.now + 1,
+    fetchImpl: async (url) => new Response(JSON.stringify(String(url).includes("/swap?") ? {
+      srcAmount: "1000000", dstAmount: "950000000000000000",
+      tx: { to: "0x4444444444444444444444444444444444444444", data: "0x12345678",
+        value: "0", gas: "300000", gasPrice: "3000000000" },
+    } : quoteResponse), { status: 200, headers: { "content-type": "application/json" } }),
+  });
+  const adapter = createOneInchClassicAdapter(client);
+  assert.equal(adapter.isConfigured(), true);
+  assert.deepEqual(adapter.supportedChainIds, ["56"]);
+  const quote = await adapter.getQuote({ ...request, slippageBps: 50 });
+  assert.equal(quote.provider, "1inch-classic");
+  assert.equal(quote.tokenMetadata.outputDecimals, 18);
+  const prepared = await adapter.prepareExecution({ quote, slippageBps: 50, maxPriceImpactBps: 100 });
+  assert.equal(prepared.kind, "EVM_TRANSACTION");
+  assert.equal(prepared.provider, "1inch-classic");
+  assert.equal(prepared.minimumAmountOut, "945250000000000000");
 });
