@@ -27,7 +27,7 @@ const hook = "0x0000000000000000000000000000000000000321";
 const INTENT_NONCE = `0x${"d".repeat(64)}`;
 const intentSigningAccount = privateKeyToAccount(`0x${"01".padStart(64, "0")}`);
 const INTENT_SIGNER = intentSigningAccount.address;
-const POLICY_EXPIRY = BigInt(Math.floor((Date.now() + 60_000) / 1000));
+const POLICY_EXPIRY = 2_000_000_000n;
 const POLICY_HASH = hashAgentPolicy({
   strategyId: "aapl-entry",
   targetToken: TARGET,
@@ -571,6 +571,19 @@ test("worker failure reporter trips the worker panic stop on repeated dispatch f
   assert.equal(events.at(-1).reasonCode, "WORKER_PANIC_STOP");
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0].priority, "high");
+});
+
+test("executor rejects an unknown strategy label before signing or dispatch", async () => {
+  const harness = createHarness();
+  await assert.rejects(
+    harness.executor.executeUserOperation({
+      ...harness.intent,
+      strategyId: "unregistered-entry",
+    }),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
+  assert.equal(harness.signedTypedData.length, 0);
+  assert.equal(harness.sentCalls.length, 0);
 });
 
 test("onchain account policy rejects missing, expired, capped, and mismatched intent bindings", async () => {
