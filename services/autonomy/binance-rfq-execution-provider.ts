@@ -52,6 +52,10 @@ export function parseBinanceRfqStatusResponse(
 ): ReconciliationResult {
   try {
     const data = envelope(response);
+    const responseTimestamp = record(response) ? Number(response.timestamp) : NaN;
+    if (!Number.isSafeInteger(responseTimestamp) || responseTimestamp <= 0 || responseTimestamp > now + 5_000 || now - responseTimestamp > 30_000) {
+      return { status: "UNKNOWN", checkedAt: new Date(now).toISOString(), reason: "Order status response timestamp is invalid or stale" };
+    }
     const providerOrderId = nonEmpty(data.orderId, "data.orderId");
     if (providerOrderId !== expectedOrderId) {
       return { status: "UNKNOWN", checkedAt: new Date(now).toISOString(), reason: "Provider order ID mismatch" };
