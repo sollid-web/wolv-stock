@@ -171,6 +171,7 @@ export default function AgentSetupForm({
 
             const requestedPolicyHash = hashAgentPolicy({
                 strategyId,
+                account: getAddress(ownerKernelClient.account.address),
                 targetToken: normalizedTarget,
                 maxTradeValue: maxTradeValueWei,
                 expiresAt: expirySeconds,
