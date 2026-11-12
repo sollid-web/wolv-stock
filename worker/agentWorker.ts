@@ -387,7 +387,7 @@ async function createPersistentWorkerRuntime() {
             readMarket: current => fetchMarketData(current, config, publicClient, marketProvider),
             readValidator: async current => {
                 const snapshot = await validatorReader(current)
-                const scheduleHashMatches = schedule.policyVersion === "WOLV_AGENT_POLICY_V2"
+                const scheduleHashMatches = schedule.policyVersion === "WOLV_AGENT_POLICY_V3"
                     && snapshot.policyHash.slice(2).toLowerCase() === policyHash
                 return scheduleHashMatches ? snapshot : { ...snapshot, policyHash: ("0x" + "1".repeat(64)) as Hex }
             },
@@ -471,7 +471,7 @@ async function createPersistentWorkerRuntime() {
         const scheduleId = String(schedule.scheduleId ?? "")
         const ownerAddress = String(schedule.ownerAddress ?? "")
         const policyHash = String(schedule.policyHash ?? "").toLowerCase()
-        if (!/^[0-9a-f]{64}$/.test(policyHash) || schedule.policyVersion !== "WOLV_AGENT_POLICY_V2") {
+        if (!/^[0-9a-f]{64}$/.test(policyHash) || schedule.policyVersion !== "WOLV_AGENT_POLICY_V3") {
             await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now()).catch(() => undefined)
             await store.recordAlert({ ownerAddress, severity: "WARNING", kind: "POLICY_VERSION_MISMATCH",
                 message: "Autonomous schedule was disabled because its policy hash or version is invalid.", createdAt: Date.now() })
