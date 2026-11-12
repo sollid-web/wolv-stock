@@ -26,9 +26,10 @@ function template() {
         { name: "minimumOutput", type: "uint256" },
         { name: "deadline", type: "uint256" },
         { name: "quoteId", type: "bytes32" },
+        { name: "nonce", type: "uint256" },
       ],
     },
-    requiredRoles: ["wallet", "tokenIn", "tokenOut", "amountIn", "minimumOutput", "expiry", "quoteId"],
+    requiredRoles: ["wallet", "tokenIn", "tokenOut", "amountIn", "minimumOutput", "expiry", "quoteId", "nonce"],
     fieldBindings: [
       { role: "wallet", path: "maker", kind: "address", source: "walletAddress" },
       { role: "tokenIn", path: "tokenIn", kind: "address", source: "inputTokenAddress" },
@@ -37,6 +38,7 @@ function template() {
       { role: "minimumOutput", path: "minimumOutput", kind: "uint", source: "minimumAmountOut" },
       { role: "expiry", path: "deadline", kind: "uint", source: "quoteExpiryUnixSeconds" },
       { role: "quoteId", path: "quoteId", kind: "bytes32", source: "quoteId" },
+      { role: "nonce", path: "nonce", kind: "uint", source: "typedDataField", sourcePath: "nonce" },
     ],
   };
 }
@@ -46,7 +48,7 @@ test("parses a vendor-specific BSC typed-data policy template", () => {
   assert.equal(parsed.vendor, "rfq-vendor-a");
   assert.equal(parsed.chainId, 56);
   assert.deepEqual(parsed.verifyingContracts, [verifyingContract]);
-  assert.equal(parsed.fieldBindings.length, 7);
+  assert.equal(parsed.fieldBindings.length, 8);
 });
 
 test("binds policy fields to the current validated RFQ order and wallet", () => {
@@ -64,7 +66,7 @@ test("binds policy fields to the current validated RFQ order and wallet", () => 
     amountIn: "1000",
     expectedAmountOut: "950",
     typedDataHash: "b".repeat(64),
-    typedDataToSign: JSON.stringify({ domain: {}, types: {}, primaryType: "RFQOrder", message: {} }),
+    typedDataToSign: JSON.stringify({ domain: {}, types: {}, primaryType: "RFQOrder", message: { nonce: "42" } }),
     typedDataFormat: "JSON_TYPED_DATA",
     approvalTarget: null,
     routeFingerprint: "c".repeat(64),
@@ -83,7 +85,7 @@ test("binds policy fields to the current validated RFQ order and wallet", () => 
   assert.deepEqual(policy.expectedFields.map((field) => field.value), [
     wallet, tokenIn, tokenOut, "1000", "940",
     String(Math.floor(Date.parse(order.quoteExpiresAt) / 1000)),
-    "a".repeat(32),
+    "a".repeat(32), "42",
   ]);
 });
 
