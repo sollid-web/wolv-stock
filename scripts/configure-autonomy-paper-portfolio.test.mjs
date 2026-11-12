@@ -98,3 +98,10 @@ test("rejects invalid concurrent-position and daily-loss limits", () => {
     ...env, WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS: "1000000001",
   }), /within the paper budget/);
 });
+
+
+test("configures a bounded maximum concurrent outstanding-order count", () => {
+  assert.equal(buildPortfolioConfig(env).max_open_orders, 1);
+  assert.equal(buildPortfolioConfig({ ...env, WOLV_AUTONOMY_MAX_OPEN_ORDERS: "5" }).max_open_orders, 5);
+  assert.throws(() => buildPortfolioConfig({ ...env, WOLV_AUTONOMY_MAX_OPEN_ORDERS: "101" }), /MAX_OPEN_ORDERS/);
+});
