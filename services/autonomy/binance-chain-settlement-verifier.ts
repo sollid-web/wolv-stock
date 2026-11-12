@@ -78,8 +78,7 @@ export const binanceBscSettlementVerifier: ChainSettlementVerifier = {
       const result = parseBinanceBscSettlement({
         response, expectedTxHash: input.transactionHash, walletAddress: input.walletAddress,
         inputTokenAddress: input.inputTokenAddress, outputTokenAddress: input.outputTokenAddress,
-        // These expected amounts must be supplied by the persisted submitted order evidence.
-        expectedAmountIn: "0", expectedAmountOut: "0",
+        expectedAmountIn: input.expectedAmountIn, expectedAmountOut: input.expectedAmountOut,
       });
       if (result.status === "SETTLED") {
         return { ...result, blockNumber: result.blockNumber || "0" };
