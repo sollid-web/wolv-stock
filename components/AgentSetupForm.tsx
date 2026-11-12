@@ -72,6 +72,7 @@ export default function AgentSetupForm({
     onConfigured
 }: AgentSetupFormProps) {
     const [targetToken, setTargetToken] = useState(installedTargetToken ?? "")
+    const [strategyId, setStrategyId] = useState("")
     const [maxTradeValue, setMaxTradeValue] = useState("")
     const [intentSigner, setIntentSigner] = useState(process.env.NEXT_PUBLIC_AGENT_SIGNER_ADDRESS ?? "")
     const [expirationDate, setExpirationDate] = useState("")
@@ -93,6 +94,9 @@ export default function AgentSetupForm({
         try {
             if (!canSubmit || !ownerKernelClient || !publicClient) {
                 throw new Error("The connected wallet is not ready for agent policy setup.")
+            }
+            if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyId)) {
+                throw new AgentPolicyValidationError("Enter the exact strategy ID configured in AGENT_STRATEGIES_JSON (1-64 letters, numbers, dots, underscores, or hyphens).")
             }
             if (!isAddress(targetToken)) {
                 throw new AgentPolicyValidationError("Enter a valid target token address.")
@@ -121,6 +125,7 @@ export default function AgentSetupForm({
             }
 
             const requestedPolicyHash = hashAgentPolicy({
+                strategyId,
                 targetToken: normalizedTarget,
                 maxTradeValue: maxTradeValueWei,
                 expiresAt: expirySeconds,
@@ -130,6 +135,7 @@ export default function AgentSetupForm({
                 ownerKernelClient,
                 publicClient,
                 validatorAddress,
+                strategyId,
                 targetToken: normalizedTarget,
                 intentSigner: normalizedSigner,
                 maxTradeValue: maxTradeValueWei,
@@ -159,6 +165,21 @@ export default function AgentSetupForm({
                     The connected owner wallet authorizes hook installation and policy configuration as separate Kernel UserOperations.
                 </p>
             </div>
+
+            <label className="block space-y-1.5 text-sm text-slate-300">
+                <span>Authorized Strategy ID</span>
+                <input
+                    className={inputClass}
+                    value={strategyId}
+                    onChange={(event) => setStrategyId(event.target.value)}
+                    placeholder="e.g. aapl-entry"
+                    autoComplete="off"
+                    spellCheck={false}
+                    maxLength={64}
+                    required
+                />
+                <span className="block text-xs text-slate-500">Must exactly match the strategy ID in the autonomous worker configuration. Unregistered labels will fail the on-chain policy hash check.</span>
+            </label>
 
             <label className="block space-y-1.5 text-sm text-slate-300">
                 <span>Target Token Address</span>
