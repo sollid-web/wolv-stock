@@ -82,11 +82,13 @@ export function createBscSettlementVerifier(
         const token = log.address.toLowerCase();
         if (token !== inputToken && token !== outputToken) continue;
         if (log.topics[0]?.toLowerCase() !== TRANSFER_TOPIC) continue;
-        if (log.topics.length < 3 || !/^0x[0-9a-fA-F]{64}$/.test(log.data)) {
+        const fromTopic = log.topics[1];
+        const toTopic = log.topics[2];
+        if (log.topics.length < 3 || !fromTopic || !toTopic || !/^0x[0-9a-fA-F]{64}$/.test(log.data)) {
           throw new Error("Malformed ERC-20 Transfer log in settlement receipt");
         }
-        const from = topicAddress(log.topics[1]);
-        const to = topicAddress(log.topics[2]);
+        const from = topicAddress(fromTopic);
+        const to = topicAddress(toTopic);
         const amount = BigInt(log.data);
         if (amount <= BigInt(0)) continue;
         if (token === inputToken) {
