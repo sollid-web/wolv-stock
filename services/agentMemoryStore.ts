@@ -778,7 +778,7 @@ export interface AgentMemoryStorePort {
   listSchedules(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
-  claimDueAutonomousAgentSchedules(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
+  claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   claimExecution(input: {
     claimId: string;
     scheduleId: string;
