@@ -80,6 +80,7 @@ export function createLiveExecutionRecovery(dependencies: {
   now?: () => number;
 }) {
   const now = dependencies.now ?? Date.now;
+  const committedThisCycle = new Set<string>();
 
   async function transition(
     attempt: LiveExecutionAttempt,
@@ -256,8 +257,10 @@ export function createLiveExecutionRecovery(dependencies: {
     }
 
     const committed = await dependencies.repository.commitFill(settled.owner_id, settled.id);
-    if (committed) report.settled += 1;
-    else {
+    if (committed) {
+      committedThisCycle.add(settled.id);
+      report.settled += 1;
+    } else {
       // Leave SETTLED durable. A later cycle retries the idempotent ledger commit.
       report.errors += 1;
     }
@@ -333,6 +336,7 @@ export function createLiveExecutionRecovery(dependencies: {
     // ledger commit failed. Retry that commit without re-querying the provider.
     const settled = await dependencies.repository.listSettled(ownerId, limit);
     for (const attempt of settled) {
+      if (committedThisCycle.has(attempt.id)) continue;
       try {
         if (await dependencies.repository.commitFill(ownerId, attempt.id)) report.settled += 1;
         else report.errors += 1;
