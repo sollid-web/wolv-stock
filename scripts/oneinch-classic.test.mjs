@@ -92,3 +92,23 @@ test("fails closed without API key and rejects invalid slippage", async () => {
   const quote = await configured.getQuote(request);
   await assert.rejects(configured.buildTransaction(quote, 0), /slippage/);
 });
+
+test("rejects a swap response whose output breaches the configured slippage floor", () => {
+  const quote = parseOneInchClassicQuote(quoteResponse, request);
+  assert.throws(() => parseOneInchClassicTransaction({
+    srcAmount: "1000000", dstAmount: "900000000000000000",
+    tx: { to: "0x4444444444444444444444444444444444444444", data: "0x12345678",
+      value: "0", gas: "300000", gasPrice: "3000000000" },
+  }, quote, 50, request.now + 1), /below the quote minimum/);
+});
+
+test("rejects a swap response with a changed input amount or missing gas price", () => {
+  const quote = parseOneInchClassicQuote(quoteResponse, request);
+  const base = { srcAmount: "999999", dstAmount: "950000000000000000",
+    tx: { to: "0x4444444444444444444444444444444444444444", data: "0x12345678",
+      value: "0", gas: "300000", gasPrice: "3000000000" } };
+  assert.throws(() => parseOneInchClassicTransaction(base, quote, 50, request.now + 1), /input amount/);
+  assert.throws(() => parseOneInchClassicTransaction({
+    ...base, srcAmount: "1000000", tx: { ...base.tx, gasPrice: undefined },
+  }, quote, 50, request.now + 1), /gasPrice/);
+});
