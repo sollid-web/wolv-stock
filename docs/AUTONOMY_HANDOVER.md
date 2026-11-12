@@ -184,3 +184,33 @@ Release is an explicit operator action and should occur only after verifying the
 ## Binance RFQ schema evidence
 
 A safe read-only RFQ schema probe is available as `npm run autonomy:rfq-schema-probe`. It builds a fresh quote and unsigned RFQ order using local server credentials, then prints only schema metadata and hashes—not raw typed data. This is the next evidence step before a signer can be implemented. If the payload is opaque hex, the current policy deliberately rejects it.
+
+
+## Connected Supabase deployment status (2026-11-12)
+
+The connected Supabase project `wolv-agent` was inspected and the seven autonomy migrations plus two database-hardening/performance migrations were applied successfully. Supabase records nine migrations:
+
+- `create_market_price_cache`
+- `create_market_opportunities`
+- `create_autonomous_execution_queue`
+- `create_autonomy_portfolio_ledger`
+- `extend_paper_fill_exit_evidence`
+- `create_paper_exit_ledger`
+- `add_autonomy_portfolio_hard_stops`
+- `harden_autonomy_database_privileges`
+- `index_autonomy_foreign_keys`
+
+The existing `public.tokenized_market_pulse` table was left untouched; its four existing rows remained present after migration. The autonomy tables exist, and the database currently has no autonomy portfolio rows, no intents/events/leases, no paper positions/fills/exits, and no market cache/opportunity rows. The global autonomy kill switch is initialized to `true` with reason `INITIAL_FAIL_CLOSED`. No portfolio is enabled.
+
+Database hardening:
+- All WOLV security-definer functions now use `search_path = pg_catalog, public`.
+- The market-price trigger function is not directly executable by anon/authenticated roles.
+- The three public market-data tables are SELECT-only for anon/authenticated roles; no public writes are granted.
+- Execution and portfolio tables retain RLS with no client-facing policies, making them service-role/server-only.
+- Added indexes for the reservation and lease intent foreign keys after Supabase's performance advisor identified the missing indexes.
+
+Supabase advisor results after hardening:
+- Security: nine INFO findings for RLS-enabled autonomy tables with no policies. This is intentional: these tables are server/service-role only; do not add browser policies without an explicit owner-scoped access design.
+- Performance: no remaining unindexed-foreign-key finding. Remaining INFO findings report indexes not yet used; the new system has not processed production workload, so this is expected at this stage.
+
+These database migrations are applied to the connected Supabase project. This does not mean the market-data workers are running, a portfolio is configured, or live execution is enabled. The global kill switch remains on and the project contains no configured autonomy portfolio.
