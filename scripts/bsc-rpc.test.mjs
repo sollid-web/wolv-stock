@@ -107,14 +107,14 @@ test("BSC client binds transaction sender, target and chain and reads head block
   const fake = rpcFetch((method) => {
     if (method === "eth_chainId") return "0x38";
     if (method === "eth_getTransactionByHash") return {
-      hash: txHash, from: wallet, to: token, chainId: "0x38",
+      hash: txHash, from: wallet, to: token, chainId: "0x38", input: "0x12345678", value: "0x0",
     };
     if (method === "eth_blockNumber") return "0x1234";
     throw new Error("unexpected method " + method);
   });
   const client = createBscRpcClient({ rpcUrl: "https://rpc.example", fetchImpl: fake.fetchImpl });
   assert.deepEqual(await client.getTransaction(txHash), {
-    hash: txHash, from: wallet, to: token, chainId: "56",
+    hash: txHash, from: wallet, to: token, chainId: "56", data: "0x12345678", value: "0",
   });
   assert.equal(await client.getBlockNumber(), "4660");
 });
