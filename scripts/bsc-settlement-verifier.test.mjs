@@ -25,13 +25,13 @@ function fakeClient(overrides = {}) {
       };
     },
     async getTransaction() {
-      return { hash: txHash, from: wallet, to: router, chainId: "56", ...overrides.transaction };
+      return { hash: txHash, from: wallet, to: router, chainId: "56", data: "0x12345678", value: "0", ...overrides.transaction };
     },
     async getBlockNumber() { return overrides.head ?? "120"; },
   };
 }
 const request = {
-  chainId: "56", walletAddress: wallet, expectedTarget: router,
+  chainId: "56", walletAddress: wallet, expectedTarget: router, expectedData: "0x12345678", expectedValue: "0",
   transactionHash: txHash, inputTokenAddress: inputToken, outputTokenAddress: outputToken,
   expectedAmountIn: "1000", minimumAmountOut: "940", minConfirmations: 12,
 };
