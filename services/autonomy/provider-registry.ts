@@ -90,8 +90,8 @@ export const autonomyProviderRegistry = createAutonomyProviderRegistry([binanceW
 /**
  * Shared provider contract registry for execution preparation. The legacy
  * round-trip interface remains in place for the paper worker until its
- * strategy-specific evidence contract is migrated. Both registries select
- * the same Binance provider identity and credentials.
+ * strategy-specific evidence contract is migrated. The normalized registry
+ * exposes Binance RFQ and 1inch Classic independently of worker activation.
  */
 const normalizedPreferred = (process.env.WOLV_AUTONOMY_NORMALIZED_PROVIDER_ORDER ?? "binance-web3-aggregator,1inch-classic")
   .split(",").map((value) => value.trim()).filter(Boolean);
