@@ -40,6 +40,16 @@ The production adapter must implement the existing `TypedDataSigner` contract an
 9. Apply idempotency to the subsequent Binance submit request. A timeout or ambiguous response must enter reconciliation; it must not trigger a second signature/submission with a new request ID.
 10. Stop immediately on signer revocation, authorization failure, policy mismatch, expired quote, stale intent version or emergency stop.
 
+## Read-only schema capture
+
+A local read-only probe now builds a real Binance quote and unsigned RFQ order, then prints only the schema metadata needed for signer review. It never prints raw typed data, signs, submits or broadcasts.
+
+```bash
+npm run autonomy:rfq-schema-probe -- --wallet 0x... --input-token 0x... --output-token 0x... --amount 1000000
+```
+
+The probe can also read the wallet/input token/amount from the existing WOLV autonomy environment variables and the output token from `WOLV_AUTONOMY_PROBE_OUTPUT_TOKEN_ADDRESS`. It requires local server-side Binance API credentials in `.env.local` or `.env`. Do not paste credentials or raw typed data into chat. The safe JSON output contains the quote/order IDs, typed-data format/hash, domain metadata, primary type, field names/types and approval metadata. If the format is opaque hex, the probe marks it unsupported by the current signing policy.
+
 ## Required evidence before enabling a signer
 
 - [ ] Capture a real Binance RFQ build response in the user's environment without printing secrets or raw typed data into logs.
