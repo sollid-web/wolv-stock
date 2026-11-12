@@ -20,6 +20,7 @@ import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const HASH = `0x${"a".repeat(64)}`;
 const TX_HASH = `0x${"b".repeat(64)}`;
+const OWNER = "0x0000000000000000000000000000000000000111";
 const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const TARGET = "0x0000000000000000000000000000000000000456";
 const router = "0x0000000000000000000000000000000000000123";
@@ -30,6 +31,7 @@ const INTENT_SIGNER = intentSigningAccount.address;
 const POLICY_EXPIRY = 2_000_000_000n;
 const POLICY_HASH = hashAgentPolicy({
   strategyId: "aapl-entry",
+  ownerAddress: OWNER,
   account: ACCOUNT,
   targetToken: TARGET,
   maxTradeValue: parseEther("0.5"),
@@ -168,6 +170,7 @@ function createHarness(overrides = {}) {
   };
   const intent = {
     strategyId: "aapl-entry",
+    ownerAddress: OWNER,
     account: ACCOUNT,
     targetToken: TARGET,
     amountBnb: parseEther("0.1"),
