@@ -74,13 +74,13 @@ function restoreQuote(quote: NormalizedExecutionQuote): ValidatedBinanceQuote {
   const outputTokenTaxRate = requiredEvidence(quote, "outputTokenTaxRate");
   const inputTokenUsdPrice = requiredEvidence(quote, "inputTokenUsdPrice");
   const outputTokenUsdPrice = requiredEvidence(quote, "outputTokenUsdPrice");
-  const decimalPattern = /^(0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
+  const decimalPattern = /^(0|[1-9][0-9]*)(?:\.[0-9]{1,18})?$/;
   if (priceImpactBps > 100_000 || !positiveInteger.test(gasEstimateRaw) || BigInt(gasEstimateRaw) <= BigInt(0) ||
-      !decimalPattern.test(estimatedNetworkFeeUsd) || Number(estimatedNetworkFeeUsd) < 0 ||
-      !decimalPattern.test(inputTokenTaxRate) || Number(inputTokenTaxRate) < 0 || Number(inputTokenTaxRate) > 1 ||
-      !decimalPattern.test(outputTokenTaxRate) || Number(outputTokenTaxRate) < 0 || Number(outputTokenTaxRate) > 1 ||
-      !decimalPattern.test(inputTokenUsdPrice) || Number(inputTokenUsdPrice) <= 0 ||
-      !decimalPattern.test(outputTokenUsdPrice) || Number(outputTokenUsdPrice) <= 0) {
+      !decimalPattern.test(estimatedNetworkFeeUsd) || !Number.isFinite(Number(estimatedNetworkFeeUsd)) || Number(estimatedNetworkFeeUsd) < 0 ||
+      !decimalPattern.test(inputTokenTaxRate) || !Number.isFinite(Number(inputTokenTaxRate)) || Number(inputTokenTaxRate) < 0 || Number(inputTokenTaxRate) > 1 ||
+      !decimalPattern.test(outputTokenTaxRate) || !Number.isFinite(Number(outputTokenTaxRate)) || Number(outputTokenTaxRate) < 0 || Number(outputTokenTaxRate) > 1 ||
+      !decimalPattern.test(inputTokenUsdPrice) || !Number.isFinite(Number(inputTokenUsdPrice)) || Number(inputTokenUsdPrice) <= 0 ||
+      !decimalPattern.test(outputTokenUsdPrice) || !Number.isFinite(Number(outputTokenUsdPrice)) || Number(outputTokenUsdPrice) <= 0) {
     throw new Error("Binance normalized quote has incomplete or unsafe fee, tax, price or impact evidence");
   }
   return {
