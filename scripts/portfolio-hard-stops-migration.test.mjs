@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const migration = fs.readFileSync(
-  new URL("../supabase/migrations/20261112100000_add_autonomy_portfolio_hard_stops.sql", import.meta.url),
+  new URL("../supabase/migrations/20261112193119_add_autonomy_portfolio_hard_stops.sql", import.meta.url),
   "utf8",
 );
 
