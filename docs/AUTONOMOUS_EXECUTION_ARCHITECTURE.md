@@ -21,6 +21,8 @@ Binance currently exposes three different products that must not be conflated:
 
 WOLV will not treat BAW Secure Auto Sign as RFQ signing authority or bypass its external-sign confirmation flow. The execution signer must be a dedicated, policy-constrained server signer authorized once by the wallet owner, not a browser session or a private key copied into worker environment variables. See `BINANCE_CAPABILITY_MATRIX.md` for the provider evidence.
 
+The new `services/autonomy/provider-contracts.ts` defines normalized quotes and a discriminated prepared-payload union (`EVM_TRANSACTION` versus `EIP712_TYPED_DATA`). The isolated 1inch Classic adapter implements this contract and produces unsigned EVM transaction payloads. Binance's legacy RFQ worker adapter has not yet been migrated to this common contract.
+
 ## Provider independence implementation status
 
 The autonomous worker now resolves entry round-trip quotes, unsigned order construction and paper exit quotes through `services/autonomy/provider-registry.ts`. Provider preference is configured with `WOLV_AUTONOMY_PROVIDER_ORDER`; unsupported chains and missing credentials fail closed. Round-trip legs must come from the same adapter. Existing Binance audit events remain readable during worker recovery.
