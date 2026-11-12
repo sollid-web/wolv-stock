@@ -89,6 +89,7 @@ export async function POST(request: Request) {
       const expiresAt = BigInt(value.policy.expiresAt);
       const expectedPolicyHash = hashAgentPolicy({
         strategyId: strategyConfig.id,
+        account,
         targetToken,
         maxTradeValue,
         expiresAt,
