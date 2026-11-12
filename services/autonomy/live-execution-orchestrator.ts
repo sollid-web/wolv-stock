@@ -310,6 +310,8 @@ export function createLiveExecutionOrchestrator(dependencies: {
             order.amountIn !== input.amountIn ||
             order.approvalRequired || order.approvalTarget !== null ||
             order.typedDataFormat !== "JSON_TYPED_DATA" ||
+            !Number.isFinite(Date.parse(order.quoteExpiresAt)) ||
+            Date.parse(order.quoteExpiresAt) <= now() ||
             Date.parse(order.quoteExpiresAt) > Date.parse(checked.quoteExpiresAt)) {
           throw new Error("Unsigned RFQ order does not match the validated live quote or approved signing format");
         }
@@ -349,7 +351,7 @@ export function createLiveExecutionOrchestrator(dependencies: {
             walletAddress: policy.walletAddress,
             providerIdempotencyWindowSeconds: idempotencyWindow,
             policyVersion: policy.policyVersion,
-            quoteExpiresAt: checked.quoteExpiresAt,
+            quoteExpiresAt: order.quoteExpiresAt,
             providerQuoteId: order.quoteId,
             providerOrderId: order.orderId,
             tokenAddress: order.outputTokenAddress,
