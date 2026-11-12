@@ -77,6 +77,7 @@ export function createLiveExecutionRecovery(dependencies: {
   repository: LiveExecutionRecoveryRepository;
   provider: LiveRfqReconciler;
   settlement: LiveChainSettlementVerifier;
+  isNewEntryAllowed?(ownerId: string): Promise<boolean>;
   now?: () => number;
 }) {
   const now = dependencies.now ?? Date.now;
@@ -267,28 +268,39 @@ export function createLiveExecutionRecovery(dependencies: {
   }
 
   async function recoverOne(attempt: LiveExecutionAttempt, report: LiveRecoveryReport): Promise<void> {
-    if (attempt.status === "PREPARED") {
+    if (["PREPARED", "SIGNING_REQUESTED", "SIGNER_UNKNOWN", "SIGNED"].includes(attempt.status)) {
       const expiry = attempt.quote_expires_at ? Date.parse(attempt.quote_expires_at) : NaN;
-      if (!Number.isFinite(expiry) || expiry <= now()) {
-        const aborted = await transition(attempt, "ABORTED", "LIVE_PREPARED_ATTEMPT_EXPIRED", {
-          reason: "Quote expired before signing began",
-        }, { last_error_code: "QUOTE_EXPIRED_BEFORE_SIGNING" });
+      const quoteFresh = Number.isFinite(expiry) && expiry > now();
+      let newEntryAllowed = true;
+      if (dependencies.isNewEntryAllowed) {
+        try {
+          newEntryAllowed = await dependencies.isNewEntryAllowed(attempt.owner_id);
+        } catch {
+          newEntryAllowed = false;
+        }
+      }
+
+      if (!quoteFresh || !newEntryAllowed) {
+        const terminalStatus: LiveExecutionStatus =
+          attempt.status === "PREPARED" || attempt.status === "SIGNED" ? "ABORTED" : "REJECTED";
+        const aborted = await transition(
+          attempt,
+          terminalStatus,
+          "LIVE_PRE_SUBMISSION_ATTEMPT_ABORTED",
+          {
+            reason: !quoteFresh ? "RFQ quote expired before provider submission" : "New-entry policy or global stop is engaged",
+          },
+          { last_error_code: !quoteFresh ? "QUOTE_EXPIRED_BEFORE_SUBMISSION" : "NEW_ENTRY_POLICY_STOPPED" },
+        );
         if (aborted) {
           report.failed += 1;
           await dependencies.repository.releaseBudget(aborted.owner_id, aborted.id);
         } else report.unchanged += 1;
       } else {
+        // The entry orchestrator can resume a still-fresh pre-submit attempt
+        // with the same persisted signer operation and payload fingerprint.
         report.unchanged += 1;
       }
-      return;
-    }
-
-    if (attempt.status === "SIGNING_REQUESTED" || attempt.status === "SIGNER_UNKNOWN" ||
-        attempt.status === "SIGNED") {
-      report.held += 1;
-      await transition(attempt, "SECURITY_HOLD", "LIVE_RECOVERY_SIGNER_OUTCOME_REQUIRES_REVIEW", {
-        reason: "Signer outcome cannot be reconstructed safely from persisted metadata alone",
-      }, { last_error_code: "SIGNER_OUTCOME_REQUIRES_RECONCILIATION" });
       return;
     }
 
