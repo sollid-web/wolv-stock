@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.wolv_live_execution_attempts (
   last_error_code text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (owner_id, id),
   UNIQUE (owner_id, intent_id, attempt_number),
   FOREIGN KEY (owner_id, intent_id)
     REFERENCES public.wolv_execution_intents (owner_id, id) ON DELETE RESTRICT
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS public.wolv_live_execution_attempts (
 
 CREATE UNIQUE INDEX IF NOT EXISTS wolv_live_execution_one_active_attempt_idx
   ON public.wolv_live_execution_attempts (owner_id, intent_id)
-  WHERE status NOT IN ('SETTLED','FAILED','REJECTED','ABORTED','SECURITY_HOLD');
+  WHERE status NOT IN ('SETTLED','FAILED','REJECTED','ABORTED');
 
 CREATE INDEX IF NOT EXISTS wolv_live_execution_recovery_idx
   ON public.wolv_live_execution_attempts (owner_id, updated_at)
@@ -126,7 +127,7 @@ DECLARE
   allowed boolean := false;
 BEGIN
   IF p_detail IS NULL OR jsonb_typeof(p_detail) <> 'object'
-     OR p_detail ?| ARRAY['signature','typedData','privateKey','secret','rawTransaction'] THEN
+     OR p_detail::text ~* '"(signature|typedData|privateKey|secret|rawTransaction)"[[:space:]]*:' THEN
     RAISE EXCEPTION 'Unsafe live execution event detail';
   END IF;
   IF p_evidence IS NULL OR jsonb_typeof(p_evidence) <> 'object'
@@ -136,6 +137,9 @@ BEGIN
        'amount_in','amount_out','fee_amount','settlement_block','last_error_code'
      ]) <> '{}'::jsonb THEN
     RAISE EXCEPTION 'Unsupported live execution evidence field';
+  END IF;
+  IF length(btrim(coalesce(p_event_type, ''))) < 2 OR length(btrim(coalesce(p_actor, ''))) < 2 THEN
+    RAISE EXCEPTION 'Live execution event type and actor are required';
   END IF;
   IF p_next_status NOT IN (
     'PREPARED','SIGNING_REQUESTED','SIGNER_UNKNOWN','SIGNED',
@@ -172,6 +176,25 @@ BEGIN
   IF NOT allowed THEN
     RAISE EXCEPTION 'Invalid live execution transition: % -> %',
       current_attempt.status, p_next_status;
+  END IF;
+
+  IF p_next_status = 'PROVIDER_FILLED' AND (
+    coalesce(p_evidence->>'provider_order_id', current_attempt.provider_order_id) IS NULL OR
+    coalesce(p_evidence->>'transaction_hash', current_attempt.transaction_hash) IS NULL OR
+    coalesce(p_evidence->>'amount_in', current_attempt.amount_in) IS NULL OR
+    coalesce(p_evidence->>'amount_out', current_attempt.amount_out) IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Provider-filled state requires order, transaction and amount evidence';
+  END IF;
+
+  IF p_next_status = 'SETTLED' AND (
+    coalesce(p_evidence->>'transaction_hash', current_attempt.transaction_hash) IS NULL OR
+    coalesce(p_evidence->>'amount_in', current_attempt.amount_in) IS NULL OR
+    coalesce(p_evidence->>'amount_out', current_attempt.amount_out) IS NULL OR
+    coalesce(p_evidence->>'fee_amount', current_attempt.fee_amount) IS NULL OR
+    coalesce(p_evidence->>'settlement_block', current_attempt.settlement_block) IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Settled state requires independent transaction, amount, fee and block evidence';
   END IF;
 
   UPDATE public.wolv_live_execution_attempts
