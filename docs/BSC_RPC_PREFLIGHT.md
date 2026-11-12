@@ -14,7 +14,7 @@
 
 `services/autonomy/bsc-evm-simulator.ts` adapts the RPC client to the common EVM transaction simulator contract. It binds the simulation to the prepared wallet, target, calldata, value, gas price and gas limit, and rejects an expired quote, wrong chain or gas estimate exceeding the prepared limit.
 
-`services/autonomy/bsc-settlement-verifier.ts` independently checks a mined transaction, sender, exact prepared router target, BSC chain, confirmation depth, ERC-20 Transfer logs for the configured input/output tokens, exact net input debit, minimum net output credit, and actual fee in wei. Provider acknowledgement alone cannot produce `SETTLED`.
+`services/autonomy/bsc-settlement-verifier.ts` independently checks a mined transaction, sender, exact prepared router target/calldata/native value, BSC chain, confirmation depth, ERC-20 Transfer logs for the configured input/output tokens, exact net input debit, minimum net output credit, and actual fee in wei. Provider acknowledgement alone cannot produce `SETTLED`.
 
 ## Security boundary
 
