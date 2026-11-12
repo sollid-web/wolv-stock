@@ -45,37 +45,37 @@ export function createAutonomyProviderRegistry(
 ) {
   const byId = new Map(adapters.map((adapter) => [adapter.id, adapter]));
   if (byId.size !== adapters.length) throw new Error("Autonomy provider IDs must be unique");
-  return {
-    listAvailable(chainId: string) {
-      return preferredIds
-        .map((id) => byId.get(id))
-        .filter((adapter): adapter is AutonomyExecutionAdapter =>
-          !!adapter && adapter.supportedChainIds.includes(chainId) && adapter.isConfigured(),
-        );
-    },
-    select(chainId: string): AutonomyExecutionAdapter {
-      const adapter = this.listAvailable(chainId)[0];
-      if (!adapter) throw new Error("No configured autonomy execution provider supports chain " + chainId);
-      return adapter;
-    },
-    async getRoundTripQuote(input: Parameters<AutonomyExecutionAdapter["getRoundTripQuote"]>[0]) {
-      const candidates = this.listAvailable(input.chainId);
-      if (!candidates.length) throw new Error("No configured autonomy execution provider supports chain " + input.chainId);
-      const failures: string[] = [];
-      for (const adapter of candidates) {
-        try {
-          const result = await adapter.getRoundTripQuote(input);
-          if (result.provider !== adapter.id || result.buy.provider !== adapter.id || result.sell.provider !== adapter.id) {
-            throw new Error("Provider returned quote evidence with a mismatched provider identity");
-          }
-          return { adapter, result };
-        } catch (error) {
-          failures.push(adapter.id + ": " + (error instanceof Error ? error.message : "quote failed"));
-        }
-      }
-      throw new Error("All configured quote providers failed: " + failures.join("; ").slice(0, 500));
-    },
+  const listAvailable = (chainId: string) => preferredIds
+    .map((id) => byId.get(id))
+    .filter((adapter): adapter is AutonomyExecutionAdapter =>
+      !!adapter && adapter.supportedChainIds.includes(chainId) && adapter.isConfigured(),
+    );
+
+  const select = (chainId: string): AutonomyExecutionAdapter => {
+    const adapter = listAvailable(chainId)[0];
+    if (!adapter) throw new Error("No configured autonomy execution provider supports chain " + chainId);
+    return adapter;
   };
+
+  const getRoundTripQuote = async (input: Parameters<AutonomyExecutionAdapter["getRoundTripQuote"]>[0]) => {
+    const candidates = listAvailable(input.chainId);
+    if (!candidates.length) throw new Error("No configured autonomy execution provider supports chain " + input.chainId);
+    const failures: string[] = [];
+    for (const adapter of candidates) {
+      try {
+        const result = await adapter.getRoundTripQuote(input);
+        if (result.provider !== adapter.id || result.buy.provider !== adapter.id || result.sell.provider !== adapter.id) {
+          throw new Error("Provider returned quote evidence with a mismatched provider identity");
+        }
+        return { adapter, result };
+      } catch (error) {
+        failures.push(adapter.id + ": " + (error instanceof Error ? error.message : "quote failed"));
+      }
+    }
+    throw new Error("All configured quote providers failed: " + failures.join("; ").slice(0, 500));
+  };
+
+  return { listAvailable, select, getRoundTripQuote };
 }
 
 const preferred = (process.env.WOLV_AUTONOMY_PROVIDER_ORDER ?? "binance-web3-aggregator")
