@@ -181,7 +181,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
   };
 
   if (policy.enabled && (
-    policy.globalKillSwitch || policy.emergencyStop || policy.chainId !== "56" ||
+    policy.chainId !== "56" ||
     !policy.allowedChainIds.includes("56") ||
     policy.budgetAmount === "0" || policy.maxOrderAmount === "0" ||
     policy.maxPositionAmount === "0" || policy.maxDailySpend === "0" ||
@@ -190,7 +190,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
     !policy.allowedInputTokenAddresses.length || !policy.allowedTransactionSenders.length ||
     !policy.allowedTransactionTargets.length
   )) {
-    throw new Error("Live portfolio is enabled with incomplete, stopped or zero-limit risk policy");
+    throw new Error("Live portfolio is enabled with incomplete or zero-limit risk policy");
   }
   return policy;
 }
