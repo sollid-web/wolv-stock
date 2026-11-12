@@ -17,15 +17,19 @@ grant select on public.wolv_autonomy_global_control to service_role;
 -- Defaults remain conservative; existing disabled portfolios stay disabled.
 alter table public.wolv_autonomy_portfolios
   add column if not exists max_open_positions integer not null default 1,
+  add column if not exists max_open_orders integer not null default 1,
   add column if not exists max_daily_realized_loss numeric(78,0) not null default 1;
 
 alter table public.wolv_autonomy_portfolios
   drop constraint if exists wolv_autonomy_portfolios_max_open_positions_check,
+  drop constraint if exists wolv_autonomy_portfolios_max_open_orders_check,
   drop constraint if exists wolv_autonomy_portfolios_max_daily_realized_loss_check;
 
 alter table public.wolv_autonomy_portfolios
   add constraint wolv_autonomy_portfolios_max_open_positions_check
     check (max_open_positions between 1 and 100),
+  add constraint wolv_autonomy_portfolios_max_open_orders_check
+    check (max_open_orders between 1 and 100),
   add constraint wolv_autonomy_portfolios_max_daily_realized_loss_check
     check (max_daily_realized_loss > 0 and max_daily_realized_loss = trunc(max_daily_realized_loss));
 
@@ -51,7 +55,8 @@ declare
   position_cost numeric(78,0);
   position_reserved numeric(78,0);
   daily_reserved numeric(78,0);
-  open_position_count integer;
+  open_position_count bigint;
+  open_order_count bigint;
   daily_realized_loss numeric(78,0);
   candidate_already_open boolean;
   global_kill_switch boolean;
@@ -134,6 +139,10 @@ begin
   where owner_id = p_owner_id and status = 'RESERVED'
     and created_at >= utc_day_start and created_at < utc_day_start + interval '1 day';
 
+  select count(*) into open_order_count
+  from public.wolv_autonomy_reservations
+  where owner_id = p_owner_id and status = 'RESERVED';
+
   select count(*) into open_position_count
   from (
     select chain_id, lower(token_address) as token_address
@@ -161,6 +170,7 @@ begin
     and created_at >= utc_day_start and created_at < utc_day_start + interval '1 day';
 
   if not candidate_already_open and open_position_count >= account.max_open_positions then return false; end if;
+  if open_order_count >= account.max_open_orders then return false; end if;
   if daily_realized_loss >= account.max_daily_realized_loss then return false; end if;
   if position_cost + position_reserved + p_amount_in > account.max_position_amount then return false; end if;
   if account.committed_amount + account.reserved_amount + p_amount_in > account.paper_budget_amount then return false; end if;
@@ -188,6 +198,7 @@ create or replace function public.wolv_get_autonomy_risk_snapshot(
   p_owner_id uuid
 ) returns table (
   open_positions bigint,
+  open_orders bigint,
   daily_realized_loss text
 )
 language sql stable security definer set search_path = public
@@ -204,14 +215,18 @@ as $$
     from public.wolv_autonomy_reservations
     where owner_id = p_owner_id and status = 'RESERVED'
   ),
+  active_orders as (
+    select count(*) as total from public.wolv_autonomy_reservations
+    where owner_id = p_owner_id and status = 'RESERVED'
+  ),
   realized_losses as (
     select coalesce(sum(-e.realized_pnl_input_units), 0) as loss
     from public.wolv_autonomy_paper_exits e, utc_window w
     where e.owner_id = p_owner_id and e.realized_pnl_input_units < 0
       and e.created_at >= w.day_start and e.created_at < w.day_start + interval '1 day'
   )
-  select (select count(*) from active_positions), realized_losses.loss::text
-  from realized_losses;
+  select (select count(*) from active_positions), active_orders.total, realized_losses.loss::text
+  from realized_losses cross join active_orders;
 $$;
 
 revoke all on function public.wolv_get_autonomy_risk_snapshot(uuid) from public, anon, authenticated;
