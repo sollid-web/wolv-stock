@@ -39,3 +39,9 @@ test("aggregate risk snapshot is database-computed and preserves exact loss valu
   assert.match(migration, /revoke all on function public\.wolv_get_autonomy_risk_snapshot/);
   assert.match(migration, /grant execute on function public\.wolv_get_autonomy_risk_snapshot\(uuid\) to service_role/);
 });
+
+
+test("paper-fill commit accepts normalized and legacy provider quote events", () => {
+  assert.match(migration, /e\.value->>'type' in \('BINANCE_ROUNDTRIP_QUOTES_VALIDATED','PROVIDER_ROUNDTRIP_QUOTES_VALIDATED'\)/);
+  assert.match(migration, /wolv_commit_autonomy_paper_fill/);
+});
