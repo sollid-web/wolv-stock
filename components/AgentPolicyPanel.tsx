@@ -327,7 +327,7 @@ export default function AgentPolicyPanel() {
                 body: JSON.stringify({
                     name: strategy.strategyId,
                     intervalSeconds: 60,
-                    policyVersion: "WOLV_AGENT_POLICY_V2",
+                    policyVersion: "WOLV_AGENT_POLICY_V3",
                     policy: {
                         targetToken: strategy.targetToken,
                         maxTradeValueWei: strategy.maxTradeValueWei,
