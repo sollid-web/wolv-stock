@@ -21,6 +21,7 @@ const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
 const POLICY_EXPIRY = 2_000_000_000n;
 const POLICY_HASH = hashAgentPolicy({
   strategyId: strategy.id,
+  account: strategy.account,
   targetToken: strategy.targetToken,
   maxTradeValue: parseEther("0.5"),
   expiresAt: POLICY_EXPIRY,
