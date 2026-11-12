@@ -45,6 +45,12 @@ WOLV_AUTONOMY_PROVIDER_ORDER=binance-web3-aggregator
 
 Comma-separated IDs define preference order. Unknown, unconfigured and chain-incompatible IDs are ignored. If no adapter is eligible, the worker fails closed. Do not add a provider ID until its adapter is implemented and tested.
 
+## Candidate for the second execution adapter
+
+**1inch Swap API** is the first candidate to validate. Its official capability matrix lists BNB Chain (56), Classic Swap and Intent-based Swap support, and RWA support; however, it explicitly notes that availability varies by tokenized asset, issuer, network, eligibility, market hours and liquidity. This is a capability lead, not proof that every WOLV-listed token is routable. See the [1inch Swap API supported modes and chains](https://portal.1inch.dev/documentation/apis/swap/introduction).
+
+The adapter must not be enabled until it can produce all risk inputs WOLV currently requires (fresh two-sided quotes, exact amounts, token decimals/taxes, USD fee evidence and price impact) and its transaction build/sign/settlement flow has been independently validated. 1inch Classic Swap transactions are not interchangeable with Binance EIP-712 RFQ orders; they require a separate typed execution path.
+
 ## Required next work
 
 1. Move the validated quote/order models into vendor-neutral contracts; keep vendor parsing in adapter modules.
