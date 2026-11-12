@@ -53,7 +53,7 @@ function restoreQuote(quote: NormalizedExecutionQuote): ValidatedBinanceQuote {
   const observedAt = Date.parse(quote.observedAt);
   const expiresAt = Date.parse(quote.expiresAt);
   if (!Number.isFinite(observedAt) || !Number.isFinite(expiresAt) ||
-      expiresAt <= Date.now() || observedAt > Date.now() + 5_000) {
+      expiresAt <= Date.now() || Date.now() - observedAt > 20_000 || observedAt > Date.now() + 5_000) {
     throw new Error("Binance normalized quote timestamps are invalid or expired");
   }
   const approvalTarget = quote.providerEvidence.approvalTarget;
