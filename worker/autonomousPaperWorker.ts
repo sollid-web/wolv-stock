@@ -425,6 +425,10 @@ async function processPaperExits() {
     console.warn("[autonomy-worker] paper-exits-held blocker=PORTFOLIO_WALLET_OR_CHAIN_MISMATCH");
     return;
   }
+  if (SLIPPAGE_BPS > portfolio.riskPolicy.maxSlippageBps) {
+    console.warn("[autonomy-worker] paper-exits-held blocker=SLIPPAGE_EXCEEDS_POLICY");
+    return;
+  }
   const allowed = new Set(portfolio.riskPolicy.allowedTokenAddresses.map((value) => value.toLowerCase()));
   const positions = await listOpenPaperPositions(OWNER_ID, 100);
   for (const position of positions) {
