@@ -93,7 +93,10 @@ export const autonomyProviderRegistry = createAutonomyProviderRegistry([binanceW
  * strategy-specific evidence contract is migrated. Both registries select
  * the same Binance provider identity and credentials.
  */
+const normalizedPreferred = (process.env.WOLV_AUTONOMY_NORMALIZED_PROVIDER_ORDER ?? "binance-web3-aggregator,1inch-classic")
+  .split(",").map((value) => value.trim()).filter(Boolean);
+
 export const normalizedAutonomyProviderRegistry = createNormalizedProviderRegistry(
-  [binanceExecutionAdapter],
-  preferred,
+  [binanceExecutionAdapter, createOneInchClassicAdapter()],
+  normalizedPreferred,
 );
