@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const sql = fs.readFileSync(
-  new URL("../supabase/migrations/20261112130000_harden_autonomy_database_privileges.sql", import.meta.url),
+  new URL("../supabase/migrations/20261112193351_harden_autonomy_database_privileges.sql", import.meta.url),
   "utf8",
 );
 
