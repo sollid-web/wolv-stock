@@ -382,3 +382,22 @@ The paper config script accepts:
 
 The three thresholds are independently optional, but at least one must be supplied to enable exits. Exit policy configuration is separate from enabling new paper entries.
 
+## Binance RFQ submit and chain-evidence adapters (2026-11-11)
+
+WOLV now has a provider adapter for Binance's documented RFQ order lifecycle:
+- Submit validates UUID v4 request IDs, 65-byte signatures, EIP-712 scheme, BSC chain and quote expiry.
+- It forwards the exact Binance `rfq.orderId`, vendor and signature through the existing server-side Binance API module.
+- Any transport exception or malformed acknowledgement is classified as `UNKNOWN`, because the provider may have accepted the order before the connection failed. A retry must reuse the same request ID.
+- Status polling maps `PENDING_VENDOR` and `PENDING_ONCHAIN` to pending, and provider terminal failures to failed.
+- A Binance `FILLED` response becomes `PROVIDER_FILLED`, not `SETTLED`.
+
+A separate BSC transaction-detail verifier checks the transaction hash, BSC chain identifier, successful transaction status, wallet input-token transfer, wallet output-token transfer, exact expected amounts, block height and network fee. Only after that independent evidence is available may a higher-level orchestrator classify the execution as settled. The verifier contract requires the expected amounts from persisted order evidence; it does not infer them.
+
+These adapters are provider building blocks, not an enabled live worker. The current worker still runs paper-only. No signing provider, durable live submission queue, or settlement state persistence has been wired into it. The live path remains blocked until the typed-data schema and wallet authorization are verified, and the end-to-end state machine persists the request ID before any submission.
+
+Official Binance references:
+- Trading API: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/trading-api
+- Submit RFQ Order: `POST /api/v1/dex/aggregator/order/submit`; Binance documents requestId idempotency for 30 minutes and requires the signing wallet to match the quote wallet.
+- Get RFQ Order Status: `GET /api/v1/dex/aggregator/order/{orderId}`; provider statuses `FILLED` and `FAILED` are terminal, but provider fill still needs chain evidence for WOLV's ledger.
+- Transaction Detail by Tx Hash: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/wallet-api
+
