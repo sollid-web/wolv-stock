@@ -26,60 +26,38 @@ function uuidV4(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-/**
- * Binance's RFQ submission/status adapter. It does not sign; callers must
- * supply a signature from an independently authorized TypedDataSigner.
- * A FILLED provider status is not chain settlement until independently verified.
- */
-export async function submitValidatedBinanceRfq(input: {
-  requestId: string;
-  order: PreparedRfqOrder;
-  signature: string;
-}): Promise<SubmissionResult> {
-  if (!uuidV4(input.requestId)) throw new Error("RFQ requestId must be a stable UUID v4");
-  if (!/^0x[0-9a-fA-F]{130}$/.test(input.signature)) throw new Error("RFQ signature must be a 65-byte hex signature");
-  if (input.order.signingScheme !== "EIP712" || input.order.chainId !== "56") {
-    throw new Error("Unsupported RFQ signing scheme or chain");
-  }
-  if (Date.parse(input.order.quoteExpiresAt) <= Date.now()) {
-    return { status: "REJECTED", providerCode: "QUOTE_EXPIRED", rejectedAt: new Date().toISOString() };
-  }
+export function parseBinanceRfqSubmitResponse(response: unknown, now = Date.now()): SubmissionResult {
   try {
-    const response = await submitOrder(
-      input.requestId, input.signature, input.order.vendor, input.order.orderId,
-    );
     const data = envelope(response);
     const providerOrderId = nonEmpty(data.orderId, "data.orderId");
     const status = nonEmpty(data.status, "data.status");
-    if (!["PENDING_VENDOR", "PENDING_ONCHAIN", "FILLED"].includes(status)) {
-      return { status: "UNKNOWN", observedAt: new Date().toISOString(), reason: "Unrecognized initial provider status: " + status };
+    const createdAt = Number(data.createdAt);
+    if (!Number.isSafeInteger(createdAt) || createdAt <= 0 || createdAt > now + 5_000 || now - createdAt > 60_000) {
+      return { status: "UNKNOWN", observedAt: new Date(now).toISOString(), reason: "Submit response timestamp is invalid or stale" };
     }
-    return {
-      status: "SUBMITTED", providerOrderId,
-      submittedAt: new Date().toISOString(),
-    };
+    if (!["PENDING_VENDOR", "PENDING_ONCHAIN", "FILLED"].includes(status)) {
+      return { status: "UNKNOWN", observedAt: new Date(now).toISOString(), reason: "Unrecognized initial provider status: " + status };
+    }
+    return { status: "SUBMITTED", providerOrderId, submittedAt: new Date(createdAt).toISOString() };
   } catch (error) {
-    // Transport errors can occur after the provider accepted the order.
-    // Preserve ambiguity; reconcile/retry only with this exact requestId.
     return {
-      status: "UNKNOWN", observedAt: new Date().toISOString(),
-      reason: error instanceof Error ? error.message.slice(0, 200) : "Unknown submission outcome",
+      status: "UNKNOWN", observedAt: new Date(now).toISOString(),
+      reason: error instanceof Error ? error.message.slice(0, 200) : "Malformed submit response",
     };
   }
 }
 
-export async function reconcileValidatedBinanceRfq(input: {
-  providerOrderId: string;
-}): Promise<ReconciliationResult> {
-  const providerOrderId = nonEmpty(input.providerOrderId, "providerOrderId");
+export function parseBinanceRfqStatusResponse(
+  response: unknown, expectedOrderId: string, now = Date.now(),
+): ReconciliationResult {
   try {
-    const response = await getOrderStatus(providerOrderId);
     const data = envelope(response);
-    if (nonEmpty(data.orderId, "data.orderId") !== providerOrderId) {
-      return { status: "UNKNOWN", checkedAt: new Date().toISOString(), reason: "Provider order ID mismatch" };
+    const providerOrderId = nonEmpty(data.orderId, "data.orderId");
+    if (providerOrderId !== expectedOrderId) {
+      return { status: "UNKNOWN", checkedAt: new Date(now).toISOString(), reason: "Provider order ID mismatch" };
     }
     const status = nonEmpty(data.status, "data.status");
-    const checkedAt = new Date().toISOString();
+    const checkedAt = new Date(now).toISOString();
     if (status === "PENDING_VENDOR" || status === "PENDING_ONCHAIN") {
       return { status: "PENDING", checkedAt, providerOrderId };
     }
@@ -93,12 +71,51 @@ export async function reconcileValidatedBinanceRfq(input: {
       }
       const amountIn = positiveInteger(data.fromAmount, "data.fromAmount");
       const amountOut = positiveInteger(data.toAmount, "data.toAmount");
-      return {
-        status: "PROVIDER_FILLED", checkedAt, providerOrderId,
-        transactionHash, amountIn, amountOut,
-      };
+      return { status: "PROVIDER_FILLED", checkedAt, providerOrderId, transactionHash, amountIn, amountOut };
     }
     return { status: "UNKNOWN", checkedAt, reason: "Unrecognized RFQ order status: " + status };
+  } catch (error) {
+    return {
+      status: "UNKNOWN", checkedAt: new Date(now).toISOString(),
+      reason: error instanceof Error ? error.message.slice(0, 200) : "Malformed status response",
+    };
+  }
+}
+
+/**
+ * Binance's RFQ adapter. It never signs; callers must supply a signature from
+ * an independently authorized TypedDataSigner. Provider FILLED is not chain
+ * settlement until a separate receipt/balance verifier confirms it.
+ */
+export async function submitValidatedBinanceRfq(input: {
+  requestId: string; order: PreparedRfqOrder; signature: string;
+}): Promise<SubmissionResult> {
+  if (!uuidV4(input.requestId)) throw new Error("RFQ requestId must be a stable UUID v4");
+  if (!/^0x[0-9a-fA-F]{130}$/.test(input.signature)) throw new Error("RFQ signature must be a 65-byte hex signature");
+  if (input.order.signingScheme !== "EIP712" || input.order.chainId !== "56") {
+    throw new Error("Unsupported RFQ signing scheme or chain");
+  }
+  if (Date.parse(input.order.quoteExpiresAt) <= Date.now()) {
+    return { status: "REJECTED", providerCode: "QUOTE_EXPIRED", rejectedAt: new Date().toISOString() };
+  }
+  try {
+    const response = await submitOrder(input.requestId, input.signature, input.order.vendor, input.order.orderId);
+    return parseBinanceRfqSubmitResponse(response);
+  } catch (error) {
+    // A timeout may happen after provider acceptance. Never blindly resubmit with a new requestId.
+    return {
+      status: "UNKNOWN", observedAt: new Date().toISOString(),
+      reason: error instanceof Error ? error.message.slice(0, 200) : "Unknown submission outcome",
+    };
+  }
+}
+
+export async function reconcileValidatedBinanceRfq(input: {
+  providerOrderId: string;
+}): Promise<ReconciliationResult> {
+  const providerOrderId = nonEmpty(input.providerOrderId, "providerOrderId");
+  try {
+    return parseBinanceRfqStatusResponse(await getOrderStatus(providerOrderId), providerOrderId);
   } catch (error) {
     return {
       status: "UNKNOWN", checkedAt: new Date().toISOString(),
@@ -106,7 +123,6 @@ export async function reconcileValidatedBinanceRfq(input: {
     };
   }
 }
-
 
 export const binanceRfqExecutionProvider: RfqExecutionProvider = {
   async submit(input) {
