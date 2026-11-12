@@ -367,8 +367,10 @@ export default function AgentPolicyPanel() {
                 })
             })
             const data = await response.json()
-            if (!response.ok || typeof data.scheduleId !== "string" || data.execution !== "AUTONOMOUS_SCHEDULED") {
-                throw new Error(typeof data.error === "string" ? data.error : "The autonomous strategy could not be registered.")
+            const expectedPolicyHash = strategy.policyHash.slice(2).toLowerCase()
+            if (!response.ok || typeof data.scheduleId !== "string" || data.execution !== "AUTONOMOUS_SCHEDULED" ||
+                typeof data.policyHash !== "string" || data.policyHash.toLowerCase() !== expectedPolicyHash) {
+                throw new Error(typeof data.error === "string" ? data.error : "The persisted schedule hash does not match the owner-approved on-chain policy.")
             }
             setRuntimeSchedule({ scheduleId: data.scheduleId, name: strategy.strategyId, enabled: true })
             if (typeof data.workerReady === "boolean" && typeof data.executionGateEnabled === "boolean") {
