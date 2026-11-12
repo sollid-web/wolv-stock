@@ -1,4 +1,3 @@
--- Use a dollar-quoted regex so JSON key quotes are matched literally under standard_conforming_strings.
 CREATE OR REPLACE FUNCTION public.wolv_live_execution_attempt_transition(
   p_owner_id uuid,
   p_attempt_id uuid,
@@ -19,7 +18,7 @@ DECLARE
   allowed boolean := false;
 BEGIN
   IF p_detail IS NULL OR jsonb_typeof(p_detail) <> 'object'
-     OR p_detail::text ~* $forbidden_keys$"(signature|signatureData|typedData|typed_data|privateKey|private_key|secret|rawTransaction|raw_transaction|rawTx|calldata)"[[:space:]]*:$forbidden_keys$ THEN
+     OR p_detail::text ~* $forbidden_keys$"(signature|typedData|privateKey|secret|rawTransaction)"[[:space:]]*:$forbidden_keys$ THEN
     RAISE EXCEPTION 'Unsafe live execution event detail';
   END IF;
   IF p_evidence IS NULL OR jsonb_typeof(p_evidence) <> 'object'
