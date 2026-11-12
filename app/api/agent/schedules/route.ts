@@ -106,6 +106,8 @@ export async function POST(request: Request) {
     }
     try {
       const config = getAgentSmartAccountConfig();
+      const ownerAddress = getAddress(strategyConfig.ownerAddress);
+      if (ownerAddress !== getAddress(session.address)) throw new Error("The schedule owner must match the wallet that configured the on-chain policy.");
       const account = getAddress(strategyConfig.account);
       const targetToken = getAddress(strategyConfig.targetToken);
       const policyTargetToken = getAddress(value.policy.targetToken);
