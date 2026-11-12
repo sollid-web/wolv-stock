@@ -56,8 +56,9 @@ function address(value: unknown, field: string): string {
   if (typeof value !== "string" || !ADDRESS.test(value)) throw new Error("1inch response has invalid " + field);
   return value.toLowerCase();
 }
-function uint(value: unknown, field: string): string {
-  const result = value;
+function uint(value: unknown, field: string, allowSafeNumber = false): string {
+  const result = typeof value === "number" && allowSafeNumber && Number.isSafeInteger(value)
+    ? String(value) : value;
   if (typeof result !== "string" || !UINT.test(result) || BigInt(result) <= BigInt(0)) {
     throw new Error("1inch response has invalid " + field);
   }
@@ -94,7 +95,7 @@ export function parseOneInchClassicQuote(
   const amountIn = uint(response.srcAmount, "srcAmount");
   if (amountIn !== request.amountIn) throw new Error("1inch quote input amount does not match request");
   const expectedAmountOut = uint(response.dstAmount, "dstAmount");
-  const gasEstimate = uint(response.gas, "gas");
+  const gasEstimate = uint(response.gas, "gas", true);
   const now = request.now ?? Date.now();
   const observedAt = new Date(now).toISOString();
   const expiresAt = new Date(now + QUOTE_MAX_AGE_MS).toISOString();
@@ -138,7 +139,7 @@ export function parseOneInchClassicTransaction(
   }
   const value = typeof tx.value === "string" && UINT.test(tx.value) ? tx.value : null;
   if (value === null) throw new Error("1inch transaction has invalid native value");
-  const gas = uint(tx.gas, "tx.gas");
+  const gas = uint(tx.gas, "tx.gas", true);
   const gasPrice = uint(tx.gasPrice, "tx.gasPrice");
   const transaction = {
     provider: "1inch-classic" as const,
