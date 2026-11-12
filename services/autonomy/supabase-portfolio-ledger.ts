@@ -157,7 +157,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       maxHoldingMs: row.paper_max_holding_ms == null ? null : numeric(row.paper_max_holding_ms, "paper_max_holding_ms"),
     },
     riskPolicy: {
-      enabled: row.enabled && !row.emergency_stop,
+      enabled: row.enabled && !row.emergency_stop && !globalKillSwitch,
       allowedChainIds: strings(row.allowed_chain_ids, "allowed_chain_ids"),
       allowedTokenAddresses: strings(row.allowed_token_addresses, "allowed_token_addresses"),
       allowedInputTokenAddresses: strings(row.allowed_input_token_addresses, "allowed_input_token_addresses"),
