@@ -490,22 +490,22 @@ export interface PrivyNodeClientLike {
   wallets(): PrivyNodeWalletsService;
 }
 
-function assertAuthorizationPrivateKey(value: string): void {
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length < 80 || value.length % 4 !== 0) {
-    throw new Error("Privy authorization key must be base64-encoded PKCS8 P-256 private-key material");
-  }
+function normalizeAuthorizationPrivateKey(value: string): string {
   try {
-    const key = createPrivateKey({
-      key: Buffer.from(value, "base64"),
-      format: "der",
-      type: "pkcs8",
-    });
+    const key = value.includes("BEGIN PRIVATE KEY")
+      ? createPrivateKey(value)
+      : createPrivateKey({
+          key: Buffer.from(value, "base64"),
+          format: "der",
+          type: "pkcs8",
+        });
     if (key.asymmetricKeyType !== "ec" ||
         key.asymmetricKeyDetails?.namedCurve !== "prime256v1") {
       throw new Error("wrong key type");
     }
+    return key.export({ type: "pkcs8", format: "pem" }).toString();
   } catch {
-    throw new Error("Privy authorization key is not a valid PKCS8 P-256 private key");
+    throw new Error("Privy authorization key must be a valid PKCS8 P-256 private key in PEM or base64 DER form");
   }
 }
 
@@ -513,7 +513,7 @@ export function createPrivyNodeEip712SigningClient(input: {
   client: PrivyNodeClientLike;
   authorizationPrivateKey: string;
 }): PrivyEip712SigningClient {
-  assertAuthorizationPrivateKey(input.authorizationPrivateKey);
+  const authorizationPrivateKey = normalizeAuthorizationPrivateKey(input.authorizationPrivateKey);
 
   return {
     async signTypedData(request) {
@@ -528,7 +528,7 @@ export function createPrivyNodeEip712SigningClient(input: {
           },
         },
         authorization_context: {
-          authorization_private_keys: [input.authorizationPrivateKey],
+          authorization_private_keys: [authorizationPrivateKey],
         },
         idempotency_key: request.idempotencyKey,
       });
