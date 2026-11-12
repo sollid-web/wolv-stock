@@ -59,3 +59,15 @@ The adapter must not be enabled until it can produce all risk inputs WOLV curren
 4. Add per-provider signing and transaction-simulation capability declarations.
 5. Persist provider identity and idempotency metadata on every live intent, then reconcile provider status independently against chain settlement.
 6. Keep live signing disabled until custody authorization, policy-constrained signing and restart-safe live execution are complete.
+
+## Normalized registry implementation update (2026-11-12)
+
+The new `services/autonomy/normalized-provider-registry.ts` and `services/autonomy/provider-contracts.ts` provide a separate vendor-neutral contract. The common registry currently registers:
+- `binance-web3-aggregator` through `services/autonomy/binance-execution-adapter.ts`, mapping the validated Binance RFQ quote and unsigned EIP-712 order build.
+- `1inch-classic` through `services/autonomy/oneinch-classic-adapter.ts`, mapping its BSC quote and unsigned EVM transaction build.
+
+Configure its preference with `WOLV_AUTONOMY_NORMALIZED_PROVIDER_ORDER`, defaulting to `binance-web3-aggregator,1inch-classic`. The legacy paper-worker registry continues to use `WOLV_AUTONOMY_PROVIDER_ORDER` and Binance's two-sided round-trip contract. The normalized registry is **not yet the worker's execution registry**. The 1inch adapter is not eligible for the current strategy until tax/security evidence, two-sided exit quotes, independently valued gas, trusted router/allowance policy and settlement checks are complete.
+
+Provider fallback is performed only while obtaining a quote. Once a quote is returned, the same adapter instance must prepare that quote. The registry checks provider identity, chain, wallet, token direction, exact amount and quote timestamps. This does not constitute a risk approval or execution authorization.
+
+Read-only BSC preflight is implemented in `services/autonomy/bsc-rpc.ts` and `services/autonomy/bsc-evm-simulator.ts`; see [BSC_RPC_PREFLIGHT.md](./BSC_RPC_PREFLIGHT.md). It is not yet wired into the worker, does not sign or broadcast, and does not independently establish USD gas cost.
