@@ -28,7 +28,7 @@ The registry:
 The Binance Web3 aggregator is registered as the first adapter and supports BSC chain ID `56`. The worker's entry quote, unsigned RFQ build and paper exit quote calls now pass through the registry instead of importing Binance provider functions directly.
 
 This is an abstraction milestone, **not provider independence yet**:
-- Binance is currently the only registered adapter.
+- Binance remains the only adapter registered in the current worker registry. The isolated 1inch adapter implements the new generic contract but is not yet wired into worker selection.
 - The current normalized quote and prepared-order payloads still use Binance-shaped validated models.
 - No second quote or execution adapter is active.
 - No provider failover can occur until another compatible adapter is implemented and configured.
@@ -47,7 +47,7 @@ Comma-separated IDs define preference order. Unknown, unconfigured and chain-inc
 
 ## Candidate for the second execution adapter
 
-**1inch Swap API** is the first candidate to validate. Its official capability matrix lists BNB Chain (56), Classic Swap and Intent-based Swap support, and RWA support; however, it explicitly notes that availability varies by tokenized asset, issuer, network, eligibility, market hours and liquidity. This is a capability lead, not proof that every WOLV-listed token is routable. See the [1inch Swap API supported modes and chains](https://portal.1inch.dev/documentation/apis/swap/introduction).
+**1inch Classic** is now implemented as an isolated adapter against the new vendor-neutral `AutonomousExecutionAdapter` contract. It remains the first second-provider candidate to integrate into the worker. Its official capability matrix lists BNB Chain (56), Classic Swap and Intent-based Swap support, and RWA support; however, it explicitly notes that availability varies by tokenized asset, issuer, network, eligibility, market hours and liquidity. This implementation is a transaction-construction adapter, not proof that every WOLV-listed token is routable or that its risk evidence satisfies WOLV policy. See the [1inch Swap API supported modes and chains](https://portal.1inch.dev/documentation/apis/swap/introduction).
 
 The adapter must not be enabled until it can produce all risk inputs WOLV currently requires (fresh two-sided quotes, exact amounts, token decimals/taxes, USD fee evidence and price impact) and its transaction build/sign/settlement flow has been independently validated. 1inch Classic Swap transactions are not interchangeable with Binance EIP-712 RFQ orders; they require a separate typed execution path.
 
