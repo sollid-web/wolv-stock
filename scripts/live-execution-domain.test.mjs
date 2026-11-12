@@ -75,6 +75,12 @@ test("signer evidence must be durable and bound to the quoted wallet", () => {
   }));
   assert.throws(() => assertLiveExecutionSignerEvidence({
     walletAddress: wallet,
+    signerAddress: null,
+    signerOperationId: "signer-op-0001",
+    preparedPayloadHash: "a".repeat(64),
+  }));
+  assert.throws(() => assertLiveExecutionSignerEvidence({
+    walletAddress: wallet,
     signerAddress: `0x${"b".repeat(40)}`,
     signerOperationId: "signer-op-0001",
     preparedPayloadHash: "a".repeat(64),
