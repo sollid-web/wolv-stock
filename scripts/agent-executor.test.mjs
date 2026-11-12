@@ -30,6 +30,7 @@ const INTENT_SIGNER = intentSigningAccount.address;
 const POLICY_EXPIRY = 2_000_000_000n;
 const POLICY_HASH = hashAgentPolicy({
   strategyId: "aapl-entry",
+  account: ACCOUNT,
   targetToken: TARGET,
   maxTradeValue: parseEther("0.5"),
   expiresAt: POLICY_EXPIRY,
