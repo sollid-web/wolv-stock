@@ -32,9 +32,40 @@ function restoreQuote(quote: NormalizedExecutionQuote): ValidatedBinanceQuote {
   if (quote.provider !== ID || quote.chainId !== CHAIN) {
     throw new Error("Normalized quote is not a supported Binance BSC quote");
   }
+  const addressPattern = /^0x[a-fA-F0-9]{40}$/;
+  const positiveInteger = /^(0|[1-9][0-9]*)$/;
+  if (!addressPattern.test(quote.walletAddress) ||
+      !addressPattern.test(quote.inputTokenAddress) ||
+      !addressPattern.test(quote.outputTokenAddress) ||
+      quote.inputTokenAddress.toLowerCase() === quote.outputTokenAddress.toLowerCase()) {
+    throw new Error("Binance normalized quote has invalid wallet or token addresses");
+  }
+  if (!positiveInteger.test(quote.amountIn) || BigInt(quote.amountIn) <= BigInt(0) ||
+      !positiveInteger.test(quote.expectedAmountOut) || BigInt(quote.expectedAmountOut) <= BigInt(0)) {
+    throw new Error("Binance normalized quote has invalid amounts");
+  }
+  if (!/^[a-fA-F0-9]{32}$/.test(requiredEvidence(quote, "quoteId")) ||
+      requiredEvidence(quote, "executionMode") !== "RFQ" ||
+      !/^[a-f0-9]{64}$/.test(quote.routeFingerprint) ||
+      !/^[a-f0-9]{64}$/.test(quote.rawEvidenceRef)) {
+    throw new Error("Binance normalized quote has invalid RFQ identity or evidence fingerprints");
+  }
+  const observedAt = Date.parse(quote.observedAt);
+  const expiresAt = Date.parse(quote.expiresAt);
+  if (!Number.isFinite(observedAt) || !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now() || observedAt > Date.now() + 5_000) {
+    throw new Error("Binance normalized quote timestamps are invalid or expired");
+  }
   const approvalTarget = quote.providerEvidence.approvalTarget;
-  if (approvalTarget !== null && typeof approvalTarget !== "string") {
+  if (approvalTarget !== null &&
+      (typeof approvalTarget !== "string" || !addressPattern.test(approvalTarget))) {
     throw new Error("Binance quote approval target evidence is malformed");
+  }
+  if (quote.tokenMetadata.inputDecimals < 0 || quote.tokenMetadata.inputDecimals > 36 ||
+      quote.tokenMetadata.outputDecimals < 0 || quote.tokenMetadata.outputDecimals > 36 ||
+      !Number.isSafeInteger(quote.tokenMetadata.inputDecimals) ||
+      !Number.isSafeInteger(quote.tokenMetadata.outputDecimals)) {
+    throw new Error("Binance normalized quote has invalid token decimals");
   }
   return {
     provider: ID,
