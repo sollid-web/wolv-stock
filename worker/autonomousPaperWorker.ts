@@ -198,6 +198,8 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       chainId: intent.chainId, tokenAddress: intent.tokenAddress, inputTokenAddress: intent.inputTokenAddress,
       amountIn: intent.amountIn, currentPosition: portfolio.currentPositionInputUnits,
       dailySpend: portfolio.dailySpendIncludingReservations,
+      currentOpenPositions: portfolio.currentOpenPositions,
+      dailyRealizedLoss: portfolio.dailyRealizedLoss,
       quoteObservedAt: new Date(observedAtMs).toISOString(), now: new Date().toISOString(),
       slippageBps: evidenceNumber(detail, "slippageBps"),
       priceImpactBps: Math.max(evidenceNumber(detail, "buyPriceImpactBps"), evidenceNumber(detail, "sellPriceImpactBps")),
