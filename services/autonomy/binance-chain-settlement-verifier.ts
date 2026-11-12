@@ -64,8 +64,9 @@ export function parseBinanceBscSettlement(input: {
     return unknown("On-chain token transfer amounts do not match the RFQ provider settlement amounts");
   }
   const feeAmount = decimal(tx.txFee);
-  const blockNumber = positiveInteger(tx.height);
-  if (feeAmount === null || blockNumber === null) return unknown("Successful transaction is missing valid fee or block evidence");
+  const block = integer(tx.height);
+  if (feeAmount === null || block === null || block <= BigInt(0)) return unknown("Successful transaction is missing valid fee or block evidence");
+  const blockNumber = block.toString();
   return {
     status: "SETTLED" as const,
     amountIn: actualIn.toString(), amountOut: actualOut.toString(),
