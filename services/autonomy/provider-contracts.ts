@@ -80,3 +80,17 @@ export interface AutonomousExecutionAdapter {
     maxPriceImpactBps: number;
   }): Promise<PreparedExecutionPayload>;
 }
+
+
+/** Independent read-only simulation for providers returning ordinary EVM transactions. */
+export interface EvmTransactionSimulator {
+  simulate(input: PreparedEvmTransaction): Promise<{
+    success: true;
+    chainId: string;
+    gasEstimate: string;
+    simulatedAt: string;
+    transactionFingerprint: string;
+  }>;
+  getNativeBalance(walletAddress: string): Promise<string>;
+  getGasPrice(): Promise<{ wei: string; observedAt: string }>;
+}
