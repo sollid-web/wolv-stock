@@ -16,6 +16,7 @@ import type { AgentKernelClient } from "@/lib/kernelClient"
 
 export type AgentConfiguredStrategy = {
     strategyId: string
+    ownerAddress: Address
     account: Address
     targetToken: Address
     amountBnb: string
@@ -171,6 +172,7 @@ export default function AgentSetupForm({
 
             const requestedPolicyHash = hashAgentPolicy({
                 strategyId,
+                ownerAddress: getAddress(ownerAddress),
                 account: getAddress(ownerKernelClient.account.address),
                 targetToken: normalizedTarget,
                 maxTradeValue: maxTradeValueWei,
@@ -185,6 +187,7 @@ export default function AgentSetupForm({
                 ownerKernelClient,
                 publicClient,
                 validatorAddress,
+                ownerAddress: getAddress(ownerAddress),
                 strategyId,
                 targetToken: normalizedTarget,
                 intentSigner: normalizedSigner,
@@ -205,6 +208,7 @@ export default function AgentSetupForm({
             setSuccess("Policy configured and verified on-chain.")
             await onConfigured({
                 strategyId,
+                ownerAddress: getAddress(ownerAddress),
                 account: getAddress(ownerKernelClient.account.address),
                 targetToken: normalizedTarget,
                 amountBnb: strategyAmountBnb,
