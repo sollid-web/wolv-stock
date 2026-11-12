@@ -3,6 +3,7 @@ import { getValidatedBinanceRwaQuote } from "./binance-quote-provider";
 import { buildValidatedBinanceRfqOrder } from "./binance-rfq-order-provider";
 import { binanceExecutionAdapter } from "./binance-execution-adapter";
 import { createNormalizedProviderRegistry } from "./normalized-provider-registry";
+import { createOneInchClassicAdapter } from "./oneinch-classic-adapter";
 import type { ValidatedBinanceQuote } from "./binance-quote";
 import type { ValidatedRoundTripQuote } from "./binance-roundtrip";
 import type { ValidatedBinanceRfqOrder } from "./binance-rfq-order";
