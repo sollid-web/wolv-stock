@@ -244,7 +244,13 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
     throw new Error("Explicit EIP-712 message bindings and required roles are mandatory");
   }
 
-  const seenRoles = new Set(request.policy.expectedFields.map((field) => field.role));
+  const seenRoles = new Set<string>();
+  for (const field of request.policy.expectedFields) {
+    if (!field.role || seenRoles.has(field.role)) {
+      throw new Error("EIP-712 policy roles must be present and unique");
+    }
+    seenRoles.add(field.role);
+  }
   for (const role of request.policy.requiredRoles) {
     if (!seenRoles.has(role)) throw new Error(`Required EIP-712 policy role is missing: ${role}`);
   }
@@ -253,6 +259,9 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
   for (const field of request.policy.expectedFields) {
     if (seenPaths.has(field.path)) throw new Error(`Duplicate EIP-712 policy field: ${field.path}`);
     seenPaths.add(field.path);
+    if (!["address", "uint", "string", "bytes32"].includes(field.kind)) {
+      throw new Error(`Unsupported EIP-712 policy field kind: ${field.kind}`);
+    }
     const actual = readPath(typedData.message, field.path);
     const expected = normalizeExpected(field.kind, field.value);
     if (normalizeActual(field.kind, actual) !== expected) {
