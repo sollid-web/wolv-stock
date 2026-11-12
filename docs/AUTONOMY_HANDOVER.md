@@ -6,7 +6,7 @@
 - The existing market-pulse tables were not modified. The autonomy and live-ledger tables are server-only, RLS-enabled, and inaccessible to anon/authenticated roles.
 - The live-attempt ledger, immutable event log, signer/settlement evidence gates, and provider idempotency retry deadline are implemented and applied. The live tables are empty.
 - The portfolio is not configured and the global kill switch remains engaged. No signer is connected, no live worker is wired, and no real order has been signed or submitted.
-- Privy is now validated as the preferred technical route for EIP-712 server signing on EVM chains, including BSC. It supports backend authorization contexts, agent wallets, and typed-data policy restrictions. It is not connected or authorized in WOLV; no wallet was created or funded.
+- Privy is now validated as the preferred technical route for EIP-712 server signing on EVM chains, including BSC. WOLV has a fail-closed EIP-712 policy adapter that checks the domain, verifying-contract allowlist, exact type schema, message fields, idempotency key, and recovered signer address. The Privy SDK transport and wallet are not connected or authorized; no wallet was created or funded.
 - The exact Binance RFQ EIP-712 payload/domain still needs a captured, non-broadcast fixture before a Privy policy or signer can safely be activated.
 - The latest code and migration tests have not been executed in a local checkout. No claim of passing tests or production readiness is made.
 
