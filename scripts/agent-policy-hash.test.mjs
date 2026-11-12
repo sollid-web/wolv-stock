@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { encodePacked, keccak256 } from "viem";
+import { encodeAbiParameters, keccak256 } from "viem";
 import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const TOKEN = "0x0000000000000000000000000000000000000456";
 const SIGNER = "0x0000000000000000000000000000000000000789";
 const POLICY = {
+  strategyId: "aapl-entry",
   targetToken: TOKEN,
   maxTradeValue: 500_000_000_000_000_000n,
   expiresAt: 1_800_000_000n,
@@ -13,9 +14,9 @@ const POLICY = {
 };
 
 test("hashes policy fields using packed encoding in the documented order", () => {
-  const expected = keccak256(encodePacked(
-    ["address", "uint192", "uint64", "address"],
-    [TOKEN, POLICY.maxTradeValue, POLICY.expiresAt, SIGNER],
+  const expected = keccak256(encodeAbiParameters(
+    [{ type: "string" }, { type: "string" }, { type: "address" }, { type: "uint192" }, { type: "uint64" }, { type: "address" }],
+    ["WOLV_AGENT_POLICY_V2", POLICY.strategyId, TOKEN, POLICY.maxTradeValue, POLICY.expiresAt, SIGNER],
   ));
   assert.equal(hashAgentPolicy(POLICY), expected);
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({
@@ -26,6 +27,16 @@ test("hashes policy fields using packed encoding in the documented order", () =>
     ...POLICY,
     intentSigner: TOKEN,
   }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({
+    ...POLICY,
+    strategyId: "unknown-strategy",
+  }));
+});
+
+test("rejects unknown or malformed strategy labels", () => {
+  assert.throws(() => hashAgentPolicy({ ...POLICY, strategyId: "" }), /strategy ID/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, strategyId: "aapl entry" }), /strategy ID/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, strategyId: "x".repeat(65) }), /strategy ID/);
 });
 
 test("rejects zero policy addresses and values outside contract bounds", () => {
