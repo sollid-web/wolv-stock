@@ -68,6 +68,10 @@ test("rejects unknown or malformed strategy labels", () => {
 
 test("rejects zero policy addresses and values outside contract bounds", () => {
   assert.throws(
+    () => hashAgentPolicy({ ...POLICY, account: "0x0000000000000000000000000000000000000000" }),
+    /must be nonzero/,
+  );
+  assert.throws(
     () => hashAgentPolicy({ ...POLICY, targetToken: "0x0000000000000000000000000000000000000000" }),
     /must be nonzero/,
   );
