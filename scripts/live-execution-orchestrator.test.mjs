@@ -210,7 +210,7 @@ function attempt(overrides = {}) {
 }
 
 function harness(options = {}) {
-  let current = attempt();
+  let current = attempt(options.initialAttemptOverrides);
   const transitions = [];
   const calls = { reserve: 0, create: 0, gas: 0, simulation: 0, sign: 0, submit: 0, release: 0, unboundRelease: 0 };
   const repository = {
@@ -233,7 +233,7 @@ function harness(options = {}) {
   };
   const provider = {
     async getRoundTripQuote() { return roundTrip(); },
-    async buildOrder() { return order(); },
+    async buildOrder() { return order(options.approvalRequired ? { approvalRequired: true, approvalTarget: router } : {}); },
     async submit(input) {
       calls.submit += 1;
       assert.equal(input.requestId, current.request_id);
@@ -332,8 +332,41 @@ test("never resubmits when Binance returns an unknown submission outcome", async
 });
 
 test("rejects an RFQ that requires an unsupported token approval transaction", async () => {
-  const h = harness();
-  const originalBuild = h.orchestrator;
-  assert.ok(originalBuild);
-  // Approval is a separate on-chain transaction and must not be hidden inside the RFQ signer path.
+  const h = harness({ approvalRequired: true });
+  await assert.rejects(() => h.orchestrator.execute({
+    ownerId, intentId, outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
+  }), /Unsigned RFQ order does not match/);
+  assert.equal(h.calls.reserve, 0);
+  assert.equal(h.calls.sign, 0);
+  assert.equal(h.calls.submit, 0);
+});
+
+test("resumes a signer-unknown attempt using the persisted signer idempotency key", async () => {
+  const h = harness({
+    initialAttemptOverrides: {
+      status: "SIGNER_UNKNOWN",
+      version: 2,
+      signer_operation_id: "wolv-existing-signer-operation",
+      signer_address: wallet,
+      prepared_payload_hash: payloadHash,
+    },
+  });
+  const result = await h.orchestrator.execute({
+    ownerId, intentId, outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
+  });
+  assert.equal(result.status, "SUBMITTED");
+  assert.deepEqual(h.transitions, ["SIGNED", "SUBMITTING", "SUBMITTED"]);
+  assert.equal(h.calls.sign, 1);
+});
+
+test("does not re-submit an attempt that is already in the submission state", async () => {
+  const h = harness({
+    initialAttemptOverrides: { status: "SUBMISSION_UNKNOWN", version: 6 },
+  });
+  const result = await h.orchestrator.execute({
+    ownerId, intentId, outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
+  });
+  assert.equal(result.status, "RECOVERY_REQUIRED");
+  assert.equal(h.calls.sign, 0);
+  assert.equal(h.calls.submit, 0);
 });
