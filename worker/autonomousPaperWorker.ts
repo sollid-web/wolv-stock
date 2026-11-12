@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { autonomyProviderRegistry } from "../services/autonomy/provider-registry.ts";
+import { createBscRpcClient } from "../services/autonomy/bsc-rpc.ts";
 import { applyNetworkFeeBuffer } from "../services/autonomy/network-fee.ts";
 import { evaluatePaperExit } from "../services/autonomy/paper-exit-policy.ts";
 import { conservativeExitProceeds, usdFeeToTokenUnits, calculateExitReturnBps } from "../services/autonomy/paper-exit-valuation.ts";
@@ -194,6 +195,10 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
     const buyObservedAt = evidenceString(detail, "buyObservedAt");
     const sellObservedAt = evidenceString(detail, "sellObservedAt");
     const observedAtMs = Math.min(Date.parse(buyObservedAt), Date.parse(sellObservedAt));
+    const minNativeGasBalanceWei = portfolio.riskPolicy.minNativeGasBalanceWei ?? "0";
+    const nativeGasBalanceWei = minNativeGasBalanceWei === "0"
+      ? "0"
+      : await createBscRpcClient().getNativeBalance(intent.walletAddress);
     const candidate = {
       chainId: intent.chainId, tokenAddress: intent.tokenAddress, inputTokenAddress: intent.inputTokenAddress,
       amountIn: intent.amountIn, currentPosition: portfolio.currentPositionInputUnits,
@@ -201,6 +206,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       currentOpenPositions: portfolio.currentOpenPositions,
       currentOpenOrders: portfolio.currentOpenOrders,
       dailyRealizedLoss: portfolio.dailyRealizedLoss,
+      nativeGasBalanceWei,
       quoteObservedAt: new Date(observedAtMs).toISOString(), now: new Date().toISOString(),
       slippageBps: evidenceNumber(detail, "slippageBps"),
       priceImpactBps: Math.max(evidenceNumber(detail, "buyPriceImpactBps"), evidenceNumber(detail, "sellPriceImpactBps")),
@@ -214,7 +220,8 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       intent = next(intent, target, decision.code, {
         reason: decision.reason, policyVersion: portfolio.policyVersion,
         expectedEdgeBps: candidate.expectedEdgeBps, gasCostUsd: candidate.gasCostUsd,
-        currentOpenPositions: candidate.currentOpenPositions, dailyRealizedLoss: candidate.dailyRealizedLoss,
+        currentOpenPositions: candidate.currentOpenPositions, currentOpenOrders: candidate.currentOpenOrders,
+        dailyRealizedLoss: candidate.dailyRealizedLoss, nativeGasBalanceWei: candidate.nativeGasBalanceWei,
       });
       await persistTransition(intent, version);
       return intent;
@@ -223,7 +230,8 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       policyVersion: portfolio.policyVersion, expectedEdgeBps: candidate.expectedEdgeBps,
       bufferedNetworkFeesUsd: candidate.gasCostUsd, priceImpactBps: candidate.priceImpactBps,
       slippageBps: candidate.slippageBps, currentOpenPositions: candidate.currentOpenPositions,
-      dailyRealizedLoss: candidate.dailyRealizedLoss, mode: "PAPER_ONLY",
+      dailyRealizedLoss: candidate.dailyRealizedLoss, nativeGasBalanceWei: candidate.nativeGasBalanceWei,
+      mode: "PAPER_ONLY",
     });
     await persistTransition(intent, version);
   }
