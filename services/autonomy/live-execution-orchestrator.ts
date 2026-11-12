@@ -419,6 +419,9 @@ export function createLiveExecutionOrchestrator(dependencies: {
           });
           signerCallStarted = true;
         } catch (error) {
+          if (!signerCallStarted && attempt.status === "SIGNED") {
+            return await abortAndRelease(attempt, "LIVE_SIGNER_RETRY_PRECHECK_FAILED");
+          }
           if (!signerCallStarted) {
             attempt = await move(attempt, "REJECTED", "LIVE_SIGNER_PRECHECK_REJECTED", {
               errorCode: error instanceof Error ? error.message.slice(0, 120) : "SIGNER_PRECHECK_ERROR",
