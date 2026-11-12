@@ -158,7 +158,7 @@ Tests added: `scripts/normalized-provider-registry.test.mjs`, `scripts/bsc-rpc.t
 
 ## Portfolio hard-stop update (2026-11-12)
 
-Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds an atomic maximum-open-position cap and a daily realized-loss stop to the Supabase reservation RPC. The RPC locks the owner portfolio, counts distinct open/reserved token positions, sums negative paper-exit P&L for the UTC day, and rejects new reservations when either cap is reached. It also accepts both the legacy Binance round-trip audit event and the normalized provider event name; this prevents a quote-event naming mismatch from silently blocking reservation.
+Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds atomic maximum-open-position, maximum-outstanding-order and daily realized-loss stops to the Supabase reservation RPC. The RPC locks the owner portfolio, counts distinct open/reserved token positions, counts active reservations, sums negative paper-exit P&L for the UTC day, and rejects new reservations when any cap is reached. It also accepts both the legacy Binance round-trip audit event and the normalized provider event name; this prevents a quote-event naming mismatch from silently blocking reservation.
 
 The portfolio service loads open-position count and daily realized loss into the deterministic risk candidate. `evaluateRiskPolicy` rejects missing loss evidence when the cap is configured, rejects new assets at the concurrent-position limit, and permits adding to an already-open position subject to its per-token cap. The database RPC independently repeats the hard-stop checks at reservation time.
 
