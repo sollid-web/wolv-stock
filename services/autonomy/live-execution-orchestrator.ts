@@ -531,7 +531,7 @@ export function createLiveExecutionOrchestrator(dependencies: {
             returnedOrderId: submitted.providerOrderId,
           }, { last_error_code: "PROVIDER_ORDER_ID_MISMATCH" });
           reservationCreated = false;
-          return { status: "SUBMISSION_UNKNOWN", attempt, reason: "Provider acknowledgement order ID mismatch" };
+          return { status: "RECOVERY_REQUIRED", attempt, reason: "Provider acknowledgement order ID mismatch" };
         }
 
         attempt = await move(attempt, "SUBMITTED", "LIVE_RFQ_ORDER_SUBMITTED", {
