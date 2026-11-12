@@ -23,7 +23,10 @@ The LLM is not the risk engine and cannot override wallet policy, token allowlis
 - Conservative paper exit valuation, including slippage, output-token tax and buffered network-fee estimates.
 - Atomic owner-scoped paper exit ledger with cost-basis release and realized paper P&L.
 - Binance RFQ submit/status adapter and BSC transaction-detail settlement verifier as isolated provider building blocks.
+- Provider registry used by the autonomous worker for entry round-trip quotes, unsigned order building and paper exit quotes; configured provider preference and fail-closed chain/configuration selection.
 - Tests covering domain rules, provider response parsers, exit calculations, migration safety and configuration.
+
+Provider-independence status and adapter contract: see [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md). Binance is currently the only registered adapter; no second provider is active.
 
 ## Not yet production-ready
 
