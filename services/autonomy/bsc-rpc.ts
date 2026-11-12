@@ -145,6 +145,7 @@ export function createBscRpcClient(input: {
   async function getReceipt(transactionHash: string): Promise<{
     transactionHash: string; status: "SUCCESS" | "FAILED"; blockNumber: string;
     gasUsed: string; effectiveGasPrice: string;
+    logs: Array<{ address: string; topics: string[]; data: string }>;
   } | null> {
     await assertBsc();
     if (!HASH.test(transactionHash)) throw new Error("Invalid transaction hash");
