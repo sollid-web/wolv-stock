@@ -103,6 +103,7 @@ async function main() {
   }
   const policyHash = hashAgentPolicy({
     strategyId,
+    ownerAddress,
     account,
     targetToken,
     maxTradeValue,
