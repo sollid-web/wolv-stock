@@ -32,6 +32,8 @@ export interface LiveExecutionAttempt {
   execution_side: "BUY" | "SELL";
   policy_version: string;
   quote_expires_at: string | null;
+  simulation_fingerprint: string | null;
+  simulated_at: string | null;
   native_gas_balance_wei: string;
   native_gas_preflight_at: string | null;
   provider_idempotency_window_seconds: number;
