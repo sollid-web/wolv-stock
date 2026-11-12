@@ -238,7 +238,16 @@ export function createLiveExecutionRecovery(dependencies: {
       return;
     }
     if (verified.status === "FAILED") {
-      await failAndRelease(current, verified.reasonCode, report);
+      if (verified.reasonCode === "BSC_TRANSACTION_REVERTED") {
+        await failAndRelease(current, verified.reasonCode, report);
+      } else {
+        const held = await transition(current, "SECURITY_HOLD", "LIVE_CHAIN_SETTLEMENT_SECURITY_HOLD", {
+          reasonCode: verified.reasonCode,
+          reason: "Chain evidence did not match the expected RFQ execution; reservation remains locked",
+        }, { last_error_code: verified.reasonCode });
+        if (held) report.held += 1;
+        else report.unchanged += 1;
+      }
       return;
     }
 
