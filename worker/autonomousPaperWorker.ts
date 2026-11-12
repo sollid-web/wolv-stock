@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { getValidatedBinanceRoundTripQuote } from "../services/autonomy/binance-roundtrip-provider.ts";
+import { getValidatedBinanceRwaQuote } from "../services/autonomy/binance-quote-provider.ts";
+import { applyNetworkFeeBuffer } from "../services/autonomy/network-fee.ts";
+import { evaluatePaperExit } from "../services/autonomy/paper-exit-policy.ts";
+import { conservativeExitProceeds, usdFeeToTokenUnits, calculateExitReturnBps } from "../services/autonomy/paper-exit-valuation.ts";
 import { buildValidatedBinanceRfqOrder } from "../services/autonomy/binance-rfq-order-provider.ts";
 import { readMarketOpportunities } from "../services/marketPriceCache.ts";
 import {
@@ -8,6 +12,7 @@ import {
 } from "../services/autonomy/execution-domain.ts";
 import {
   loadPortfolioPolicy, reservePortfolioBudget, releasePortfolioBudget, commitPaperQuoteFill,
+  listOpenPaperPositions, commitPaperPositionExit,
 } from "../services/autonomy/supabase-portfolio-ledger.ts";
 import {
   acquireExecutionLease, compareAndSwapExecutionIntent,
@@ -412,6 +417,71 @@ async function processExistingIntent(intent: ExecutionIntent) {
     await releaseExecutionLease(OWNER_ID, intent.id, leaseToken);
   }
 }
+
+async function processPaperExits() {
+  const portfolio = await loadPortfolioPolicy(OWNER_ID);
+  if (!portfolio?.paperExitPolicy.enabled) return;
+  if (portfolio.chainId !== "56" || portfolio.walletAddress !== WALLET.toLowerCase()) {
+    console.warn("[autonomy-worker] paper-exits-held blocker=PORTFOLIO_WALLET_OR_CHAIN_MISMATCH");
+    return;
+  }
+  const allowed = new Set(portfolio.riskPolicy.allowedTokenAddresses.map((value) => value.toLowerCase()));
+  const positions = await listOpenPaperPositions(OWNER_ID, 100);
+  for (const position of positions) {
+    if (position.chainId !== portfolio.chainId || !allowed.has(position.tokenAddress)) continue;
+    try {
+      const quote = await getValidatedBinanceRwaQuote({
+        chainId: position.chainId, walletAddress: portfolio.walletAddress,
+        inputTokenAddress: position.tokenAddress,
+        outputTokenAddress: portfolio.inputTokenAddress,
+        amountIn: position.amountUnits, slippageBps: SLIPPAGE_BPS,
+      });
+      const now = Date.now();
+      if (Date.parse(quote.expiresAt) <= now || now - Date.parse(quote.observedAt) > portfolio.riskPolicy.maxQuoteAgeMs ||
+          Date.parse(quote.observedAt) > now + 5_000 ||
+          quote.priceImpactBps > portfolio.riskPolicy.maxPriceImpactBps) {
+        console.info("[autonomy-worker] paper-exit-held token=" + position.tokenAddress + " blocker=STALE_OR_HIGH_IMPACT_QUOTE");
+        continue;
+      }
+      const bufferedFeeUsd = applyNetworkFeeBuffer(quote.estimatedNetworkFeeUsd, portfolio.networkFeeBufferBps);
+      const grossProceeds = conservativeExitProceeds({
+        expectedAmountOut: quote.expectedAmountOut, slippageBps: SLIPPAGE_BPS,
+        outputTaxRate: quote.outputTokenTaxRate,
+      });
+      const feeUnits = usdFeeToTokenUnits({
+        feeUsd: bufferedFeeUsd, tokenUsdPrice: quote.outputTokenUsdPrice,
+        tokenDecimals: quote.outputTokenDecimals,
+      });
+      const netProceeds = BigInt(grossProceeds) > BigInt(feeUnits)
+        ? (BigInt(grossProceeds) - BigInt(feeUnits)).toString() : "0";
+      const decision = evaluatePaperExit(portfolio.paperExitPolicy, {
+        costBasisInputUnits: position.costBasisInputUnits,
+        netProceedsInputUnits: netProceeds,
+        openedAt: position.openedAt, now: new Date(now).toISOString(),
+      });
+      if (!decision.exit) continue;
+      const committed = await commitPaperPositionExit({
+        ownerId: OWNER_ID, exitIntentId: randomUUID(), chainId: position.chainId,
+        tokenAddress: position.tokenAddress, inputTokenAddress: portfolio.inputTokenAddress,
+        quoteId: quote.quoteId, amountSold: position.amountUnits,
+        grossProceedsInputUnits: grossProceeds, feeInputUnits: feeUnits,
+        netProceedsInputUnits: netProceeds, reason: decision.reason,
+        quoteObservedAt: quote.observedAt,
+      });
+      if (committed) {
+        console.info("[autonomy-worker] paper-exit-filled token=" + position.tokenAddress +
+          " reason=" + decision.reason + " returnBps=" +
+          calculateExitReturnBps(position.costBasisInputUnits, netProceeds) + " mode=PAPER_ONLY");
+      } else {
+        console.warn("[autonomy-worker] paper-exit-not-committed token=" + position.tokenAddress);
+      }
+    } catch (error) {
+      console.error("[autonomy-worker] paper-exit-failed token=" + position.tokenAddress + ": " +
+        (error instanceof Error ? error.message : "unknown error"));
+    }
+  }
+}
+
 async function cycle() {
   const processed = new Set<string>();
   const opportunities = await readMarketOpportunities({ status: "ACTIVE", limit: 100 });
@@ -433,6 +503,8 @@ async function cycle() {
       console.error("[autonomy-worker] intent recovery failed:", error instanceof Error ? error.message : "unknown error");
     }
   }
+  try { await processPaperExits(); }
+  catch (error) { console.error("[autonomy-worker] paper-exit cycle failed:", error instanceof Error ? error.message : "unknown error"); }
 }
 async function main() {
   console.info(`[autonomy-worker] started; interval=${INTERVAL_MS}ms; mode=PAPER_ONLY`);
