@@ -2,16 +2,18 @@
 
 ## Current verified status — 12 November 2026
 
-- Supabase has 15 WOLV autonomy migrations recorded. All 15 migration files in this branch now use the exact versions/names recorded by the connected project, so the CLI history can be reconciled without replaying already-applied schema changes.
-- The existing market-pulse tables were not modified. The autonomy and live-ledger tables are server-only, RLS-enabled, and inaccessible to anon/authenticated roles.
-- The live-attempt ledger, immutable event log, signer/settlement evidence gates, and provider idempotency retry deadline are implemented and applied. The live tables are empty.
-- The portfolio is not configured and the global kill switch remains engaged. No signer is connected, no live worker is wired, and no real order has been signed or submitted.
-- Privy is now validated as the preferred technical route for EIP-712 server signing on EVM chains, including BSC. WOLV has a fail-closed EIP-712 policy adapter that checks the domain, verifying-contract allowlist, exact type schema, message fields, idempotency key, and recovered signer address. The Privy SDK transport and wallet are not connected or authorized; no wallet was created or funded.
-- The exact Binance RFQ EIP-712 payload/domain still needs a captured, non-broadcast fixture before a Privy policy or signer can safely be activated.
-- The latest code and migration tests have not been executed in a local checkout. No claim of passing tests or production readiness is made.
+- The connected Supabase project has 24 WOLV migrations recorded. The branch contains matching versioned SQL files and a test that checks local migration filenames against the applied history.
+- The existing market-pulse table remains intact with its four original rows. WOLV autonomy, paper-ledger and live-execution tables are server-only and RLS-enabled; client roles cannot read or write private execution records.
+- Live portfolio controls include atomic order/position/daily-loss/budget caps, BNB reserve checks, explicit RFQ settlement sender/router allowlists, and a global kill switch.
+- Durable live attempts bind owner, intent, wallet, token pair, expected amounts, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID and policy version. Signing and submission transitions are versioned and audited; signatures and raw typed data are never persisted.
+- A separate reconciliation-only live recovery worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against explicit vendor sender/router allowlists, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
+- The recovery worker continues settlement reconciliation while the new-entry kill switch is engaged. New live entries remain blocked.
+- The portfolio is not configured. The global kill switch remains engaged. There are no live attempts, fills, positions or exits, and no real order has been signed or submitted.
+- Privy EIP-712 policy binding and a Node SDK adapter are implemented. The adapter validates BSC domain, vendor, verifying contract, exact type/message schema, wallet/tokens/amounts/expiry, stable signer-operation ID and recovered signer address. The @privy-io/node dependency, app credentials and wallet authorization are not installed/configured.
+- The exact Binance RFQ typed-data schema still requires a real, non-broadcast fixture. A vendor-specific RFQ simulation capability is also still missing; the live database gate requires a fresh simulation proof after signing and before submission.
+- Tests have been added but have not been executed in a local checkout. No claim of passing tests or production readiness is made.
 
-Next implementation reference: [Privy agent signer design](PRIVY_AGENT_SIGNER.md).
-
+Next technical references: PRIVY_AGENT_SIGNER.md and the recovery worker command documented below.
 
 **Updated:** 2026-11-12  
 **Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`  
@@ -39,27 +41,22 @@ The LLM is not the risk engine and cannot override wallet policy, token allowlis
 - Provider registry used by the autonomous worker for entry round-trip quotes, unsigned order building and paper exit quotes; configured provider preference and fail-closed chain/configuration selection.
 - Vendor-neutral quote/prepared-payload contracts, a normalized provider registry, and common-contract adapters for Binance RFQ and 1inch Classic. Provider fallback occurs before accepting a quote; quote evidence cannot be prepared by another provider.
 - Read-only BSC RPC client for chain verification, gas/native/ERC-20 balance reads, exact unsigned EVM transaction simulation and mined receipt validation; an adapter exposes it through the common EVM simulator contract.
-- Independent BSC Classic-swap settlement verifier that checks transaction sender/router/chain, confirmation depth, ERC-20 Transfer logs, exact input debit, minimum output credit and actual fee in wei.
-- Tests covering domain rules, provider response parsers, exit calculations, migration safety and configuration.
+- Independent BSC Classic-swap settlement verifier that checks transaction sender/router/chain, confirmation depth, ERC-20 Transfer logs, exact input debit, minimum output credit and actual## Not yet production-ready
 
-The common-contract registry now registers both Binance and 1inch adapters (`WOLV_AUTONOMY_NORMALIZED_PROVIDER_ORDER`, default `binance-web3-aggregator,1inch-classic`). This registry is not yet used by the autonomous worker: the worker still uses the legacy Binance round-trip interface because 1inch does not yet satisfy the full two-sided tax, price-impact, USD gas-fee and settlement-evidence requirements. The BSC RPC simulator is also not yet wired into worker state transitions. See [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md), [ONEINCH_CLASSIC_ADAPTER.md](./ONEINCH_CLASSIC_ADAPTER.md), and [BSC_RPC_PREFLIGHT.md](./BSC_RPC_PREFLIGHT.md).
+The market/opportunity worker and trading worker remain paper-only. The live recovery worker is reconciliation-only; it cannot initiate new orders. The remaining gates before unattended live trading are:
 
-## Not yet production-ready
+1. Privy transport and custody: install and lock the official Node SDK, configure the Privy app and authorization key, and explicitly authorize a dedicated, capped BSC execution wallet. No wallet may be created, imported, funded or enabled without that authorization.
+2. Real Binance RFQ schema: capture a fresh unsigned RFQ payload using the actual target vendor and wallet. Confirm the EIP-712 domain, verifying contract, primary type, all message fields, nonce, expiry, spender and token/amount binding. The current signer policy intentionally rejects opaque hex typed-data payloads.
+3. RFQ simulation: the live database requires an exact-order simulation proof after signing and immediately before submission. The existing BSC eth_call/eth_estimateGas simulator handles ordinary EVM transactions, not Binance vendor-executed RFQ typed-data orders. A documented vendor-specific RFQ simulation/preview endpoint or a validated signed-order simulation route must be implemented. Do not fabricate a simulation fingerprint.
+4. Live entry orchestration: wire policy load, fresh round-trip quotes, atomic live budget reservation, durable attempt creation, Privy signing, RFQ simulation, submit and state persistence into a separate live-entry worker. It must remain disabled by default and respect the global stop.
+5. Live exits and P&L: the live ledger currently supports BUY entry fills. A full autonomous system also needs SELL exit reservations, policy checks, settlement accounting, realized P&L, loss stops and recovery for partially filled exits.
+6. Runtime validation: run the full test suite, type-check, lint and build locally; run provider fixtures and BSC settlement tests; then perform a small, capped, explicitly authorized pilot. No deployment has been performed.
 
-The current worker is deliberately paper-only. The following are still required before unattended live execution can be enabled:
+The reconciliation-only worker can be started with: npm run autonomy:live-recovery-worker
 
-1. **Signer:** No signer is connected. Privy is the preferred technical route: a fail-closed EIP-712 adapter now validates BSC chain ID, allowlisted verifying contract, exact type schema, message shape, bound wallet/token/amount/expiry fields, stable idempotency key, and recovered signer address. The exact Binance RFQ domain, primary type and field paths still require a captured non-broadcast fixture. The Privy SDK transport and wallet remain unconfigured and unauthorized.
-2. **Custody authorization:** The server signer must control the exact wallet address used for Binance RFQ, or be explicitly authorized to sign for it. The existing browser Reown/Wagmi connection is not a server signer. No wallet was created, imported, funded or migrated.
-3. **Durable live execution state:** The Supabase live-attempt ledger and repository now persist UUIDv4 request IDs, provider/order metadata, payload hashes, signer operation IDs, state versions, immutable events, and a provider-specific retry deadline. They deliberately do not store signatures, raw typed data or raw transactions. The live worker, signer transport, submit/status adapters and settlement verifier are not yet wired together; no restart-safe live order path is active.
-4. **Exact transaction simulation and settlement:** Read-only BSC RPC simulation and settlement-verification adapters exist, but they are not yet connected to the live worker. A provider `FILLED` status is not enough; the actual transaction receipt, token transfers, amount deltas, block and gas fee must be independently verified and persisted before WOLV records a live fill.
-5. **Runtime validation:** New code has not been run against the user's local environment, Supabase project or a live RFQ wallet. The most recent user-reported 67/67 test pass predates these changes.
-6. **Deployment:** No deployment or production environment was changed.
+It requires server-side Supabase credentials, Binance Web3 credentials, WOLV_AUTONO## Supabase migrations
 
-Do not describe WOLV as autonomously trading real funds until these gates have been passed in a dedicated, explicitly authorized pilot.
-
-## Supabase migrations
-
-The branch contains 15 migration files whose version prefixes and names match the connected Supabase project's applied migration history:
+The connected Supabase project has 24 applied migrations. The branch contains these exact versioned files:
 
 1. 20261112193035_create_market_price_cache.sql
 2. 20261112193042_create_market_opportunities.sql
@@ -69,6 +66,35 @@ The branch contains 15 migration files whose version prefixes and names match th
 6. 20261112193114_create_paper_exit_ledger.sql
 7. 20261112193119_add_autonomy_portfolio_hard_stops.sql
 8. 20261112193351_harden_autonomy_database_privileges.sql
+9. 20261112193435_index_autonomy_foreign_keys.sql
+10. 20261112193721_create_durable_live_execution_attempts.sql
+11. 20261112193911_fix_live_execution_audit_redaction.sql
+12. 20261112193943_fix_live_execution_audit_redaction_v2.sql
+13. 20261112194033_enforce_live_submission_retry_window.sql
+14. 20261112194235_enforce_live_execution_evidence.sql
+15. 20261112194339_index_live_execution_event_owner_intent.sql
+16. 20261112221718_add_live_execution_policy_and_ledger.sql
+17. 20261112221811_correct_live_execution_budget_enforcement.sql
+18. 20261112222211_require_live_order_simulation_proof.sql
+19. 20261112222512_add_unbound_live_reservation_release.sql
+20. 20261112222539_adjust_live_simulation_freshness_guard.sql
+21. 20261112223108_add_live_settlement_contract_allowlists.sql
+22. 20261112223218_bind_live_attempt_tokens_and_amounts.sql
+23. 20261112223453_index_live_execution_fill_owner_intent.sql
+24. 20261112223600_move_live_simulation_gate_to_pre_submit.sql
+
+These migrations are already applied to the connected WOLV Supabase project. Verify the linked target and compare local/remote history before any push:
+
+npx supabase migration list
+
+For a fresh project only, after linking the intended project, apply the migrations with:
+
+npx supabase db push
+npx supabase migration list
+
+Never put the service-role key in source code, browser variables or chat.
+
+3351_harden_autonomy_database_privileges.sql
 9. 20261112193435_index_autonomy_foreign_keys.sql
 10. 20261112193721_create_durable_live_execution_attempts.sql
 11. 20261112193911_fix_live_execution_audit_redaction.sql
