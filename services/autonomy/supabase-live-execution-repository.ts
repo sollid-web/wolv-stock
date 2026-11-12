@@ -49,7 +49,7 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
   const row = value as Record<string, unknown>;
   const requiredStrings = [
     "id", "owner_id", "intent_id", "request_id", "provider", "chain_id",
-    "wallet_address", "status", "created_at", "updated_at",
+    "wallet_address", "status", "execution_side", "policy_version", "created_at", "updated_at",
   ];
   for (const key of requiredStrings) {
     if (typeof row[key] !== "string" || !row[key]) throw new Error(`Live execution attempt has invalid ${key}.`);
@@ -62,12 +62,17 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
     "provider_quote_id", "provider_order_id", "prepared_payload_hash",
     "signer_operation_id", "signer_address", "transaction_hash",
     "amount_in", "amount_out", "fee_amount", "settlement_block", "last_error_code",
-    "submission_started_at", "retry_not_after",
+    "submission_started_at", "retry_not_after", "quote_expires_at", "native_gas_preflight_at",
   ] as const;
   for (const key of nullableStrings) {
     if (row[key] !== null && typeof row[key] !== "string") {
       throw new Error(`Live execution attempt has invalid ${key}.`);
     }
+  }
+  if (!["BUY", "SELL"].includes(String(row.execution_side)) ||
+      typeof row.policy_version !== "string" || !row.policy_version ||
+      !/^[0-9]+$/.test(String(row.native_gas_balance_wei))) {
+    throw new Error("Live execution attempt has invalid policy, side or gas-preflight evidence.");
   }
   if (!Number.isSafeInteger(row.attempt_number) || Number(row.attempt_number) < 1 ||
       !Number.isSafeInteger(row.version) || Number(row.version) < 0 ||
@@ -98,12 +103,18 @@ export async function createLiveExecutionAttempt(input: {
   chainId: "56";
   walletAddress: string;
   providerIdempotencyWindowSeconds?: number;
+  policyVersion: string;
+  quoteExpiresAt: string;
+  executionSide?: "BUY";
 }): Promise<LiveExecutionAttempt> {
   if (!UUID.test(input.ownerId) || !UUID.test(input.intentId)) {
     throw new Error("Live execution requires valid owner and intent UUIDs.");
   }
   const idempotencyWindow = input.providerIdempotencyWindowSeconds ?? 0;
-  if (input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
+  const quoteExpiry = Date.parse(input.quoteExpiresAt);
+  if (!input.policyVersion.trim() || !Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now() ||
+      (input.executionSide ?? "BUY") !== "BUY" ||
+      input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
       !/^[a-z0-9-]{2,64}$/i.test(input.provider) ||
       !Number.isSafeInteger(idempotencyWindow) || idempotencyWindow < 0 || idempotencyWindow > 86400) {
     throw new Error("Live execution provider, BSC chain or wallet binding is invalid.");
@@ -115,7 +126,9 @@ export async function createLiveExecutionAttempt(input: {
     if (active.provider !== input.provider ||
         active.chain_id !== input.chainId ||
         active.wallet_address.toLowerCase() !== input.walletAddress.toLowerCase() ||
-        active.provider_idempotency_window_seconds !== idempotencyWindow) {
+        active.provider_idempotency_window_seconds !== idempotencyWindow ||
+        active.policy_version !== input.policyVersion ||
+        active.execution_side !== (input.executionSide ?? "BUY")) {
       throw new Error("An active live attempt exists with a different provider or wallet binding.");
     }
     return active;
@@ -154,6 +167,9 @@ export async function createLiveExecutionAttempt(input: {
     chain_id: input.chainId,
     wallet_address: input.walletAddress.toLowerCase(),
     provider_idempotency_window_seconds: idempotencyWindow,
+    execution_side: input.executionSide ?? "BUY",
+    policy_version: input.policyVersion,
+    quote_expires_at: input.quoteExpiresAt,
     status: "PREPARED",
   };
   try {
@@ -171,7 +187,9 @@ export async function createLiveExecutionAttempt(input: {
     const raced = await findActiveAttempt(input.ownerId, input.intentId);
     if (raced && raced.provider === input.provider &&
         raced.wallet_address.toLowerCase() === input.walletAddress.toLowerCase() &&
-    raced.provider_idempotency_window_seconds === idempotencyWindow) return raced;
+    raced.provider_idempotency_window_seconds === idempotencyWindow &&
+        raced.policy_version === input.policyVersion &&
+        raced.execution_side === (input.executionSide ?? "BUY")) return raced;
     throw error;
   }
 }
@@ -270,4 +288,109 @@ export async function transitionLiveExecutionAttempt(input: {
   });
   if (result !== true) return null;
   return getLiveExecutionAttempt(input.ownerId, input.attemptId);
+}
+
+
+export async function reserveLiveExecutionBudget(input: {
+  ownerId: string;
+  intentId: string;
+  walletAddress: string;
+  chainId: "56";
+  tokenAddress: string;
+  inputTokenAddress: string;
+  amountIn: string;
+  policyVersion: string;
+  quoteObservedAt: string;
+  quoteExpiresAt: string;
+  slippageBps: number;
+  priceImpactBps: number;
+  gasCostUsd: string;
+  expectedEdgeBps: number;
+  nativeGasBalanceWei: string;
+}): Promise<boolean> {
+  if (!UUID.test(input.ownerId) || !UUID.test(input.intentId) ||
+      !ADDRESS.test(input.walletAddress) || !ADDRESS.test(input.tokenAddress) ||
+      !ADDRESS.test(input.inputTokenAddress) || input.chainId !== "56") {
+    throw new Error("Live budget reservation has invalid owner, wallet, chain or token identifiers.");
+  }
+  const numeric = (value: string, field: string, positive = false): string => {
+    if (!/^(0|[1-9][0-9]*)$/.test(value) || (positive && BigInt(value) <= 0n)) {
+      throw new Error("Live budget reservation has invalid " + field);
+    }
+    return value;
+  };
+  const gas = input.gasCostUsd;
+  if (!/^(0|[1-9][0-9]*)(?:\.[0-9]{1,18})?$/.test(gas)) {
+    throw new Error("Live budget reservation has invalid gasCostUsd");
+  }
+  if (!Number.isSafeInteger(input.slippageBps) || input.slippageBps < 0 || input.slippageBps > 5000 ||
+      !Number.isSafeInteger(input.priceImpactBps) || input.priceImpactBps < 0 || input.priceImpactBps > 10000 ||
+      !Number.isSafeInteger(input.expectedEdgeBps)) {
+    throw new Error("Live budget reservation has invalid slippage, impact or edge evidence");
+  }
+  const observed = Date.parse(input.quoteObservedAt);
+  const expires = Date.parse(input.quoteExpiresAt);
+  if (!Number.isFinite(observed) || !Number.isFinite(expires) || expires <= Date.now() || observed > Date.now() + 5_000) {
+    throw new Error("Live budget reservation has an invalid or expired quote");
+  }
+
+  const result = await request("rpc/wolv_reserve_live_execution_budget", {
+    method: "POST",
+    body: JSON.stringify({
+      p_owner_id: input.ownerId,
+      p_intent_id: input.intentId,
+      p_wallet_address: input.walletAddress.toLowerCase(),
+      p_chain_id: input.chainId,
+      p_token_address: input.tokenAddress.toLowerCase(),
+      p_input_token_address: input.inputTokenAddress.toLowerCase(),
+      p_amount_in: numeric(input.amountIn, "amountIn", true),
+      p_policy_version: input.policyVersion,
+      p_quote_observed_at: input.quoteObservedAt,
+      p_quote_expires_at: input.quoteExpiresAt,
+      p_slippage_bps: input.slippageBps,
+      p_price_impact_bps: input.priceImpactBps,
+      p_gas_cost_usd: gas,
+      p_expected_edge_bps: input.expectedEdgeBps,
+      p_native_gas_balance_wei: numeric(input.nativeGasBalanceWei, "nativeGasBalanceWei"),
+    }),
+  });
+  return result === true;
+}
+
+export async function recordLiveExecutionGasPreflight(input: {
+  ownerId: string;
+  attemptId: string;
+  nativeBalanceWei: string;
+}): Promise<boolean> {
+  if (!UUID.test(input.ownerId) || !UUID.test(input.attemptId) ||
+      !/^(0|[1-9][0-9]*)$/.test(input.nativeBalanceWei)) {
+    throw new Error("Invalid live gas preflight identifiers or balance");
+  }
+  const result = await request("rpc/wolv_record_live_execution_gas_preflight", {
+    method: "POST",
+    body: JSON.stringify({
+      p_owner_id: input.ownerId,
+      p_attempt_id: input.attemptId,
+      p_native_balance_wei: input.nativeBalanceWei,
+    }),
+  });
+  return result === true;
+}
+
+export async function commitLiveExecutionFill(ownerId: string, attemptId: string): Promise<boolean> {
+  if (!UUID.test(ownerId) || !UUID.test(attemptId)) throw new Error("Invalid live fill commit identifiers");
+  const result = await request("rpc/wolv_commit_live_execution_fill", {
+    method: "POST",
+    body: JSON.stringify({ p_owner_id: ownerId, p_attempt_id: attemptId }),
+  });
+  return result === true;
+}
+
+export async function releaseLiveExecutionBudget(ownerId: string, attemptId: string): Promise<boolean> {
+  if (!UUID.test(ownerId) || !UUID.test(attemptId)) throw new Error("Invalid live reservation release identifiers");
+  const result = await request("rpc/wolv_release_live_execution_budget", {
+    method: "POST",
+    body: JSON.stringify({ p_owner_id: ownerId, p_attempt_id: attemptId }),
+  });
+  return result === true;
 }
