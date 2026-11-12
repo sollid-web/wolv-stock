@@ -252,7 +252,7 @@ begin
   from public.wolv_autonomy_global_control
   where singleton = true
   for share;
-  if not found or global_kill_switch then return false; end if;
+  if not found then global_kill_switch := true; end if;
 
   select * into reservation
   from public.wolv_autonomy_reservations
@@ -267,6 +267,7 @@ begin
         and amount_out = p_amount_out and expected_exit_amount_out = p_expected_exit_amount_out
     );
   end if;
+  if global_kill_switch then return false; end if;
   if reservation.status <> 'RESERVED' or reservation.expected_amount_out <> p_amount_out then return false; end if;
 
   select * into account
