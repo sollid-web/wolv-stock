@@ -35,9 +35,6 @@ const expected = [
   "20261112224135_snapshot_live_settlement_allowlists.sql",
   "20261112224518_add_live_privy_wallet_id.sql",
   "20261112225110_allow_reuse_of_released_live_reservations.sql",
-  "20261112224135_snapshot_live_settlement_allowlists.sql",
-  "20261112224003_enforce_live_fill_order_amount_binding.sql",
-  "20261112223453_index_live_execution_fill_owner_intent.sql",
 ];
 
 test("local Supabase migration filenames exactly match the connected project's applied history", () => {
