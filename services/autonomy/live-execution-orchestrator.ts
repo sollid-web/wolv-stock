@@ -271,11 +271,11 @@ export function createLiveExecutionOrchestrator(dependencies: {
       let signerCallStarted = false;
       try {
         const activeAttempt = await dependencies.repository.findActive(input.ownerId, input.intentId);
-        if (activeAttempt) {
+        if (activeAttempt && !["PREPARED", "SIGNING_REQUESTED", "SIGNER_UNKNOWN", "SIGNED"].includes(activeAttempt.status)) {
           return {
             status: "RECOVERY_REQUIRED",
             attempt: activeAttempt,
-            reason: "An existing live attempt must be resumed or reconciled before a new RFQ order can be created",
+            reason: "An existing submitted or held live attempt must be reconciled before another RFQ order can be created",
           };
         }
 
