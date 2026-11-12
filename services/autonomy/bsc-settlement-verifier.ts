@@ -29,6 +29,8 @@ export function createBscSettlementVerifier(
       chainId: string;
       walletAddress: string;
       expectedTarget: string;
+      expectedData: string;
+      expectedValue: string;
       transactionHash: string;
       inputTokenAddress: string;
       outputTokenAddress: string;
