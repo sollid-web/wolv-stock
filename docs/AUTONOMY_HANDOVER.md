@@ -91,7 +91,7 @@ This worker only reconciles already-persisted live attempts. It does not sign or
 
 ## Supabase migration history
 
-The connected Supabase project has 27 applied migrations. The branch contains these exact versioned files:
+The connected Supabase project has 28 applied migrations. The branch contains these exact versioned files:
 
 1. 20261112193035_create_market_price_cache.sql
 2. 20261112193042_create_market_opportunities.sql
@@ -120,6 +120,7 @@ The connected Supabase project has 27 applied migrations. The branch contains th
 25. 20261112224003_enforce_live_fill_order_amount_binding.sql
 26. 20261112224135_snapshot_live_settlement_allowlists.sql
 27. 20261112224518_add_live_privy_wallet_id.sql
+28. 20261112225110_allow_reuse_of_released_live_reservations.sql
 
 These migrations are already applied to the connected WOLV Supabase project. Verify the linked target and compare local/remote history before any push:
 
