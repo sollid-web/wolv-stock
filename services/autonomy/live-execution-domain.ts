@@ -31,6 +31,8 @@ export interface LiveExecutionAttempt {
   input_token_address: string;
   expected_amount_in: string;
   minimum_amount_out: string;
+  settlement_allowed_senders: string[];
+  settlement_allowed_targets: string[];
   status: LiveExecutionStatus;
   version: number;
   execution_side: "BUY" | "SELL";
