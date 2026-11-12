@@ -95,8 +95,7 @@ function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
         if (
             typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
             || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
-            || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
-        || typeof account !== "string" || !isAddress(account)
+            || typeof account !== "string" || !isAddress(account)
             || typeof targetToken !== "string" || !isAddress(targetToken)
             || typeof amountBnb !== "string"
             || typeof entryPriceMicros !== "string" || !/^[0-9]+$/.test(entryPriceMicros)
@@ -303,6 +302,7 @@ function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, ex
     if (!isRecord(value)) throw new Error("Persisted strategy configuration must be an object.")
     const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
     if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
+        || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
         || typeof account !== "string" || !isAddress(account)
         || typeof targetToken !== "string" || !isAddress(targetToken)
         || typeof amountBnb !== "string"
