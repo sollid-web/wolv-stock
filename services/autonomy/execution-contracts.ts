@@ -25,6 +25,7 @@ export type SubmissionResult =
 
 export type ReconciliationResult =
   | { status: "PENDING"; checkedAt: string; providerOrderId?: string; transactionHash?: string }
+  | { status: "PROVIDER_FILLED"; checkedAt: string; providerOrderId: string; transactionHash: string; amountIn: string; amountOut: string }
   | { status: "SETTLED"; checkedAt: string; providerOrderId?: string; transactionHash: string; amountIn: string; amountOut: string; feeAmount: string }
   | { status: "FAILED"; checkedAt: string; providerOrderId?: string; transactionHash?: string; reasonCode: string }
   | { status: "UNKNOWN"; checkedAt: string; reason: string };
@@ -78,6 +79,16 @@ export interface TypedDataSigner {
     typedDataToSign: string;
     typedDataFormat: PreparedRfqOrder["typedDataFormat"];
   }): Promise<{ signerAddress: string; signature: string }>;
+}
+
+export interface ChainSettlementVerifier {
+  /** Independently verifies a successful BSC receipt and wallet token balance deltas. */
+  verify(input: { ownerId: string; walletAddress: string; chainId: string; transactionHash: string; inputTokenAddress: string; outputTokenAddress: string }): Promise<
+    | { status: "SETTLED"; amountIn: string; amountOut: string; feeAmount: string; blockNumber: string }
+    | { status: "PENDING" }
+    | { status: "FAILED"; reasonCode: string }
+    | { status: "UNKNOWN"; reason: string }
+  >;
 }
 
 export interface RfqExecutionProvider {
