@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function buildPortfolioConfig(env, enablePaper = false) {
+export function buildPortfolioConfig(env, enablePaper = false, enablePaperExits = false) {
   const required = (key) => {
     const value = env[key]?.trim();
     if (!value) throw new Error(key + " is required.");
@@ -58,6 +58,21 @@ export function buildPortfolioConfig(env, enablePaper = false) {
     throw new Error("WOLV_AUTONOMY_MAX_GAS_COST_USD must be a non-negative USD decimal with up to 18 decimals.");
   }
 
+  const optionalInteger = (key, min, max) => {
+    const raw = env[key]?.trim();
+    if (!raw) return null;
+    if (!/^(0|[1-9][0-9]*)$/.test(raw)) throw new Error(key + " must be an integer.");
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(key + " is outside its allowed range.");
+    return value;
+  };
+  const takeProfitBps = optionalInteger("WOLV_AUTONOMY_PAPER_TAKE_PROFIT_BPS", 1, 100000);
+  const stopLossBps = optionalInteger("WOLV_AUTONOMY_PAPER_STOP_LOSS_BPS", 1, 10000);
+  const maxHoldingMs = optionalInteger("WOLV_AUTONOMY_PAPER_MAX_HOLDING_MS", 1, 31536000000);
+  if (enablePaperExits && takeProfitBps === null && stopLossBps === null && maxHoldingMs === null) {
+    throw new Error("At least one paper exit threshold is required when paper exits are enabled.");
+  }
+
   return {
     owner_id: ownerId,
     wallet_address: walletAddress.toLowerCase(),
@@ -65,6 +80,10 @@ export function buildPortfolioConfig(env, enablePaper = false) {
     input_token_address: inputTokenAddress.toLowerCase(),
     enabled: enablePaper,
     emergency_stop: !enablePaper,
+    paper_exit_enabled: enablePaperExits,
+    paper_take_profit_bps: takeProfitBps,
+    paper_stop_loss_bps: stopLossBps,
+    paper_max_holding_ms: maxHoldingMs,
     policy_version: env.WOLV_AUTONOMY_POLICY_VERSION?.trim() || "paper-policy-1",
     allowed_chain_ids: [chainId],
     allowed_token_addresses: [...new Set(allowedTokens)],
@@ -92,11 +111,11 @@ function loadLocalEnv() {
   }
 }
 
-export async function configurePortfolio(env = process.env, enablePaper = false, fetchImpl = fetch) {
+export async function configurePortfolio(env = process.env, enablePaper = false, fetchImpl = fetch, enablePaperExits = false) {
   const url = env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
   const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   if (!url || !key) throw new Error("Supabase URL and server-only service-role key are required.");
-  const row = buildPortfolioConfig(env, enablePaper);
+  const row = buildPortfolioConfig(env, enablePaper, enablePaperExits);
   const response = await fetchImpl(url + "/rest/v1/wolv_autonomy_portfolios?on_conflict=owner_id", {
     method: "POST",
     headers: {
@@ -110,17 +129,18 @@ export async function configurePortfolio(env = process.env, enablePaper = false,
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error("Portfolio configuration failed (" + response.status + "): " + (await response.text()).slice(0, 300));
-  return { ownerId: row.owner_id, enabled: row.enabled, emergencyStop: row.emergency_stop, policyVersion: row.policy_version };
+  return { ownerId: row.owner_id, enabled: row.enabled, emergencyStop: row.emergency_stop, paperExitEnabled: row.paper_exit_enabled, policyVersion: row.policy_version };
 }
 
 const direct = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (direct) {
   loadLocalEnv();
   const enablePaper = process.argv.includes("--enable-paper");
+  const enablePaperExits = process.argv.includes("--enable-paper-exits");
   try {
-    const result = await configurePortfolio(process.env, enablePaper);
+    const result = await configurePortfolio(process.env, enablePaper, fetch, enablePaperExits);
     console.log("[autonomy-config] owner=" + result.ownerId + " enabled=" + result.enabled +
-      " emergencyStop=" + result.emergencyStop + " policyVersion=" + result.policyVersion);
+      " emergencyStop=" + result.emergencyStop + " paperExits=" + result.paperExitEnabled + " policyVersion=" + result.policyVersion);
     if (!enablePaper) console.log("[autonomy-config] safe disabled policy written; pass --enable-paper only after verifying all limits.");
   } catch (error) {
     console.error("[autonomy-config] failed:", error instanceof Error ? error.message : "unknown error");
