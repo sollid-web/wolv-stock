@@ -214,3 +214,36 @@ Supabase advisor results after hardening:
 - Performance: no remaining unindexed-foreign-key finding. Remaining INFO findings report indexes not yet used; the new system has not processed production workload, so this is expected at this stage.
 
 These database migrations are applied to the connected Supabase project. This does not mean the market-data workers are running, a portfolio is configured, or live execution is enabled. The global kill switch remains on and the project contains no configured autonomy portfolio.
+
+
+## Database and live-recovery hardening — 12 November 2026
+
+The connected Supabase project now has 15 recorded migrations applied for the WOLV autonomy workstream. This includes the existing market cache, opportunity scanner, paper execution/portfolio ledger, paper exits, database privilege hardening, FK indexes, and the live-attempt recovery ledger.
+
+Verified database state:
+- The existing market-pulse tables were left untouched.
+- Market cache and opportunity tables retain read access for the application; anonymous/authenticated write privileges were revoked. Server routes use the service-role client.
+- Autonomy, paper-ledger and live-execution tables have RLS enabled with no client-facing policies. The service role is the only application access path.
+- The live-attempt and event tables are empty. No live execution has been initiated.
+- The portfolio is not configured. The global kill switch remains engaged.
+- The live transition RPC is executable by service_role, not anon or authenticated.
+- The security advisor reports only informational RLS-without-policy findings for server-only autonomy tables. The performance advisor's unindexed-FK finding for the live event ledger was fixed with an owner/intent index. Unused-index findings are expected before workload traffic exists.
+
+### Durable live-attempt ledger
+
+New schema and service:
+- wolv_live_execution_attempts stores a stable UUID v4 request ID, provider and wallet binding, quote/order identifiers, payload fingerprint, durable signer-operation reference, transaction hash, actual amounts, fee and settlement block.
+- wolv_live_execution_events is append-only and records every status transition.
+- Optimistic version checks and a database transition RPC prevent concurrent state corruption.
+- A live attempt can only be inserted in PREPARED for an owner-scoped RISK_APPROVED intent.
+- Signing transitions require a durable signer operation ID, a SHA-256 prepared-payload fingerprint, and a signer address matching the wallet bound to the quote.
+- Provider-filled state requires a provider order ID, transaction hash and positive actual amounts.
+- SETTLED requires transaction hash, actual input/output amounts, fee and block evidence; the database requires these values to match the provider-fill evidence.
+- The event interface rejects signature material, typed data, private keys, raw transactions and calldata. No signature or raw signing payload is stored.
+- An ambiguous submit can only be retried using the same persisted request ID while the provider idempotency deadline remains valid. Once it expires, the database rejects resubmission and requires reconciliation or a security hold.
+
+The live ledger is scaffolding, not a live execution system. It is not wired into the worker and has no signer/custody provider. No real trades are possible through this path yet.
+
+### Latest database verification
+
+The database verification confirmed the live-attempt schema, RLS, service-role-only access, signer/settlement guards and empty live ledger. The latest security advisor run returned no ERROR/WARNING security findings; its remaining RLS-without-policy entries are intentional for server-only tables. The remaining performance INFO findings are unused indexes on tables that have not yet received workload traffic.
