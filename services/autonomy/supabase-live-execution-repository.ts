@@ -62,7 +62,7 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
     "provider_quote_id", "provider_order_id", "prepared_payload_hash",
     "signer_operation_id", "signer_address", "transaction_hash",
     "amount_in", "amount_out", "fee_amount", "settlement_block", "last_error_code",
-    "submission_started_at", "retry_not_after", "quote_expires_at", "native_gas_preflight_at",
+    "submission_started_at", "retry_not_after", "quote_expires_at", "simulation_fingerprint", "simulated_at", "native_gas_preflight_at",
   ] as const;
   for (const key of nullableStrings) {
     if (row[key] !== null && typeof row[key] !== "string") {
@@ -105,6 +105,8 @@ export async function createLiveExecutionAttempt(input: {
   providerIdempotencyWindowSeconds?: number;
   policyVersion: string;
   quoteExpiresAt: string;
+  providerQuoteId: string;
+  preparedPayloadHash: string;
   executionSide?: "BUY";
 }): Promise<LiveExecutionAttempt> {
   if (!UUID.test(input.ownerId) || !UUID.test(input.intentId)) {
@@ -112,7 +114,8 @@ export async function createLiveExecutionAttempt(input: {
   }
   const idempotencyWindow = input.providerIdempotencyWindowSeconds ?? 0;
   const quoteExpiry = Date.parse(input.quoteExpiresAt);
-  if (!input.policyVersion.trim() || !Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now() ||
+  if (!input.policyVersion.trim() || !/^[a-fA-F0-9]{32,128}$/.test(input.providerQuoteId) ||
+      !/^[a-f0-9]{64}$/i.test(input.preparedPayloadHash) || !Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now() ||
       (input.executionSide ?? "BUY") !== "BUY" ||
       input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
       !/^[a-z0-9-]{2,64}$/i.test(input.provider) ||
@@ -170,6 +173,8 @@ export async function createLiveExecutionAttempt(input: {
     execution_side: input.executionSide ?? "BUY",
     policy_version: input.policyVersion,
     quote_expires_at: input.quoteExpiresAt,
+    provider_quote_id: input.providerQuoteId,
+    prepared_payload_hash: input.preparedPayloadHash,
     status: "PREPARED",
   };
   try {
@@ -393,4 +398,51 @@ export async function releaseLiveExecutionBudget(ownerId: string, attemptId: str
     body: JSON.stringify({ p_owner_id: ownerId, p_attempt_id: attemptId }),
   });
   return result === true;
+}
+
+
+export async function recordLiveExecutionSimulation(input: {
+  ownerId: string;
+  attemptId: string;
+  orderHash: string;
+  simulationFingerprint: string;
+  simulatedAt: string;
+}): Promise<boolean> {
+  if (!UUID.test(input.ownerId) || !UUID.test(input.attemptId) ||
+      !/^[a-f0-9]{64}$/i.test(input.orderHash) ||
+      !/^[a-f0-9]{64}$/i.test(input.simulationFingerprint)) {
+    throw new Error("Invalid live order simulation evidence");
+  }
+  const simulatedAt = Date.parse(input.simulatedAt);
+  if (!Number.isFinite(simulatedAt) || simulatedAt > Date.now() + 5_000 || Date.now() - simulatedAt > 15_000) {
+    throw new Error("Live order simulation evidence is stale or future-dated");
+  }
+  const result = await request("rpc/wolv_record_live_execution_simulation", {
+    method: "POST",
+    body: JSON.stringify({
+      p_owner_id: input.ownerId,
+      p_attempt_id: input.attemptId,
+      p_order_hash: input.orderHash,
+      p_simulation_fingerprint: input.simulationFingerprint,
+      p_simulated_at: input.simulatedAt,
+    }),
+  });
+  return result === true;
+}
+
+export async function listSettledLiveExecutionAttempts(
+  ownerId: string,
+  limit = 100,
+): Promise<LiveExecutionAttempt[]> {
+  if (!UUID.test(ownerId)) throw new Error("Invalid live execution owner UUID");
+  const query = new URLSearchParams({
+    select: "*",
+    owner_id: "eq." + ownerId,
+    status: "eq.SETTLED",
+    order: "updated_at.asc",
+    limit: String(Math.max(1, Math.min(200, Math.floor(limit)))),
+  });
+  const rows = await request("wolv_live_execution_attempts?" + query) as unknown[];
+  if (!Array.isArray(rows)) throw new Error("Supabase returned an invalid settled live-attempt queue");
+  return rows.map(parseAttempt);
 }
