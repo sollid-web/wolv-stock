@@ -11,12 +11,24 @@ const POLICY = {
   maxTradeValue: 500_000_000_000_000_000n,
   expiresAt: 1_800_000_000n,
   intentSigner: SIGNER,
+  amountBnb: 100_000_000_000_000_000n,
+  entryPriceMicros: 100_000_000n,
+  slippageBps: 100,
+  maxPriceImpactBps: 300,
 };
 
 test("hashes policy fields using packed encoding in the documented order", () => {
   const expected = keccak256(encodeAbiParameters(
-    [{ type: "string" }, { type: "string" }, { type: "address" }, { type: "uint192" }, { type: "uint64" }, { type: "address" }],
-    ["WOLV_AGENT_POLICY_V2", POLICY.strategyId, TOKEN, POLICY.maxTradeValue, POLICY.expiresAt, SIGNER],
+    [
+      { type: "string" }, { type: "string" }, { type: "address" },
+      { type: "uint192" }, { type: "uint64" }, { type: "address" },
+      { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" },
+    ],
+    [
+      "WOLV_AGENT_POLICY_V2", POLICY.strategyId, TOKEN, POLICY.maxTradeValue,
+      POLICY.expiresAt, SIGNER, POLICY.amountBnb, POLICY.entryPriceMicros,
+      POLICY.slippageBps, POLICY.maxPriceImpactBps,
+    ],
   ));
   assert.equal(hashAgentPolicy(POLICY), expected);
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({
@@ -31,6 +43,18 @@ test("hashes policy fields using packed encoding in the documented order", () =>
     ...POLICY,
     strategyId: "unknown-strategy",
   }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, amountBnb: POLICY.amountBnb + 1n }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, entryPriceMicros: POLICY.entryPriceMicros + 1n }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, slippageBps: 101 }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, maxPriceImpactBps: 299 }));
+});
+
+test("rejects strategy limits outside the validator's hard bounds", () => {
+  assert.throws(() => hashAgentPolicy({ ...POLICY, amountBnb: 0n }), /strategy amount/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, amountBnb: POLICY.maxTradeValue + 1n }), /strategy amount/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, entryPriceMicros: 0n }), /entry-price/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, slippageBps: 501 }), /slippage/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, maxPriceImpactBps: 301 }), /price impact/);
 });
 
 test("rejects unknown or malformed strategy labels", () => {
