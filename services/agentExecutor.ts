@@ -4,6 +4,7 @@ import { toECDSASigner } from "@zerodev/permissions/signers"
 import type { Address, Client, Hex } from "viem"
 import { concatHex, encodeAbiParameters, getAddress } from "viem"
 import { readContract } from "viem/actions"
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
 import {
     buildAgentBuyCall,
     createAgentSmartAccountClient,
@@ -629,9 +630,29 @@ export class AgentExecutor {
                 || validator.expiresAt * BigInt(1000) <= BigInt(this.now()))
         const policyCapExceeded = validator.policyConfigured === true &&
             (validator.maxTradeValue === undefined || amountBnb > validator.maxTradeValue)
+        let expectedPolicyHash: Hex | null = null
+        if (
+            validator.policyConfigured === true
+            && validator.maxTradeValue !== undefined
+            && validator.expiresAt !== undefined
+            && validator.intentSigner !== undefined
+        ) {
+            try {
+                expectedPolicyHash = hashAgentPolicy({
+                    strategyId: intent.strategyId,
+                    targetToken: intent.targetToken,
+                    maxTradeValue: validator.maxTradeValue,
+                    expiresAt: validator.expiresAt,
+                    intentSigner: validator.intentSigner
+                })
+            } catch {
+                expectedPolicyHash = null
+            }
+        }
         const policyHashMismatch = validator.policyConfigured === true &&
-            (!intent.policyHash || !validator.policyHash ||
-                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase())
+            (!intent.policyHash || !validator.policyHash || !expectedPolicyHash ||
+                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase() ||
+                expectedPolicyHash.toLowerCase() !== validator.policyHash.toLowerCase())
         const intentSignerMismatch = !validator.intentSigner
             || !/^0x[0-9a-f]{40}$/i.test(validator.intentSigner)
             || getAddress(validator.intentSigner) !== getAddress(signer)
