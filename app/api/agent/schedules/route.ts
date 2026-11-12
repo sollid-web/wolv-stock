@@ -89,9 +89,10 @@ export async function POST(request: Request) {
   let policyHash: string;
   let normalizedStrategyConfig: Record<string, unknown> = strategyConfig;
   if (strategyType === "BSC_AGENT_TRADE") {
-    if (executionMode !== "AUTONOMOUS" || value.policyVersion !== "WOLV_AGENT_POLICY_V3" ||
+    if (executionMode !== "AUTONOMOUS" || value.policyVersion !== "WOLV_AGENT_POLICY_V4" ||
       value.name !== strategyConfig.id ||
       typeof strategyConfig.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyConfig.id) ||
+      typeof strategyConfig.ownerAddress !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(strategyConfig.ownerAddress) ||
       typeof strategyConfig.account !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(strategyConfig.account) ||
       typeof strategyConfig.targetToken !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(strategyConfig.targetToken) ||
       typeof strategyConfig.amountBnb !== "string" || typeof strategyConfig.entryPriceMicros !== "string" ||
@@ -115,6 +116,7 @@ export async function POST(request: Request) {
       const expiresAt = BigInt(value.policy.expiresAt);
       const expectedPolicyHash = hashAgentPolicy({
         strategyId: strategyConfig.id,
+        ownerAddress,
         account,
         targetToken,
         maxTradeValue,
@@ -137,6 +139,7 @@ export async function POST(request: Request) {
       if (configuredSigner !== intentSigner) throw new Error("On-chain policy signer does not match the worker's delegated signer.");
       const strategy = {
         id: strategyConfig.id,
+        ownerAddress,
         account,
         targetToken,
         amountBnb,
@@ -160,6 +163,7 @@ export async function POST(request: Request) {
       policyHash = expectedPolicyHash.slice(2).toLowerCase();
       normalizedStrategyConfig = {
         id: strategy.id,
+        ownerAddress: strategy.ownerAddress,
         account: strategy.account,
         targetToken: strategy.targetToken,
         amountBnb: strategyConfig.amountBnb,
