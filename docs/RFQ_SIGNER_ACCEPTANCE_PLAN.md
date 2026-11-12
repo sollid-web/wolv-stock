@@ -48,7 +48,21 @@ A local read-only probe now builds a real Binance quote and unsigned RFQ order, 
 npm run autonomy:rfq-schema-probe -- --wallet 0x... --input-token 0x... --output-token 0x... --amount 1000000
 ```
 
-The probe can also read the wallet/input token/amount from the existing WOLV autonomy environment variables and the output token from `WOLV_AUTONOMY_PROBE_OUTPUT_TOKEN_ADDRESS`. It requires local server-side Binance API credentials in `.env.local` or `.env`. Do not paste credentials or raw typed data into chat. The safe JSON output contains the quote/order IDs, typed-data format/hash, domain metadata, primary type, field names/types and approval metadata. If the format is opaque hex, the probe marks it unsupported by the current signing policy.
+The probe can also read the wallet/input token/amount from the existing WOLV autonomy environment variables and the output token from `WOLV_AUTONOMY_PROBE_OUTPUT_TOKEN_ADDRESS`. It requires local server-side Binance API credentials in `.env.local` or `.env`. Do not paste credentials or raw typed data into chat. The safe JSON output contains the quote/order IDs, typed-data format/hash, domain metadata, primary type, field names/types, transaction-like field names, calldata/nonce/expiry presence indicators and approval metadata. If the format is opaque hex, the probe marks it unsupported by the current signing policy.
+
+## RFQ simulation gate — unresolved
+
+The current WOLV RFQ path builds an unsigned EIP-712 order and later submits the signature to Binance. An EIP-712 message is not itself an EVM transaction, so the ordinary BSC eth_call/eth_estimateGas simulator cannot safely simulate it unless the vendor payload exposes a complete, exact EVM transaction envelope.
+
+The safe RFQ schema probe now reports transaction-like message field names and boolean indicators for calldata, nonce and expiry fields without exposing their values. This helps determine whether the order schema contains a simulation-ready transaction description.
+
+Before enabling live entry, one of these must be verified:
+- Binance documents and provides an RFQ-specific preview/simulation endpoint for the exact RWA vendor route; or
+- the signed RFQ order can be deterministically converted into a complete EVM transaction, including exact sender, target, calldata and native value, and that exact transaction can be simulated before submission.
+
+Do not substitute an unrelated provider's simulation endpoint. For example, the OnchainOS pre-transaction simulation API is an OKX product, not a Binance RFQ simulator. Do not call it with Binance payloads or represent its result as Binance execution evidence.
+
+Until this gate is satisfied, the live-entry orchestrator rejects missing simulation evidence and the live worker remains disabled. The reconciliation-only worker is unaffected: it verifies transactions that Binance has already submitted.
 
 ## Required evidence before enabling a signer
 
