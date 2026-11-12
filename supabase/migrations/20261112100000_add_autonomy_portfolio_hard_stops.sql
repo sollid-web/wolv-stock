@@ -131,7 +131,8 @@ begin
 
   select coalesce(sum(amount_in), 0) into daily_reserved
   from public.wolv_autonomy_reservations
-  where owner_id = p_owner_id and status = 'RESERVED'\n    and created_at >= utc_day_start and created_at < utc_day_start + interval '1 day';
+  where owner_id = p_owner_id and status = 'RESERVED'
+    and created_at >= utc_day_start and created_at < utc_day_start + interval '1 day';
 
   select count(*) into open_position_count
   from (
