@@ -77,7 +77,7 @@ npm run lint
 npm run build
 ```
 
-The test script runs `scripts/*.test.mjs`, including normalized provider registry, BSC RPC, EVM simulation, BSC ERC-20 settlement verifier, portfolio hard-stop, paper-exit and RFQ execution tests. These commands have not yet been run against the current branch.
+The test script runs `scripts/*.test.mjs`, including normalized provider registry, Binance normalized adapter, BSC RPC, EVM simulation, BSC ERC-20 settlement verifier, portfolio hard-stop, paper-exit and RFQ execution tests. These commands have not yet been run against the current branch.
 
 ## Paper worker configuration
 
