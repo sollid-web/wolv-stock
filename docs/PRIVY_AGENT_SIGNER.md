@@ -50,9 +50,9 @@ Expected server-only settings after explicit custody authorization:
 - PRIVY_WALLET_ADDRESS
 - PRIVY_AUTHORIZATION_PRIVATE_KEY
 
-Never use NEXT_PUBLIC_ prefixes for these values. Never commit them or send them in chat. The authorization private key is a Privy API request-signing credential; it is distinct from the wallet's secp256k1 signing key held within Privy's wallet infrastructure.
+Never use NEXT_PUBLIC_ prefixes for these values. Never commit them or send them in chat. The authorization private key is a Privy API request-signing credential, expected as a PKCS8 P-256 PEM key (the adapter also normalizes base64 DER); it is distinct from the wallet's secp256k1 signing key held within Privy's wallet infrastructure.
 
-The SDK dependency should be added with a lockfile update in the same change. The repository currently does not include @privy-io/node; no dependency or lockfile was changed in this research step.
+The server-only runtime loader is implemented in services/autonomy/privy-node-runtime.ts. The SDK dependency should be added with a lockfile update in the same change before runtime use. The repository currently does not include @privy-io/node; no dependency or lockfile was changed in this implementation.
 
 ## Implemented signer safety layer
 
