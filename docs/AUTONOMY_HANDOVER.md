@@ -13,13 +13,12 @@ Upgrade WOLV from a human-approved trading interface into a policy-driven autono
 
 ## Current verified state
 
-- The connected Supabase project has 26 WOLV migrations applied. All 26 migration files in this branch use the exact recorded version/name pairs; a test guards against migration filename drift.
+- The connected Supabase project has 28 WOLV migrations applied. All 28 migration files in this branch use the exact recorded version/name pairs; a test guards against migration filename drift.
 - The existing public.tokenized_market_pulse table was left intact with its four existing rows.
 - The WOLV autonomy, paper-ledger and live-execution tables are server-only and RLS-enabled. Anonymous and authenticated roles cannot access private execution records.
 - Live portfolio controls include atomic order/position/daily-loss/budget caps, native BNB reserve checks, explicit RFQ settlement sender/router allowlists and a global kill switch.
 - Durable live attempts bind owner, intent, wallet, token pair, expected input/minimum output, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID, policy version and immutable vendor sender/router allowlist snapshots. Provider fills must match the persisted order ID, exact input and minimum output; chain settlement must match the provider fill. State transitions are versioned and audited. Signatures and raw typed data are not persisted.
 - A policy-gated live-entry orchestrator now sequences quote qualification, atomic reservation, durable attempt creation, Privy EIP-712 signing, exact-order simulation, gas preflight and Binance submission without per-trade human approval. It is not yet wired into a continuously running live-entry worker because a verified vendor-specific RFQ simulation capability is still missing.
-- A policy-gated live-entry orchestrator sequences quote qualification, atomic reservation, durable attempt creation, Privy EIP-712 signing, RFQ simulation, gas recheck and Binance submission without per-trade human approval. It requires a vendor-specific RFQ simulation dependency that is not yet implemented or registered, so it is not wired into a running live-entry worker.
 - A separate reconciliation-only worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against immutable per-attempt sender/router allowlist snapshots, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
 - Settlement recovery continues while the new-entry kill switch is engaged. The kill switch still blocks new live entries.
 - The live portfolio is not configured. The global kill switch remains engaged. There are no live attempts, fills, positions or exits, and no real order has been signed or submitted.
