@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const sql = fs.readFileSync(new URL("../supabase/migrations/20261110170000_extend_paper_fill_exit_evidence.sql", import.meta.url), "utf8");
+const sql = fs.readFileSync(new URL("../supabase/migrations/20261112193107_extend_paper_fill_exit_evidence.sql", import.meta.url), "utf8");
 
 test("paper fills persist both RFQ legs, conservative outputs and fee evidence", () => {
   assert.match(sql, /add column if not exists sell_quote_id text/);
