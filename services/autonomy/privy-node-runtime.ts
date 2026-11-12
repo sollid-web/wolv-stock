@@ -70,6 +70,10 @@ export async function createPrivyServerEip712Signer(
     walletId: config.walletId,
     walletAddress: config.walletAddress,
     async sign(request) {
+      if (request.walletId !== config.walletId ||
+          request.walletAddress.toLowerCase() !== config.walletAddress) {
+        throw new Error("Live portfolio wallet binding does not match the configured Privy execution wallet");
+      }
       return signer.sign({
         ...request,
         walletId: config.walletId,
