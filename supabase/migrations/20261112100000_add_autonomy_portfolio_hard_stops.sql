@@ -18,12 +18,14 @@ grant select on public.wolv_autonomy_global_control to service_role;
 alter table public.wolv_autonomy_portfolios
   add column if not exists max_open_positions integer not null default 1,
   add column if not exists max_open_orders integer not null default 1,
-  add column if not exists max_daily_realized_loss numeric(78,0) not null default 1;
+  add column if not exists max_daily_realized_loss numeric(78,0) not null default 1,
+  add column if not exists min_native_gas_balance_wei numeric(78,0) not null default 0;
 
 alter table public.wolv_autonomy_portfolios
   drop constraint if exists wolv_autonomy_portfolios_max_open_positions_check,
   drop constraint if exists wolv_autonomy_portfolios_max_open_orders_check,
-  drop constraint if exists wolv_autonomy_portfolios_max_daily_realized_loss_check;
+  drop constraint if exists wolv_autonomy_portfolios_max_daily_realized_loss_check,
+  drop constraint if exists wolv_autonomy_portfolios_min_native_gas_balance_wei_check;
 
 alter table public.wolv_autonomy_portfolios
   add constraint wolv_autonomy_portfolios_max_open_positions_check
@@ -31,7 +33,9 @@ alter table public.wolv_autonomy_portfolios
   add constraint wolv_autonomy_portfolios_max_open_orders_check
     check (max_open_orders between 1 and 100),
   add constraint wolv_autonomy_portfolios_max_daily_realized_loss_check
-    check (max_daily_realized_loss > 0 and max_daily_realized_loss = trunc(max_daily_realized_loss));
+    check (max_daily_realized_loss > 0 and max_daily_realized_loss = trunc(max_daily_realized_loss)),
+  add constraint wolv_autonomy_portfolios_min_native_gas_balance_wei_check
+    check (min_native_gas_balance_wei >= 0 and min_native_gas_balance_wei = trunc(min_native_gas_balance_wei));
 
 update public.wolv_autonomy_portfolios
 set max_daily_realized_loss = greatest(max_daily_spend, 1)
