@@ -104,6 +104,10 @@ export type ConfigureAgentPolicyInput = {
     intentSigner: Address
     maxTradeValue: bigint
     expiresAt: bigint
+    amountBnb: bigint
+    entryPriceMicros: bigint
+    slippageBps: number
+    maxPriceImpactBps: number
     onUserOperationSubmitted?: (step: "install" | "policy", hash: Hex) => void
 }
 
@@ -144,7 +148,11 @@ export async function configureAgentPolicy(
         targetToken,
         maxTradeValue: input.maxTradeValue,
         expiresAt: input.expiresAt,
-        intentSigner
+        intentSigner,
+        amountBnb: input.amountBnb,
+        entryPriceMicros: input.entryPriceMicros,
+        slippageBps: input.slippageBps,
+        maxPriceImpactBps: input.maxPriceImpactBps
     })
     let installed = await input.publicClient.readContract({
         address: validatorAddress,
