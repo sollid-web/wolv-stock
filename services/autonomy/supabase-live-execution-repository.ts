@@ -131,6 +131,8 @@ export async function createLiveExecutionAttempt(input: {
         active.wallet_address.toLowerCase() !== input.walletAddress.toLowerCase() ||
         active.provider_idempotency_window_seconds !== idempotencyWindow ||
         active.policy_version !== input.policyVersion ||
+        active.provider_quote_id !== input.providerQuoteId ||
+        active.prepared_payload_hash !== input.preparedPayloadHash ||
         active.execution_side !== (input.executionSide ?? "BUY")) {
       throw new Error("An active live attempt exists with a different provider or wallet binding.");
     }
@@ -194,6 +196,8 @@ export async function createLiveExecutionAttempt(input: {
         raced.wallet_address.toLowerCase() === input.walletAddress.toLowerCase() &&
     raced.provider_idempotency_window_seconds === idempotencyWindow &&
         raced.policy_version === input.policyVersion &&
+        raced.provider_quote_id === input.providerQuoteId &&
+        raced.prepared_payload_hash === input.preparedPayloadHash &&
         raced.execution_side === (input.executionSide ?? "BUY")) return raced;
     throw error;
   }
@@ -445,4 +449,34 @@ export async function listSettledLiveExecutionAttempts(
   const rows = await request("wolv_live_execution_attempts?" + query) as unknown[];
   if (!Array.isArray(rows)) throw new Error("Supabase returned an invalid settled live-attempt queue");
   return rows.map(parseAttempt);
+}
+
+
+export async function recordLiveExecutionSimulation(input: {
+  ownerId: string;
+  attemptId: string;
+  orderHash: string;
+  simulationFingerprint: string;
+  simulatedAt: string;
+}): Promise<boolean> {
+  if (!UUID.test(input.ownerId) || !UUID.test(input.attemptId) ||
+      !/^[a-f0-9]{64}$/i.test(input.orderHash) ||
+      !/^[a-f0-9]{64}$/i.test(input.simulationFingerprint)) {
+    throw new Error("Invalid live order simulation evidence");
+  }
+  const simulatedAt = Date.parse(input.simulatedAt);
+  if (!Number.isFinite(simulatedAt) || simulatedAt > Date.now() + 5_000 || Date.now() - simulatedAt > 15_000) {
+    throw new Error("Live order simulation evidence is stale or future-dated");
+  }
+  const result = await request("rpc/wolv_record_live_execution_simulation", {
+    method: "POST",
+    body: JSON.stringify({
+      p_owner_id: input.ownerId,
+      p_attempt_id: input.attemptId,
+      p_order_hash: input.orderHash,
+      p_simulation_fingerprint: input.simulationFingerprint,
+      p_simulated_at: input.simulatedAt,
+    }),
+  });
+  return result === true;
 }
