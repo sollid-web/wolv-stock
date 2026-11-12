@@ -49,13 +49,17 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
   const row = value as Record<string, unknown>;
   const requiredStrings = [
     "id", "owner_id", "intent_id", "request_id", "provider", "chain_id",
-    "wallet_address", "status", "execution_side", "policy_version", "created_at", "updated_at",
+    "wallet_address", "token_address", "input_token_address", "expected_amount_in", "minimum_amount_out",
+    "status", "execution_side", "policy_version", "created_at", "updated_at",
   ];
   for (const key of requiredStrings) {
     if (typeof row[key] !== "string" || !row[key]) throw new Error(`Live execution attempt has invalid ${key}.`);
   }
   if (!UUID.test(String(row.request_id)) || row.chain_id !== "56" ||
-      !ADDRESS.test(String(row.wallet_address))) {
+      !ADDRESS.test(String(row.wallet_address)) || !ADDRESS.test(String(row.token_address)) ||
+      !ADDRESS.test(String(row.input_token_address)) ||
+      !/^[1-9][0-9]*$/.test(String(row.expected_amount_in)) ||
+      !/^[1-9][0-9]*$/.test(String(row.minimum_amount_out))) {
     throw new Error("Live execution attempt has invalid request, chain or wallet binding.");
   }
   const nullableStrings = [
@@ -107,6 +111,10 @@ export async function createLiveExecutionAttempt(input: {
   quoteExpiresAt: string;
   providerQuoteId: string;
   providerOrderId: string;
+  tokenAddress: string;
+  inputTokenAddress: string;
+  expectedAmountIn: string;
+  minimumAmountOut: string;
   preparedPayloadHash: string;
   executionSide?: "BUY";
 }): Promise<LiveExecutionAttempt> {
@@ -117,6 +125,8 @@ export async function createLiveExecutionAttempt(input: {
   const quoteExpiry = Date.parse(input.quoteExpiresAt);
   if (!input.policyVersion.trim() || !/^[a-fA-F0-9]{32,128}$/.test(input.providerQuoteId) ||
       !input.providerOrderId.trim() || input.providerOrderId.length > 128 ||
+      !ADDRESS.test(input.tokenAddress) || !ADDRESS.test(input.inputTokenAddress) ||
+      !/^[1-9][0-9]*$/.test(input.expectedAmountIn) || !/^[1-9][0-9]*$/.test(input.minimumAmountOut) ||
       !/^[a-f0-9]{64}$/i.test(input.preparedPayloadHash) || !Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now() ||
       (input.executionSide ?? "BUY") !== "BUY" ||
       input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
@@ -135,6 +145,10 @@ export async function createLiveExecutionAttempt(input: {
         active.policy_version !== input.policyVersion ||
         active.provider_quote_id !== input.providerQuoteId ||
         active.provider_order_id !== input.providerOrderId ||
+        active.token_address.toLowerCase() !== input.tokenAddress.toLowerCase() ||
+        active.input_token_address.toLowerCase() !== input.inputTokenAddress.toLowerCase() ||
+        active.expected_amount_in !== input.expectedAmountIn ||
+        active.minimum_amount_out !== input.minimumAmountOut ||
         active.prepared_payload_hash !== input.preparedPayloadHash ||
         active.execution_side !== (input.executionSide ?? "BUY")) {
       throw new Error("An active live attempt exists with a different provider or wallet binding.");
@@ -180,6 +194,10 @@ export async function createLiveExecutionAttempt(input: {
     quote_expires_at: input.quoteExpiresAt,
     provider_quote_id: input.providerQuoteId,
     provider_order_id: input.providerOrderId,
+    token_address: input.tokenAddress.toLowerCase(),
+    input_token_address: input.inputTokenAddress.toLowerCase(),
+    expected_amount_in: input.expectedAmountIn,
+    minimum_amount_out: input.minimumAmountOut,
     prepared_payload_hash: input.preparedPayloadHash,
     status: "PREPARED",
   };
@@ -202,6 +220,10 @@ export async function createLiveExecutionAttempt(input: {
         raced.policy_version === input.policyVersion &&
         raced.provider_quote_id === input.providerQuoteId &&
         raced.provider_order_id === input.providerOrderId &&
+        raced.token_address.toLowerCase() === input.tokenAddress.toLowerCase() &&
+        raced.input_token_address.toLowerCase() === input.inputTokenAddress.toLowerCase() &&
+        raced.expected_amount_in === input.expectedAmountIn &&
+        raced.minimum_amount_out === input.minimumAmountOut &&
         raced.prepared_payload_hash === input.preparedPayloadHash &&
         raced.execution_side === (input.executionSide ?? "BUY")) return raced;
     throw error;
