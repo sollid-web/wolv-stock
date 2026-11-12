@@ -30,6 +30,8 @@ const expected = [
   "20261112223108_add_live_settlement_contract_allowlists.sql",
   "20261112223218_bind_live_attempt_tokens_and_amounts.sql",
   "20261112223453_index_live_execution_fill_owner_intent.sql",
+  "20261112223600_move_live_simulation_gate_to_pre_submit.sql",
+  "20261112223453_index_live_execution_fill_owner_intent.sql",
 ];
 
 test("local Supabase migration filenames exactly match the connected project's applied history", () => {
