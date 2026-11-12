@@ -11,6 +11,7 @@ export const MAX_ROLLING_VOLUME_BNB = BigInt("1000000000000000000")
 
 export type AgentStrategy = {
     id: string
+    ownerAddress: Address
     account: Address
     targetToken: Address
     amountBnb: bigint
@@ -75,6 +76,7 @@ export type AgentCycleTelemetry = {
 
 export type AgentExecutionIntent = {
     strategyId: string
+    ownerAddress: Address
     account: Address
     targetToken: Address
     amountBnb: bigint
@@ -373,6 +375,7 @@ export class AgentWorker {
         try {
             expectedPolicyHash = hashAgentPolicy({
                 strategyId: strategy.id,
+                ownerAddress: strategy.ownerAddress,
                 account: strategy.account,
                 targetToken: strategy.targetToken,
                 maxTradeValue: validator.maxTradeValue,
@@ -453,6 +456,7 @@ export class AgentWorker {
         try {
             const intent: AgentExecutionIntent = {
                 strategyId: strategy.id,
+                ownerAddress: strategy.ownerAddress,
                 account: strategy.account,
                 targetToken: strategy.targetToken,
                 amountBnb: strategy.amountBnb,
