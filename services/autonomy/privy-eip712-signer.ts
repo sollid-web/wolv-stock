@@ -38,6 +38,7 @@ export interface PrivyEip712SignRequest {
   signerOperationId: string;
   typedData: unknown;
   policy: PrivyEip712Policy;
+  beforeSign?: () => Promise<void>;
 }
 
 export interface PrivyEip712SigningClient {
@@ -124,18 +125,62 @@ function validateMessageShape(
   for (const field of fields) {
     const child = value[field.name];
     const arrayMatch = field.type.match(/^(.*)\[[0-9]*\]$/);
-    const baseType = arrayMatch ? arrayMatch[1] : field.type;
-    if (!typedData.types[baseType] || baseType === "EIP712Domain") continue;
-
     if (arrayMatch) {
-      if (!Array.isArray(child)) throw new Error(`EIP-712 array field is malformed: ${path}.${field.name}`);
-      child.forEach((item, index) =>
-        validateMessageShape(typedData, baseType, item, `${path}.${field.name}[${index}]`)
-      );
-    } else {
-      validateMessageShape(typedData, baseType, child, `${path}.${field.name}`);
+      throw new Error(`EIP-712 array fields are not enabled for unattended signing: ${path}.${field.name}`);
+    }
+    if (typedData.types[field.type] && field.type !== "EIP712Domain") {
+      validateMessageShape(typedData, field.type, child, `${path}.${field.name}`);
     }
   }
+}
+
+function collectMessageLeafPaths(
+  types: Record<string, Eip712Field[]>,
+  typeName: string,
+  prefix = "",
+  ancestors: string[] = [],
+): string[] {
+  if (ancestors.includes(typeName)) throw new Error("Recursive EIP-712 structs are not supported");
+  const fields = types[typeName];
+  if (!fields) throw new Error("EIP-712 type definition is missing: " + typeName);
+  const paths: string[] = [];
+  for (const field of fields) {
+    const path = prefix ? prefix + "." + field.name : field.name;
+    if (/\[[0-9]*\]$/.test(field.type)) {
+      throw new Error("EIP-712 array fields are not enabled for unattended signing: " + path);
+    }
+    if (types[field.type] && field.type !== "EIP712Domain") {
+      paths.push(...collectMessageLeafPaths(types, field.type, path, [...ancestors, typeName]));
+    } else {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function declaredFieldType(
+  types: Record<string, Eip712Field[]>,
+  primaryType: string,
+  path: string,
+): string {
+  const parts = path.split(".");
+  let currentType = primaryType;
+  for (let index = 0; index < parts.length; index += 1) {
+    const field = types[currentType]?.find((candidate) => candidate.name === parts[index]);
+    if (!field) throw new Error("EIP-712 policy path is not in the declared schema: " + path);
+    if (index === parts.length - 1) return field.type;
+    if (!types[field.type]) throw new Error("EIP-712 policy path traverses a non-struct field: " + path);
+    currentType = field.type;
+  }
+  throw new Error("Invalid EIP-712 policy field path");
+}
+
+function fieldKindMatchesType(kind: Eip712FieldKind, type: string): boolean {
+  if (kind === "address") return type === "address";
+  if (kind === "uint") return /^uint([0-9]+)?$/.test(type);
+  if (kind === "string") return type === "string";
+  if (kind === "bytes32") return type === "bytes32";
+  return false;
 }
 
 function readPath(root: Record<string, unknown>, path: string): unknown {
@@ -233,7 +278,13 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
     throw new Error("EIP-712 type schema differs from the approved RFQ schema");
   }
 
-  for (const [key, expectedValue] of Object.entries(request.policy.expectedDomain ?? {})) {
+  const expectedDomain = request.policy.expectedDomain ?? {};
+  const expectedDomainKeys = new Set(["chainId", "verifyingContract", ...Object.keys(expectedDomain)]);
+  const actualDomainKeys = Object.keys(typedData.domain).sort();
+  if (actualDomainKeys.join("|") !== [...expectedDomainKeys].sort().join("|")) {
+    throw new Error("EIP-712 domain contains missing or unapproved fields");
+  }
+  for (const [key, expectedValue] of Object.entries(expectedDomain)) {
     if (String(typedData.domain[key]) !== expectedValue) {
       throw new Error(`EIP-712 domain field does not match policy: ${key}`);
     }
@@ -241,8 +292,10 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
 
   validateMessageShape(typedData, typedData.primaryType, typedData.message, typedData.primaryType);
 
-  if (!request.policy.expectedFields.length || !request.policy.requiredRoles.length) {
-    throw new Error("Explicit EIP-712 message bindings and required roles are mandatory");
+  const requiredCoreRoles = ["wallet", "tokenIn", "tokenOut", "amountIn", "minimumOutput", "expiry"];
+  if (!request.policy.expectedFields.length || !request.policy.requiredRoles.length ||
+      requiredCoreRoles.some((role) => !request.policy.requiredRoles.includes(role))) {
+    throw new Error("Explicit EIP-712 message bindings and all critical signing roles are mandatory");
   }
 
   const seenRoles = new Set<string>();
@@ -256,12 +309,22 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
     if (!seenRoles.has(role)) throw new Error(`Required EIP-712 policy role is missing: ${role}`);
   }
 
+  const declaredLeafPaths = collectMessageLeafPaths(typedData.types, typedData.primaryType).sort();
+  const configuredPaths = request.policy.expectedFields.map((field) => field.path).sort();
+  if (declaredLeafPaths.join("|") !== configuredPaths.join("|")) {
+    throw new Error("Every EIP-712 message field must have an explicit execution-policy binding");
+  }
+
   const seenPaths = new Set<string>();
   for (const field of request.policy.expectedFields) {
     if (seenPaths.has(field.path)) throw new Error(`Duplicate EIP-712 policy field: ${field.path}`);
     seenPaths.add(field.path);
     if (!["address", "uint", "string", "bytes32"].includes(field.kind)) {
       throw new Error(`Unsupported EIP-712 policy field kind: ${field.kind}`);
+    }
+    const declaredType = declaredFieldType(typedData.types, typedData.primaryType, field.path);
+    if (!fieldKindMatchesType(field.kind, declaredType)) {
+      throw new Error(`EIP-712 policy kind does not match declared type for ${field.path}`);
     }
     const actual = readPath(typedData.message, field.path);
     const expected = normalizeExpected(field.kind, field.value);
@@ -277,6 +340,7 @@ export function createPrivyEip712Signer(client: PrivyEip712SigningClient) {
   return {
     async sign(request: PrivyEip712SignRequest): Promise<string> {
       const typedData = validatePrivyEip712Request(request);
+      await request.beforeSign?.();
       const result = await client.signTypedData({
         walletId: request.walletId,
         walletAddress: request.walletAddress,
