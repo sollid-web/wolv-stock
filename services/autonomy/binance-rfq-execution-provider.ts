@@ -92,14 +92,19 @@ export function parseBinanceRfqStatusResponse(
  * settlement until a separate receipt/balance verifier confirms it.
  */
 export async function submitValidatedBinanceRfq(input: {
-  requestId: string; order: PreparedRfqOrder; signature: string;
+  requestId: string; order: PreparedRfqOrder; signerAddress: string; signature: string;
 }): Promise<SubmissionResult> {
   if (!uuidV4(input.requestId)) throw new Error("RFQ requestId must be a stable UUID v4");
   if (!/^0x[0-9a-fA-F]{130}$/.test(input.signature)) throw new Error("RFQ signature must be a 65-byte hex signature");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(input.signerAddress) ||
+      input.signerAddress.toLowerCase() !== input.order.walletAddress.toLowerCase()) {
+    throw new Error("RFQ signer address does not match the wallet used for the quote");
+  }
   if (input.order.signingScheme !== "EIP712" || input.order.chainId !== "56") {
     throw new Error("Unsupported RFQ signing scheme or chain");
   }
-  if (Date.parse(input.order.quoteExpiresAt) <= Date.now()) {
+  const quoteExpiry = Date.parse(input.order.quoteExpiresAt);
+  if (!Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now()) {
     return { status: "REJECTED", providerCode: "QUOTE_EXPIRED", rejectedAt: new Date().toISOString() };
   }
   try {
@@ -131,7 +136,8 @@ export async function reconcileValidatedBinanceRfq(input: {
 export const binanceRfqExecutionProvider: RfqExecutionProvider = {
   async submit(input) {
     return submitValidatedBinanceRfq({
-      requestId: input.requestId, order: input.order, signature: input.signature,
+      requestId: input.requestId, order: input.order,
+      signerAddress: input.signerAddress, signature: input.signature,
     });
   },
   async reconcile(input) {
