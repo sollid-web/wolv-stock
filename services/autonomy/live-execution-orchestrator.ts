@@ -18,6 +18,7 @@ export type LiveExecutionOutcome =
   | { status: "RECOVERY_REQUIRED"; attempt: LiveExecutionAttempt; reason: string };
 
 export interface LiveExecutionAttemptRepository {
+  findActive(ownerId: string, intentId: string): Promise<LiveExecutionAttempt | null>;
   create(input: {
     ownerId: string;
     intentId: string;
@@ -269,6 +270,15 @@ export function createLiveExecutionOrchestrator(dependencies: {
       let attempt: LiveExecutionAttempt | null = null;
       let signerCallStarted = false;
       try {
+        const activeAttempt = await dependencies.repository.findActive(input.ownerId, input.intentId);
+        if (activeAttempt) {
+          return {
+            status: "RECOVERY_REQUIRED",
+            attempt: activeAttempt,
+            reason: "An existing live attempt must be resumed or reconciled before a new RFQ order can be created",
+          };
+        }
+
         const policy = await dependencies.loadPolicy(input.ownerId);
         if (!policy) throw new Error("Live portfolio is not configured");
         if (!/^[1-9][0-9]*$/.test(input.amountIn) ||
