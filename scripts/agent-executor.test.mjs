@@ -16,6 +16,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { encodeAgentBuyCall } from "../lib/smartAccount.ts";
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const HASH = `0x${"a".repeat(64)}`;
 const TX_HASH = `0x${"b".repeat(64)}`;
@@ -23,10 +24,17 @@ const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const TARGET = "0x0000000000000000000000000000000000000456";
 const router = "0x0000000000000000000000000000000000000123";
 const hook = "0x0000000000000000000000000000000000000321";
-const POLICY_HASH = `0x${"c".repeat(64)}`;
 const INTENT_NONCE = `0x${"d".repeat(64)}`;
 const intentSigningAccount = privateKeyToAccount(`0x${"01".padStart(64, "0")}`);
 const INTENT_SIGNER = intentSigningAccount.address;
+const POLICY_EXPIRY = BigInt(Math.floor((Date.now() + 60_000) / 1000));
+const POLICY_HASH = hashAgentPolicy({
+  strategyId: "aapl-entry",
+  targetToken: TARGET,
+  maxTradeValue: parseEther("0.5"),
+  expiresAt: POLICY_EXPIRY,
+  intentSigner: INTENT_SIGNER,
+});
 const ROUTER_BUY_ABI = [{
   type: "function",
   name: "swapExactETHForTokens",
@@ -122,7 +130,7 @@ function createHarness(overrides = {}) {
       policyConfigured: true,
       policyHash: POLICY_HASH,
       maxTradeValue: parseEther("0.5"),
-      expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+      expiresAt: POLICY_EXPIRY,
       intentSigner: INTENT_SIGNER,
     }),
     buildBuyCall: async () => ({
