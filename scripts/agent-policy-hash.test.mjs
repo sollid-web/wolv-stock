@@ -17,7 +17,7 @@ const POLICY = {
   maxPriceImpactBps: 300,
 };
 
-test("hashes policy fields using packed encoding in the documented order", () => {
+test("hashes the complete strategy policy using versioned ABI encoding", () => {
   const expected = keccak256(encodeAbiParameters(
     [
       { type: "string" }, { type: "string" }, { type: "address" },
