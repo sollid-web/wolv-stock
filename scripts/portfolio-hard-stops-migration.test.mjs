@@ -30,3 +30,12 @@ test("reservation remains serialized and fail-closed", () => {
   assert.match(migration, /not account\.enabled or account\.emergency_stop/);
   assert.match(migration, /account\.policy_version <> p_policy_version/);
 });
+
+
+test("aggregate risk snapshot is database-computed and preserves exact loss values", () => {
+  assert.match(migration, /wolv_get_autonomy_risk_snapshot/);
+  assert.match(migration, /daily_realized_loss text/);
+  assert.match(migration, /realized_losses\.loss::text/);
+  assert.match(migration, /revoke all on function public\.wolv_get_autonomy_risk_snapshot/);
+  assert.match(migration, /grant execute on function public\.wolv_get_autonomy_risk_snapshot\(uuid\) to service_role/);
+});
