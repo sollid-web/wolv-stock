@@ -233,6 +233,7 @@ export default function AgentPolicyPanel() {
             setRuntimeScheduleLoaded(false)
             setRuntimeSchedule(null)
             setRuntimeSessionAuthenticated(false)
+            setRuntimeWorkerReadiness(null)
             return
         }
         try {
@@ -245,6 +246,7 @@ export default function AgentPolicyPanel() {
                 typeof session.address !== "string" || session.address.toLowerCase() !== address.toLowerCase()) {
                 setRuntimeSessionAuthenticated(false)
                 setRuntimeSchedule(null)
+                setRuntimeWorkerReadiness(null)
                 setRuntimeScheduleLoaded(true)
                 return
             }
@@ -281,6 +283,7 @@ export default function AgentPolicyPanel() {
                 : null)
             setRuntimeError("")
         } catch (cause) {
+            setRuntimeSchedule(null)
             setRuntimeError(cause instanceof Error ? cause.message : "Autonomous schedule status could not be loaded.")
         } finally {
             setRuntimeScheduleLoaded(true)
