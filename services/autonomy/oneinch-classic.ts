@@ -58,7 +58,7 @@ function address(value: unknown, field: string): string {
 }
 function uint(value: unknown, field: string): string {
   const result = typeof value === "number" ? String(value) : value;
-  if (typeof result !== "string" || !UINT.test(result) || BigInt(result) <= 0n) {
+  if (typeof result !== "string" || !UINT.test(result) || BigInt(result) <= BigInt(0)) {
     throw new Error("1inch response has invalid " + field);
   }
   return result;
@@ -80,7 +80,7 @@ export function parseOneInchClassicQuote(
   if (request.chainId !== "56" || !ADDRESS.test(request.walletAddress) ||
       !ADDRESS.test(request.inputTokenAddress) || !ADDRESS.test(request.outputTokenAddress) ||
       request.inputTokenAddress.toLowerCase() === request.outputTokenAddress.toLowerCase() ||
-      !UINT.test(request.amountIn) || BigInt(request.amountIn) <= 0n) {
+      !UINT.test(request.amountIn) || BigInt(request.amountIn) <= BigInt(0)) {
     throw new Error("Invalid 1inch quote request");
   }
   if (!record(response) || !record(response.srcToken) || !record(response.dstToken)) {
@@ -157,7 +157,7 @@ export function createOneInchClassicClient(input: {
   const fetchImpl = input.fetchImpl ?? fetch;
   const baseUrl = (input.baseUrl ?? "https://api.1inch.dev/swap/v6.1").replace(/\/$/, "");
   const apiKey = input.apiKey ?? process.env.ONEINCH_API_KEY ?? "";
-  async function request(path: string, params: Record<string, string>) {
+  async function apiRequest(path: string, params: Record<string, string>) {
     if (!apiKey.trim()) throw new Error("ONEINCH_API_KEY is not configured");
     const url = new URL(baseUrl + "/56/" + path);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
@@ -170,18 +170,18 @@ export function createOneInchClassicClient(input: {
     return response.json() as Promise<unknown>;
   }
   return {
-    async getQuote(request: OneInchQuoteRequest): Promise<OneInchClassicQuote> {
-      const response = await request("quote", {
-        src: request.inputTokenAddress, dst: request.outputTokenAddress,
-        amount: request.amountIn, includeTokensInfo: "true", includeProtocols: "true",
+    async getQuote(quoteRequest: OneInchQuoteRequest): Promise<OneInchClassicQuote> {
+      const response = await apiRequest("quote", {
+        src: quoteRequest.inputTokenAddress, dst: quoteRequest.outputTokenAddress,
+        amount: quoteRequest.amountIn, includeTokensInfo: "true", includeProtocols: "true",
       });
-      return parseOneInchClassicQuote(response, request);
+      return parseOneInchClassicQuote(response, quoteRequest);
     },
     async buildTransaction(quote: OneInchClassicQuote, slippageBps: number): Promise<OneInchClassicTransaction> {
       if (!Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 5000) {
         throw new Error("1inch slippage must be between 1 and 5000 bps");
       }
-      const response = await request("swap", {
+      const response = await apiRequest("swap", {
         src: quote.inputTokenAddress, dst: quote.outputTokenAddress,
         amount: quote.amountIn, from: quote.walletAddress,
         slippage: String(slippageBps / 100),
