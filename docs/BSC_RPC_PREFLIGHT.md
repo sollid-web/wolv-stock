@@ -1,6 +1,6 @@
 # BSC RPC preflight adapter
 
-**Status:** implemented as a read-only infrastructure adapter; not yet connected to the autonomous paper/live worker.
+**Status:** implemented as a read-only infrastructure adapter. The paper worker uses it for the optional pre-risk native BNB reserve check; transaction simulation and settlement verification remain standalone and are not yet wired into worker state transitions.
 
 ## Capabilities
 
@@ -29,6 +29,6 @@ The adapter exposes no transaction signing or broadcast method. It does not call
 - Validate trusted router/allowance contracts before signing; this verifier only proves that the mined transaction matched the target already authorized by upstream policy.
 - Verify RPC provider reliability, rate limits, chain finality and reorg behavior for the deployment environment.
 
-The RPC adapter is not a live execution authorization and has not been run against the user's configured RPC endpoint.
+Set `WOLV_BSC_RPC_URL` when `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` is greater than zero. The RPC adapter is not a live execution authorization and has not been run against the user's configured RPC endpoint.
 
 Tests: `scripts/bsc-rpc.test.mjs`, `scripts/bsc-evm-simulator.test.mjs`, and `scripts/bsc-settlement-verifier.test.mjs`. They are committed but have not been executed in this environment.
