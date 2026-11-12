@@ -22,6 +22,13 @@ const expected = [
   "20261112194033_enforce_live_submission_retry_window.sql",
   "20261112194235_enforce_live_execution_evidence.sql",
   "20261112194339_index_live_execution_event_owner_intent.sql",
+  "20261112221718_add_live_execution_policy_and_ledger.sql",
+  "20261112221811_correct_live_execution_budget_enforcement.sql",
+  "20261112222211_require_live_order_simulation_proof.sql",
+  "20261112222512_add_unbound_live_reservation_release.sql",
+  "20261112222539_adjust_live_simulation_freshness_guard.sql",
+  "20261112223108_add_live_settlement_contract_allowlists.sql",
+  "20261112223218_bind_live_attempt_tokens_and_amounts.sql",
 ];
 
 test("local Supabase migration filenames exactly match the connected project's applied history", () => {
