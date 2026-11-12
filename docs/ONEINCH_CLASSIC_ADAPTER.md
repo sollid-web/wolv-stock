@@ -9,6 +9,7 @@
 - Applies a conservative 10-second local quote-use window. This is WOLV's local safety policy, not a claim that 1inch guarantees a 10-second quote TTL.
 - Requests a Classic Swap transaction and validates returned input/output amounts against the original quote and configured slippage floor.
 - Validates transaction target, calldata, native value, gas and gas price.
+- Implements the vendor-neutral `AutonomousExecutionAdapter` contract in `provider-contracts.ts`, returning normalized quote evidence and an `EVM_TRANSACTION` payload.
 - Produces an unsigned transaction fingerprint. It never signs, broadcasts or requests wallet approval.
 - Tests cover parsing, binding, expiry, malformed transaction data, API authentication and missing credentials.
 
