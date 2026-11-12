@@ -12,7 +12,7 @@ test("schema probe reports JSON EIP-712 field names without exposing message val
       primaryType: "Order",
       types: {
         EIP712Domain: [{ name: "chainId", type: "uint256" }],
-        Order: [{ name: "maker", type: "address" }, { name: "amount", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "data", type: "bytes" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "data", type: "bytes" }],
+        Order: [{ name: "maker", type: "address" }, { name: "amount", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "data", type: "bytes" }],
       },
       message: { maker: secretLikeValue, amount: "123456789", nonce: "99", deadline: "1900000000", data: "0xdeadbeef" },
     }),
@@ -25,7 +25,7 @@ test("schema probe reports JSON EIP-712 field names without exposing message val
   assert.equal(summary.hasExpiryField, true);
   assert.deepEqual(summary.typeDefinitions.Order, [
     { name: "maker", type: "address" }, { name: "amount", type: "uint256" },
-  ]);
+    { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "data", type: "bytes" },
   assert.equal(JSON.stringify(summary).includes(secretLikeValue), false);
   assert.equal(JSON.stringify(summary).includes("123456789"), false);
   assert.equal(summary.signingAllowedByCurrentWolvPolicy, false);
