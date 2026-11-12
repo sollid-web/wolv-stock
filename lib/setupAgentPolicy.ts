@@ -145,6 +145,7 @@ export async function configureAgentPolicy(
 
     const policyHash = hashAgentPolicy({
         strategyId: input.strategyId,
+        account,
         targetToken,
         maxTradeValue: input.maxTradeValue,
         expiresAt: input.expiresAt,
