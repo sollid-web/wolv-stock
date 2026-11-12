@@ -115,6 +115,8 @@ export default function AgentPolicyPanel() {
         && chainId === configuredChainId
         && isBscNetworkAllowedOnPath(pathname, chainId)
     const walletReady = Boolean(address && walletClient && correctChain)
+    const walletKey = address ? `${chainId}:${address.toLowerCase()}` : ""
+    const currentDerivedAccount = derivedAccount?.ownerKey === walletKey ? derivedAccount.address : null
 
     const refreshPolicy = useCallback(async (
         account: Address,
@@ -419,9 +421,7 @@ export default function AgentPolicyPanel() {
         }
     }
 
-    const walletKey = address ? `${chainId}:${address.toLowerCase()}` : ""
     const currentSnapshot = snapshotOwnerKey === walletKey ? snapshot : null
-    const currentDerivedAccount = derivedAccount?.ownerKey === walletKey ? derivedAccount.address : null
     const activeKernelClient = clientOwnerKey === walletKey ? kernelClient : null
     const activePublicClient = clientOwnerKey === walletKey ? publicClient : null
     const policyActive = Boolean(
