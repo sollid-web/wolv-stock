@@ -23,6 +23,7 @@ export interface ExpectedEip712Field {
 }
 
 export interface PrivyEip712Policy {
+  vendor: string;
   chainId: 56;
   verifyingContracts: string[];
   primaryType: string;
@@ -32,10 +33,73 @@ export interface PrivyEip712Policy {
   requiredRoles: string[];
 }
 
+
+export type Eip712PolicyValueSource =
+  | "walletAddress"
+  | "inputTokenAddress"
+  | "outputTokenAddress"
+  | "amountIn"
+  | "minimumAmountOut"
+  | "quoteExpiryUnixSeconds"
+  | "quoteId"
+  | "orderId";
+
+export interface Eip712FieldBinding {
+  role: string;
+  path: string;
+  kind: Eip712FieldKind;
+  source: Eip712PolicyValueSource;
+}
+
+export interface PrivyEip712PolicyTemplate {
+  vendor: string;
+  chainId: 56;
+  verifyingContracts: string[];
+  primaryType: string;
+  expectedTypes: Record<string, Eip712Field[]>;
+  expectedDomain: Record<string, string>;
+  fieldBindings: Eip712FieldBinding[];
+  requiredRoles: string[];
+}
+
+export function bindPrivyEip712Policy(
+  template: PrivyEip712PolicyTemplate,
+  values: Record<Eip712PolicyValueSource, string>,
+): PrivyEip712Policy {
+  if (!template.vendor || !template.primaryType || template.chainId !== 56) {
+    throw new Error("Privy EIP-712 policy template has invalid vendor, primary type or chain");
+  }
+  if (!template.verifyingContracts.length || !template.fieldBindings.length || !template.requiredRoles.length) {
+    throw new Error("Privy EIP-712 policy template is incomplete");
+  }
+  const expectedFields = template.fieldBindings.map((binding) => {
+    if (!values[binding.source]) {
+      throw new Error("Missing dynamic EIP-712 policy value for role: " + binding.role);
+    }
+    return {
+      role: binding.role,
+      path: binding.path,
+      kind: binding.kind,
+      value: values[binding.source],
+    };
+  });
+  return {
+    vendor: template.vendor,
+    chainId: template.chainId,
+    verifyingContracts: template.verifyingContracts,
+    primaryType: template.primaryType,
+    expectedTypes: template.expectedTypes,
+    expectedDomain: template.expectedDomain,
+    expectedFields,
+    requiredRoles: template.requiredRoles,
+  };
+}
+
 export interface PrivyEip712SignRequest {
   walletId: string;
   walletAddress: string;
   signerOperationId: string;
+  providerVendor: string;
   typedData: unknown;
   policy: PrivyEip712Policy;
   beforeSign?: () => Promise<void>;
@@ -251,6 +315,10 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
   if (!ADDRESS_PATTERN.test(request.walletAddress)) throw new Error("Invalid wallet address");
   if (!request.signerOperationId || request.signerOperationId.length < 8 || request.signerOperationId.length > 128) {
     throw new Error("A durable signer operation ID is required");
+  }
+
+  if (!request.providerVendor || request.providerVendor !== request.policy.vendor) {
+    throw new Error("RFQ vendor does not match the approved EIP-712 policy");
   }
 
   const typedData = parseTypedData(request.typedData);
