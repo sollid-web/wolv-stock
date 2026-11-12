@@ -133,7 +133,7 @@ export default function AgentPolicyPanel() {
         currentPublicClient = getAgentPublicClient()
     ) => {
         if (!validatorAddress) {
-            throw new Error("Configure NEXT_PUBLIC_VALIDATOR_ADDRESS with the deployed validator address.")
+            throw new Error("Configure NEXT_PUBLIC_POLICY_HOOK_ADDRESS with the deployed validator address.")
         }
         const [installed, revoked, policy, targetToken, paused] = await Promise.all([
             currentPublicClient.readContract({
