@@ -270,3 +270,7 @@ The application source is released under the [MIT License](./LICENSE). The discl
 ### Market price cache
 
 WOLV uses the existing Supabase PostgreSQL database for the Binance market-price cache. See [`docs/MARKET_PRICE_CACHE.md`](docs/MARKET_PRICE_CACHE.md) for the collector, latest-price API, migration, worker configuration and freshness rules. Apply the migration before starting `npm run market:worker`.
+
+## Autonomous execution engineering
+
+See [Autonomy Handover](docs/AUTONOMY_HANDOVER.md) for the current implementation status, migration order, validation commands and live-execution blockers. The committed worker is paper-only; do not assume real-wallet signing or trading is enabled.
