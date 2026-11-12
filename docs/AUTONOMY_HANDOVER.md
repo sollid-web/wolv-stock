@@ -48,10 +48,10 @@ The common-contract registry now registers both Binance and 1inch adapters (`WOL
 
 The current worker is deliberately paper-only. The following are still required before unattended live execution can be enabled:
 
-1. **Signer:** No signer is connected. Binance RFQ may return an opaque hex payload or JSON typed data. The exact target-vendor EIP-712 domain, primary type, verifying contract, nonce, expiry and message fields must be verified before a signer may sign it. Privy is a candidate, not an approved or configured wallet.
+1. **Signer:** No signer is connected. Privy is the preferred technical route: a fail-closed EIP-712 adapter now validates BSC chain ID, allowlisted verifying contract, exact type schema, message shape, bound wallet/token/amount/expiry fields, stable idempotency key, and recovered signer address. The exact Binance RFQ domain, primary type and field paths still require a captured non-broadcast fixture. The Privy SDK transport and wallet remain unconfigured and unauthorized.
 2. **Custody authorization:** The server signer must control the exact wallet address used for Binance RFQ, or be explicitly authorized to sign for it. The existing browser Reown/Wagmi connection is not a server signer. No wallet was created, imported, funded or migrated.
-3. **Durable live execution state:** The submit/status and settlement adapters are not yet wired into a live worker with a persistent request ID, provider order ID, signed-payload recovery, leases, and restart-safe reconciliation.
-4. **Exact transaction simulation and settlement:** A provider `FILLED` status is not enough. The actual transaction receipt and token transfers must be independently verified and persisted before WOLV records a live fill.
+3. **Durable live execution state:** The Supabase live-attempt ledger and repository now persist UUIDv4 request IDs, provider/order metadata, payload hashes, signer operation IDs, state versions, immutable events, and a provider-specific retry deadline. They deliberately do not store signatures, raw typed data or raw transactions. The live worker, signer transport, submit/status adapters and settlement verifier are not yet wired together; no restart-safe live order path is active.
+4. **Exact transaction simulation and settlement:** Read-only BSC RPC simulation and settlement-verification adapters exist, but they are not yet connected to the live worker. A provider `FILLED` status is not enough; the actual transaction receipt, token transfers, amount deltas, block and gas fee must be independently verified and persisted before WOLV records a live fill.
 5. **Runtime validation:** New code has not been run against the user's local environment, Supabase project or a live RFQ wallet. The most recent user-reported 67/67 test pass predates these changes.
 6. **Deployment:** No deployment or production environment was changed.
 
@@ -167,11 +167,11 @@ The branch now contains:
 - `services/autonomy/provider-registry.ts`: registers Binance and 1inch in the normalized registry, separately from the legacy registry used by the current paper worker.
 - `services/autonomy/bsc-rpc.ts` and `services/autonomy/bsc-evm-simulator.ts`: read-only BSC chain checks, balance/gas reads, exact unsigned EVM simulation and receipt validation.
 
-Tests added: `scripts/normalized-provider-registry.test.mjs`, `scripts/binance-execution-adapter.test.mjs`, `scripts/binance-rfq-schema-probe.test.mjs`, `scripts/bsc-rpc.test.mjs`, `scripts/bsc-evm-simulator.test.mjs`, `scripts/bsc-settlement-verifier.test.mjs`, `scripts/portfolio-hard-stops-migration.test.mjs`, and `scripts/autonomy-global-kill-switch.test.mjs`. They have **not** been executed in this environment. The BSC RPC layer has no signing or broadcast method. The worker remains paper-only; no signer, live queue, or live transaction path has been activated.
+Tests added: `scripts/normalized-provider-registry.test.mjs`, `scripts/binance-execution-adapter.test.mjs`, `scripts/binance-rfq-schema-probe.test.mjs`, `scripts/bsc-rpc.test.mjs`, `scripts/bsc-evm-simulator.test.mjs`, `scripts/bsc-settlement-verifier.test.mjs`, `scripts/portfolio-hard-stops-migration.test.mjs`, and `scripts/autonomy-global-kill-switch.test.mjs`. They have **not** been executed in this environment. The BSC RPC layer has no signing or broadcast method. The worker remains paper-only. A durable live-attempt ledger exists, but no signer transport, live worker, order submission or live transaction path has been activated.
 
 ## Portfolio hard-stop update (2026-11-12)
 
-Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds atomic maximum-open-position, maximum-outstanding-order and daily realized-loss stops to the Supabase reservation RPC. The RPC locks the owner portfolio, counts distinct open/reserved token positions, counts active reservations, sums negative paper-exit P&L for the UTC day, and rejects new reservations when any cap is reached. It also accepts both the legacy Binance round-trip audit event and the normalized provider event name; this prevents a quote-event naming mismatch from silently blocking reservation.
+Migration `20261112193119_add_autonomy_portfolio_hard_stops.sql` adds atomic maximum-open-position, maximum-outstanding-order and daily realized-loss stops to the Supabase reservation RPC. The RPC locks the owner portfolio, counts distinct open/reserved token positions, counts active reservations, sums negative paper-exit P&L for the UTC day, and rejects new reservations when any cap is reached. It also accepts both the legacy Binance round-trip audit event and the normalized provider event name; this prevents a quote-event naming mismatch from silently blocking reservation.
 
 The portfolio service loads open-position count, outstanding-reservation count and daily realized loss into the deterministic risk candidate. `evaluateRiskPolicy` rejects missing evidence, enforces both concurrency limits, rejects new assets at the open-position limit, and permits adding to an already-open position subject to its per-token cap. The worker optionally checks the live wallet's BNB balance against the configured wei floor using BSC RPC. The database RPC independently repeats the concurrency and daily-loss hard stops at reservation time.
 
@@ -199,35 +199,49 @@ Release is an explicit operator action and should occur only after verifying the
 A safe read-only RFQ schema probe is available as `npm run autonomy:rfq-schema-probe`. It builds a fresh quote and unsigned RFQ order using local server credentials, then prints only schema metadata and hashes—not raw typed data. This is the next evidence step before a signer can be implemented. If the payload is opaque hex, the current policy deliberately rejects it.
 
 
-## Connected Supabase deployment status (2026-11-12)
+## Connected Supabase deployment status — 12 November 2026
 
-The connected Supabase project `wolv-agent` was inspected and the seven autonomy migrations plus two database-hardening/performance migrations were applied successfully. Supabase records nine migrations:
+The connected Supabase project was inspected and all 15 WOLV autonomy migrations were applied. The migration files in this branch have been renamed to the exact versions and names recorded by Supabase; the history-alignment test prevents accidental filename drift.
 
-- `create_market_price_cache`
-- `create_market_opportunities`
-- `create_autonomous_execution_queue`
-- `create_autonomy_portfolio_ledger`
-- `extend_paper_fill_exit_evidence`
-- `create_paper_exit_ledger`
-- `add_autonomy_portfolio_hard_stops`
-- `harden_autonomy_database_privileges`
-- `index_autonomy_foreign_keys`
+Applied migration names:
+- create_market_price_cache
+- create_market_opportunities
+- create_autonomous_execution_queue
+- create_autonomy_portfolio_ledger
+- extend_paper_fill_exit_evidence
+- create_paper_exit_ledger
+- add_autonomy_portfolio_hard_stops
+- harden_autonomy_database_privileges
+- index_autonomy_foreign_keys
+- create_durable_live_execution_attempts
+- fix_live_execution_audit_redaction
+- fix_live_execution_audit_redaction_v2
+- enforce_live_submission_retry_window
+- enforce_live_execution_evidence
+- index_live_execution_event_owner_intent
 
-The existing `public.tokenized_market_pulse` table was left untouched; its four existing rows remained present after migration. The autonomy tables exist, and the database currently has no autonomy portfolio rows, no intents/events/leases, no paper positions/fills/exits, and no market cache/opportunity rows. The global autonomy kill switch is initialized to `true` with reason `INITIAL_FAIL_CLOSED`. No portfolio is enabled.
+Verified database state:
+- Existing public.tokenized_market_pulse remains intact with 4 rows.
+- No autonomy portfolio is configured.
+- Execution intents/events/leases: 0.
+- Paper positions/fills/exits: 0.
+- Cached prices/history/opportunities: 0.
+- Live execution attempts/events: 0.
+- Global kill switch: true, reason INITIAL_FAIL_CLOSED.
+- No live order has been signed, submitted or broadcast.
 
 Database hardening:
-- All WOLV security-definer functions now use `search_path = pg_catalog, public`.
+- WOLV security-definer functions use search_path = pg_catalog, public.
 - The market-price trigger function is not directly executable by anon/authenticated roles.
-- The three public market-data tables are SELECT-only for anon/authenticated roles; no public writes are granted.
-- Execution and portfolio tables retain RLS with no client-facing policies, making them service-role/server-only.
-- Added indexes for the reservation and lease intent foreign keys after Supabase's performance advisor identified the missing indexes.
+- The three public market-data tables are SELECT-only for anon/authenticated roles; public writes are revoked.
+- Execution, portfolio and live-attempt tables retain RLS with no client-facing policies; they are server/service-role only.
+- Foreign-key indexes identified by the Supabase performance advisor have been added.
 
-Supabase advisor results after hardening:
-- Security: nine INFO findings for RLS-enabled autonomy tables with no policies. This is intentional: these tables are server/service-role only; do not add browser policies without an explicit owner-scoped access design.
-- Performance: no remaining unindexed-foreign-key finding. Remaining INFO findings report indexes not yet used; the new system has not processed production workload, so this is expected at this stage.
+Latest Supabase advisor results:
+- Security: only INFO findings for RLS-enabled autonomy tables with no policies. This is intentional; do not add browser policies without an explicit owner-scoped access design.
+- Performance: no remaining unindexed-foreign-key finding. Remaining unused-index INFO findings are expected before the worker processes workload.
 
-These database migrations are applied to the connected Supabase project. This does not mean the market-data workers are running, a portfolio is configured, or live execution is enabled. The global kill switch remains on and the project contains no configured autonomy portfolio.
-
+The migrations being applied does not mean the market-data workers are running, a portfolio is configured, or live execution is enabled. The global kill switch remains engaged.
 
 ## Database and live-recovery hardening — 12 November 2026
 
