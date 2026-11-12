@@ -541,7 +541,7 @@ export default function AgentPolicyPanel() {
                 </div>
             )}
 
-            {currentSnapshot && !currentSnapshot.revoked && (policyActive || pendingStrategy) && (
+            {(pendingStrategy || (policyActive && currentSnapshot && !currentSnapshot.revoked)) && (
                 <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
                     <h2 className="text-lg font-bold text-white">Autonomous execution</h2>
                     {runtimeSchedule?.enabled ? (
