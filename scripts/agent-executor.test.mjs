@@ -63,13 +63,17 @@ const KERNEL_EXECUTE_ABI = [{
   outputs: [],
 }];
 const bundlerFlag = process.env.ENABLE_LIVE_USEROP_SUBMISSION;
+const autonomousFlag = process.env.WOLV_AUTONOMOUS_TRADING_ENABLED;
 
 afterEach(() => {
   if (bundlerFlag === undefined) delete process.env.ENABLE_LIVE_USEROP_SUBMISSION;
   else process.env.ENABLE_LIVE_USEROP_SUBMISSION = bundlerFlag;
+  if (autonomousFlag === undefined) delete process.env.WOLV_AUTONOMOUS_TRADING_ENABLED;
+  else process.env.WOLV_AUTONOMOUS_TRADING_ENABLED = autonomousFlag;
 });
 
 function createHarness(overrides = {}) {
+  process.env.WOLV_AUTONOMOUS_TRADING_ENABLED = "true";
   let now = Date.now();
   const telemetry = [];
   const failures = [];
@@ -247,13 +251,16 @@ test("blocks mainnet submission even when live submission is enabled", async () 
 test("network resolver requires separate acknowledgement for mainnet", () => {
   assert.deepEqual(resolveAgentExecutionNetwork(97, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
   }), { allowed: true, chainId: 97 });
   assert.equal(resolveAgentExecutionNetwork(56, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
     ENABLE_MAINNET_AGENT_TRADING: "false",
   }).allowed, false);
   assert.deepEqual(resolveAgentExecutionNetwork(56, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
     ENABLE_MAINNET_AGENT_TRADING: "true",
     MAINNET_AGENT_TRADING_ACK: "I_ACCEPT_AUTONOMOUS_MAINNET_RISK",
   }), { allowed: true, chainId: 56 });
