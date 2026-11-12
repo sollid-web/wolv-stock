@@ -22,7 +22,7 @@ function topicAddress(value: string): string {
  * ERC-20 Transfer logs. Provider success alone is never considered settlement.
  */
 export function createBscSettlementVerifier(
-  client = createBscRpcClient(),
+  client = createBscRpcClient({}),
 ) {
   return {
     async verify(input: {
