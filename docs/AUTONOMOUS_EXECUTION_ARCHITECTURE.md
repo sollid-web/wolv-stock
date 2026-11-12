@@ -401,3 +401,6 @@ Official Binance references:
 - Get RFQ Order Status: `GET /api/v1/dex/aggregator/order/{orderId}`; provider statuses `FILLED` and `FAILED` are terminal, but provider fill still needs chain evidence for WOLV's ledger.
 - Transaction Detail by Tx Hash: https://web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/wallet-api
 
+## Live-mode risk gaps
+
+The paper portfolio currently enforces per-order and per-token position caps, daily entry spend, allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Before live mode, add deterministic daily realized-loss stops, max concurrent positions/orders, portfolio-wide concentration limits, a native-gas reserve floor and an operator-wide global kill switch. Paper exit P&L is recorded, but a daily loss stop is not yet computed from that ledger. These controls are release blockers for unattended live execution.
