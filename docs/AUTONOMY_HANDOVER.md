@@ -18,7 +18,8 @@ Upgrade WOLV from a human-approved trading interface into a policy-driven autono
 - The WOLV autonomy, paper-ledger and live-execution tables are server-only and RLS-enabled. Anonymous and authenticated roles cannot access private execution records.
 - Live portfolio controls include atomic order/position/daily-loss/budget caps, native BNB reserve checks, explicit RFQ settlement sender/router allowlists and a global kill switch.
 - Durable live attempts bind owner, intent, wallet, token pair, expected input/minimum output, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID, policy version and immutable vendor sender/router allowlist snapshots. Provider fills must match the persisted order ID, exact input and minimum output; chain settlement must match the provider fill. State transitions are versioned and audited. Signatures and raw typed data are not persisted.
-- A separate reconciliation-only worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against explicit vendor sender/router allowlists, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
+- A policy-gated live-entry orchestrator now sequences quote qualification, atomic reservation, durable attempt creation, Privy EIP-712 signing, exact-order simulation, gas preflight and Binance submission without per-trade human approval. It is not yet wired into a continuously running live-entry worker because a verified vendor-specific RFQ simulation capability is still missing.
+- A separate reconciliation-only worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against immutable per-attempt sender/router allowlists, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
 - Settlement recovery continues while the new-entry kill switch is engaged. The kill switch still blocks new live entries.
 - The live portfolio is not configured. The global kill switch remains engaged. There are no live attempts, fills, positions or exits, and no real order has been signed or submitted.
 - Privy EIP-712 policy binding and a Node SDK adapter are implemented. The adapter validates BSC domain, vendor, verifying contract, exact type/message schema, wallet/tokens/amounts/expiry, stable signer-operation ID and recovered signer address. The @privy-io/node dependency, app credentials and wallet authorization are not installed/configured.
@@ -90,7 +91,7 @@ This worker only reconciles already-persisted live attempts. It does not sign or
 
 ## Supabase migration history
 
-The connected Supabase project has 26 applied migrations. The branch contains these exact versioned files:
+The connected Supabase project has 27 applied migrations. The branch contains these exact versioned files:
 
 1. 20261112193035_create_market_price_cache.sql
 2. 20261112193042_create_market_opportunities.sql
