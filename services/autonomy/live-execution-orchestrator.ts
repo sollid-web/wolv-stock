@@ -312,12 +312,18 @@ export function createLiveExecutionOrchestrator(dependencies: {
         });
         if (order.provider !== "binance-web3-aggregator" ||
             order.quoteId !== roundTrip.buy.quoteId ||
+            order.vendor !== roundTrip.buy.vendorName ||
+            order.signingScheme !== "EIP712" ||
             order.orderId.trim().length < 2 ||
             order.walletAddress.toLowerCase() !== policy.walletAddress.toLowerCase() ||
             order.chainId !== "56" ||
             order.inputTokenAddress.toLowerCase() !== policy.inputTokenAddress.toLowerCase() ||
             order.outputTokenAddress.toLowerCase() !== input.outputTokenAddress.toLowerCase() ||
             order.amountIn !== input.amountIn ||
+            order.expectedAmountOut !== roundTrip.buy.expectedAmountOut ||
+            order.routeFingerprint !== roundTrip.buy.routeFingerprint ||
+            !/^[a-f0-9]{64}$/i.test(order.typedDataHash) ||
+            !/^[a-f0-9]{64}$/i.test(order.rawEvidenceRef) ||
             order.approvalRequired || order.approvalTarget !== null ||
             order.typedDataFormat !== "JSON_TYPED_DATA" ||
             !Number.isFinite(Date.parse(order.quoteExpiresAt)) ||
