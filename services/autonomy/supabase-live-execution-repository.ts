@@ -106,6 +106,7 @@ export async function createLiveExecutionAttempt(input: {
   policyVersion: string;
   quoteExpiresAt: string;
   providerQuoteId: string;
+  providerOrderId: string;
   preparedPayloadHash: string;
   executionSide?: "BUY";
 }): Promise<LiveExecutionAttempt> {
@@ -115,6 +116,7 @@ export async function createLiveExecutionAttempt(input: {
   const idempotencyWindow = input.providerIdempotencyWindowSeconds ?? 0;
   const quoteExpiry = Date.parse(input.quoteExpiresAt);
   if (!input.policyVersion.trim() || !/^[a-fA-F0-9]{32,128}$/.test(input.providerQuoteId) ||
+      !input.providerOrderId.trim() || input.providerOrderId.length > 128 ||
       !/^[a-f0-9]{64}$/i.test(input.preparedPayloadHash) || !Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now() ||
       (input.executionSide ?? "BUY") !== "BUY" ||
       input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
@@ -132,6 +134,7 @@ export async function createLiveExecutionAttempt(input: {
         active.provider_idempotency_window_seconds !== idempotencyWindow ||
         active.policy_version !== input.policyVersion ||
         active.provider_quote_id !== input.providerQuoteId ||
+        active.provider_order_id !== input.providerOrderId ||
         active.prepared_payload_hash !== input.preparedPayloadHash ||
         active.execution_side !== (input.executionSide ?? "BUY")) {
       throw new Error("An active live attempt exists with a different provider or wallet binding.");
@@ -176,6 +179,7 @@ export async function createLiveExecutionAttempt(input: {
     policy_version: input.policyVersion,
     quote_expires_at: input.quoteExpiresAt,
     provider_quote_id: input.providerQuoteId,
+    provider_order_id: input.providerOrderId,
     prepared_payload_hash: input.preparedPayloadHash,
     status: "PREPARED",
   };
@@ -197,6 +201,7 @@ export async function createLiveExecutionAttempt(input: {
     raced.provider_idempotency_window_seconds === idempotencyWindow &&
         raced.policy_version === input.policyVersion &&
         raced.provider_quote_id === input.providerQuoteId &&
+        raced.provider_order_id === input.providerOrderId &&
         raced.prepared_payload_hash === input.preparedPayloadHash &&
         raced.execution_side === (input.executionSide ?? "BUY")) return raced;
     throw error;
