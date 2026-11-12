@@ -50,7 +50,9 @@ export interface Eip712FieldBinding {
   role: string;
   path: string;
   kind: Eip712FieldKind;
-  source: Eip712PolicyValueSource;
+  source: Eip712PolicyValueSource | "typedDataField";
+  sourcePath?: string;
+  allowedValues?: string[];
 }
 
 export interface PrivyEip712PolicyTemplate {
@@ -67,6 +69,7 @@ export interface PrivyEip712PolicyTemplate {
 export function bindPrivyEip712Policy(
   template: PrivyEip712PolicyTemplate,
   values: Record<Eip712PolicyValueSource, string>,
+  typedDataMessage?: Record<string, unknown>,
 ): PrivyEip712Policy {
   if (!template.vendor || !template.primaryType || template.chainId !== 56) {
     throw new Error("Privy EIP-712 policy template has invalid vendor, primary type or chain");
@@ -75,14 +78,28 @@ export function bindPrivyEip712Policy(
     throw new Error("Privy EIP-712 policy template is incomplete");
   }
   const expectedFields = template.fieldBindings.map((binding) => {
-    if (!values[binding.source]) {
-      throw new Error("Missing dynamic EIP-712 policy value for role: " + binding.role);
+    let value: string;
+    if (binding.source === "typedDataField") {
+      if (!typedDataMessage || !binding.sourcePath) {
+        throw new Error("Typed-data field binding requires a sourcePath and parsed provider message");
+      }
+      const raw = readPath(typedDataMessage, binding.sourcePath);
+      if (typeof raw !== "string" && typeof raw !== "number" && typeof raw !== "bigint") {
+        throw new Error("Typed-data source field is not a scalar value: " + binding.role);
+      }
+      value = String(raw);
+    } else {
+      value = values[binding.source];
+      if (!value) throw new Error("Missing dynamic EIP-712 policy value for role: " + binding.role);
+    }
+    if (binding.allowedValues?.length && !binding.allowedValues.some((allowed) => allowed.toLowerCase() === value.toLowerCase())) {
+      throw new Error("Typed-data field value is not allowlisted for role: " + binding.role);
     }
     return {
       role: binding.role,
       path: binding.path,
       kind: binding.kind,
-      value: values[binding.source],
+      value,
     };
   });
   return {
