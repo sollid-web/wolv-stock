@@ -303,7 +303,7 @@ export class AgentExecutor {
             if (!(this.dependencies.isLiveEnabled ?? isLiveUserOperationSubmissionEnabled)()) {
                 throw new AgentExecutorError(
                     "LIVE_SUBMISSION_DISABLED",
-                    "Live UserOperation submission is disabled; set ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
+                    "Live UserOperation submission is disabled; set WOLV_AUTONOMOUS_TRADING_ENABLED=true and ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
                 )
             }
             const config = this.dependencies.getConfig?.() ?? getAgentSmartAccountConfig()
