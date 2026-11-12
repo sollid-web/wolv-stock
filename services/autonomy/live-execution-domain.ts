@@ -29,6 +29,11 @@ export interface LiveExecutionAttempt {
   wallet_address: string;
   status: LiveExecutionStatus;
   version: number;
+  execution_side: "BUY" | "SELL";
+  policy_version: string;
+  quote_expires_at: string | null;
+  native_gas_balance_wei: string;
+  native_gas_preflight_at: string | null;
   provider_idempotency_window_seconds: number;
   submission_started_at: string | null;
   retry_not_after: string | null;
