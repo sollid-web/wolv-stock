@@ -113,6 +113,7 @@ function harness(initial, options = {}) {
     repository: repo,
     provider,
     settlement,
+    ...(options.isNewEntryAllowed ? { isNewEntryAllowed: options.isNewEntryAllowed } : {}),
     now: () => now,
   });
   return { recovery, state, events, released, committed, providerCalls, settlementCalls };
@@ -174,12 +175,25 @@ test("aborts and releases an expired unsigned PREPARED attempt", async () => {
   assert.equal(h.providerCalls.length, 0);
 });
 
-test("puts unresolved signer outcomes on security hold and never releases their reservation", async () => {
-  const h = harness([attempt({ status: "SIGNER_UNKNOWN" })]);
+test("leaves a fresh signer-unknown attempt resumable with its persisted signer operation", async () => {
+  const h = harness([attempt({ status: "SIGNER_UNKNOWN" })], {
+    isNewEntryAllowed: async () => true,
+  });
   const report = await h.recovery.run(ownerId);
-  assert.equal(h.state.get(attempt().id).status, "SECURITY_HOLD");
-  assert.equal(report.held, 1);
+  assert.equal(h.state.get(attempt().id).status, "SIGNER_UNKNOWN");
+  assert.equal(report.unchanged, 1);
   assert.deepEqual(h.released, []);
+  assert.equal(h.providerCalls.length, 0);
+});
+
+test("aborts a pre-submit signer-unknown attempt when the global entry stop is engaged", async () => {
+  const h = harness([attempt({ status: "SIGNER_UNKNOWN" })], {
+    isNewEntryAllowed: async () => false,
+  });
+  const report = await h.recovery.run(ownerId);
+  assert.equal(h.state.get(attempt().id).status, "REJECTED");
+  assert.equal(report.failed, 1);
+  assert.deepEqual(h.released, [attempt().id]);
   assert.equal(h.providerCalls.length, 0);
 });
 
