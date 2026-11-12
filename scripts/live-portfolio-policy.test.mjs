@@ -20,6 +20,8 @@ function portfolio(overrides = {}) {
     allowed_chain_ids: ["56"],
     allowed_token_addresses: [outputToken],
     allowed_input_token_addresses: [inputToken],
+    live_allowed_transaction_senders: [wallet],
+    live_allowed_transaction_targets: ["0x4444444444444444444444444444444444444444"],
     live_budget_amount_text: "0",
     live_reserved_amount_text: "0",
     live_committed_amount_text: "0",
@@ -72,6 +74,8 @@ test("loads a default-disabled policy and keeps kill switch state explicit", asy
   assert.equal(policy.walletAddress, wallet);
   assert.deepEqual(policy.allowedChainIds, ["56"]);
   assert.deepEqual(policy.allowedTokenAddresses, [outputToken]);
+  assert.deepEqual(policy.allowedTransactionSenders, [wallet]);
+  assert.deepEqual(policy.allowedTransactionTargets, ["0x4444444444444444444444444444444444444444"]);
 });
 
 test("refuses an enabled policy while global stop is engaged", async (t) => {
