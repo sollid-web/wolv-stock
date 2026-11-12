@@ -1,6 +1,8 @@
 import { getValidatedBinanceRoundTripQuote } from "./binance-roundtrip-provider";
 import { getValidatedBinanceRwaQuote } from "./binance-quote-provider";
 import { buildValidatedBinanceRfqOrder } from "./binance-rfq-order-provider";
+import { binanceExecutionAdapter } from "./binance-execution-adapter";
+import { createNormalizedProviderRegistry } from "./normalized-provider-registry";
 import type { ValidatedBinanceQuote } from "./binance-quote";
 import type { ValidatedRoundTripQuote } from "./binance-roundtrip";
 import type { ValidatedBinanceRfqOrder } from "./binance-rfq-order";
@@ -82,3 +84,15 @@ const preferred = (process.env.WOLV_AUTONOMY_PROVIDER_ORDER ?? "binance-web3-agg
   .split(",").map((value) => value.trim()).filter(Boolean);
 
 export const autonomyProviderRegistry = createAutonomyProviderRegistry([binanceWeb3Adapter], preferred);
+
+
+/**
+ * Shared provider contract registry for execution preparation. The legacy
+ * round-trip interface remains in place for the paper worker until its
+ * strategy-specific evidence contract is migrated. Both registries select
+ * the same Binance provider identity and credentials.
+ */
+export const normalizedAutonomyProviderRegistry = createNormalizedProviderRegistry(
+  [binanceExecutionAdapter],
+  preferred,
+);
