@@ -99,6 +99,7 @@ export type ConfigureAgentPolicyInput = {
     ownerKernelClient: PolicyKernelClient
     publicClient: PublicClient
     validatorAddress: Address
+    ownerAddress: Address
     strategyId: string
     targetToken: Address
     intentSigner: Address
@@ -122,6 +123,7 @@ export async function configureAgentPolicy(
     input: ConfigureAgentPolicyInput
 ): Promise<ConfigureAgentPolicyResult> {
     const account = getAddress(input.ownerKernelClient.account.address)
+    const ownerAddress = getAddress(input.ownerAddress)
     const validatorAddress = getAddress(input.validatorAddress)
     const targetToken = getAddress(input.targetToken)
     const intentSigner = getAddress(input.intentSigner)
@@ -145,6 +147,7 @@ export async function configureAgentPolicy(
 
     const policyHash = hashAgentPolicy({
         strategyId: input.strategyId,
+        ownerAddress,
         account,
         targetToken,
         maxTradeValue: input.maxTradeValue,
