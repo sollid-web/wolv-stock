@@ -3,10 +3,12 @@ import { test } from "node:test";
 import { encodeAbiParameters, keccak256 } from "viem";
 import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
+const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const TOKEN = "0x0000000000000000000000000000000000000456";
 const SIGNER = "0x0000000000000000000000000000000000000789";
 const POLICY = {
   strategyId: "aapl-entry",
+  account: ACCOUNT,
   targetToken: TOKEN,
   maxTradeValue: 500_000_000_000_000_000n,
   expiresAt: 1_800_000_000n,
@@ -20,12 +22,12 @@ const POLICY = {
 test("hashes the complete strategy policy using versioned ABI encoding", () => {
   const expected = keccak256(encodeAbiParameters(
     [
-      { type: "string" }, { type: "string" }, { type: "address" },
+      { type: "string" }, { type: "string" }, { type: "address" }, { type: "address" },
       { type: "uint192" }, { type: "uint64" }, { type: "address" },
       { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" },
     ],
     [
-      "WOLV_AGENT_POLICY_V2", POLICY.strategyId, TOKEN, POLICY.maxTradeValue,
+      "WOLV_AGENT_POLICY_V3", POLICY.strategyId, ACCOUNT, TOKEN, POLICY.maxTradeValue,
       POLICY.expiresAt, SIGNER, POLICY.amountBnb, POLICY.entryPriceMicros,
       POLICY.slippageBps, POLICY.maxPriceImpactBps,
     ],
@@ -43,6 +45,7 @@ test("hashes the complete strategy policy using versioned ABI encoding", () => {
     ...POLICY,
     strategyId: "unknown-strategy",
   }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, account: TOKEN }));
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, amountBnb: POLICY.amountBnb + 1n }));
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, entryPriceMicros: POLICY.entryPriceMicros + 1n }));
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, slippageBps: 101 }));
