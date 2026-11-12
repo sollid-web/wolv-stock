@@ -224,7 +224,7 @@ export async function commitPaperQuoteFill(input: {
     }),
   });
   return result === true;
-
+}
 
 export type OpenPaperPosition = {
   ownerId: string; chainId: string; tokenAddress: string;
