@@ -258,7 +258,7 @@ function harness(options = {}) {
     async simulate() {
       calls.simulation += 1;
       if (options.simulationError) throw new Error("RFQ simulation unavailable");
-      return { fingerprint: "b".repeat(64), simulatedAt: new Date(now).toISOString() };
+      return { orderHash: payloadHash, fingerprint: "b".repeat(64), simulatedAt: new Date(now).toISOString() };
     },
   };
   const orchestrator = createLiveExecutionOrchestrator({
