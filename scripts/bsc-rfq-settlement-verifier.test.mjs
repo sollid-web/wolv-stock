@@ -50,7 +50,7 @@ const request = {
   inputTokenAddress: tokenIn,
   outputTokenAddress: tokenOut,
   expectedAmountIn: "1000",
-  minimumAmountOut: "940",
+  expectedAmountOut: "940",
   allowedTransactionSenders: [relayer],
   allowedTransactionTargets: [router],
   minConfirmations: 12,
