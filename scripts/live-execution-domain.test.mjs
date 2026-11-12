@@ -5,6 +5,7 @@ import {
   isRecoverableLiveExecutionStatus,
   assertSafeLiveExecutionDetail,
   assertLiveExecutionSettlementEvidence,
+  canRetryUnknownSubmission,
 } from "../services/autonomy/live-execution-domain.ts";
 
 test("allows safe live execution progression and rejects illegal shortcuts", () => {
@@ -51,4 +52,13 @@ test("settlement requires transaction, actual amounts, fee and block evidence", 
     fee_amount: "1",
     settlement_block: "123",
   }));
+});
+
+test("unknown submission retries stop exactly at the provider idempotency deadline", () => {
+  const now = Date.parse("2026-11-12T12:00:00.000Z");
+  const deadline = "2026-11-12T12:30:00.000Z";
+  assert.equal(canRetryUnknownSubmission("SUBMISSION_UNKNOWN", deadline, now), true);
+  assert.equal(canRetryUnknownSubmission("SUBMISSION_UNKNOWN", deadline, Date.parse(deadline)), false);
+  assert.equal(canRetryUnknownSubmission("SUBMISSION_UNKNOWN", null, now), false);
+  assert.equal(canRetryUnknownSubmission("SUBMITTED", deadline, now), false);
 });
