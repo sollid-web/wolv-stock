@@ -14,6 +14,8 @@ test("portfolio hard-stop migration adds bounded concurrent-position and daily-l
   assert.match(migration, /max_open_orders between 1 and 100/);
   assert.match(migration, /max_daily_realized_loss numeric\(78,0\) not null default 1/);
   assert.match(migration, /max_daily_realized_loss > 0/);
+  assert.match(migration, /min_native_gas_balance_wei numeric\(78,0\) not null default 0/);
+  assert.match(migration, /min_native_gas_balance_wei >= 0/);
 });
 
 test("atomic budget reservation checks open positions and realized losses", () => {
