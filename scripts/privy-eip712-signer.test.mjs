@@ -58,6 +58,7 @@ function makeRequest(overrides = {}) {
     walletId: "privy-wallet-test",
     walletAddress: account.address,
     signerOperationId: "signer-operation-0001",
+    providerVendor: "vendor-test",
     typedData,
     policy,
     ...overrides,
