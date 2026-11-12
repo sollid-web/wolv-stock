@@ -7,7 +7,6 @@ import {
   commitLiveExecutionFill,
   releaseLiveExecutionBudget,
 } from "../services/autonomy/supabase-live-execution-repository.ts";
-import { loadLiveExecutionPolicy } from "../services/autonomy/supabase-live-portfolio-policy.ts";
 import { createLiveRfqSettlementAdapter } from "../services/autonomy/live-rfq-settlement-adapter.ts";
 import { createLiveExecutionRecovery } from "../services/autonomy/live-execution-recovery.ts";
 import type { LiveExecutionEvidence } from "../services/autonomy/live-execution-domain.ts";
@@ -29,7 +28,6 @@ const limit = Math.max(1, Math.min(200, Math.floor(Number(process.env.WOLV_LIVE_
 const rpc = createBscRpcClient({});
 const settlement = createLiveRfqSettlementAdapter({
   client: rpc,
-  loadPolicy: loadLiveExecutionPolicy,
   requiredConfirmations: Number(process.env.WOLV_LIVE_SETTLEMENT_CONFIRMATIONS ?? 12),
 });
 
