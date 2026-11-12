@@ -118,6 +118,7 @@ The connected Supabase project has 26 applied migrations. The branch contains th
 24. 20261112223600_move_live_simulation_gate_to_pre_submit.sql
 25. 20261112224003_enforce_live_fill_order_amount_binding.sql
 26. 20261112224135_snapshot_live_settlement_allowlists.sql
+27. 20261112224518_add_live_privy_wallet_id.sql
 
 These migrations are already applied to the connected WOLV Supabase project. Verify the linked target and compare local/remote history before any push:
 
