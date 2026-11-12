@@ -59,25 +59,38 @@ Do not describe WOLV as autonomously trading real funds until these gates have b
 
 ## Supabase migrations
 
-The branch adds these migrations:
+The branch contains 15 migration files whose version prefixes and names match the connected Supabase project's applied migration history:
 
-1. `20261108090000_create_market_price_cache.sql`
-2. `20261110100000_create_market_opportunities.sql`
-3. `20261110120000_create_autonomous_execution_queue.sql`
-4. `20261110150000_create_autonomy_portfolio_ledger.sql`
-5. `20261110170000_extend_paper_fill_exit_evidence.sql`
-6. `20261111100000_create_paper_exit_ledger.sql`
-7. `20261112100000_add_autonomy_portfolio_hard_stops.sql`
+1. 20261112193035_create_market_price_cache.sql
+2. 20261112193042_create_market_opportunities.sql
+3. 20261112193048_create_autonomous_execution_queue.sql
+4. 20261112193058_create_autonomy_portfolio_ledger.sql
+5. 20261112193107_extend_paper_fill_exit_evidence.sql
+6. 20261112193114_create_paper_exit_ledger.sql
+7. 20261112193119_add_autonomy_portfolio_hard_stops.sql
+8. 20261112193351_harden_autonomy_database_privileges.sql
+9. 20261112193435_index_autonomy_foreign_keys.sql
+10. 20261112193721_create_durable_live_execution_attempts.sql
+11. 20261112193911_fix_live_execution_audit_redaction.sql
+12. 20261112193943_fix_live_execution_audit_redaction_v2.sql
+13. 20261112194033_enforce_live_submission_retry_window.sql
+14. 20261112194235_enforce_live_execution_evidence.sql
+15. 20261112194339_index_live_execution_event_owner_intent.sql
 
-Apply them only after verifying the linked Supabase project is the intended project:
+These migrations are already applied to the connected WOLV Supabase project. Before running a migration command, confirm the linked project and compare the local and remote histories:
 
 ```bash
 npx supabase migration list
+```
+
+For a fresh project only, after linking the intended project, apply the migrations with:
+
+```bash
 npx supabase db push
 npx supabase migration list
 ```
 
-If the CLI is not linked, authenticate and link the intended project first. Do not paste the service-role key into source code, browser variables or chat.
+The migration-history alignment test fails if the local filenames drift from the applied versions. Do not rename these files without applying a corresponding migration-history repair. Never put the service-role key in source code, browser variables or chat.
 
 ## Local validation commands
 
@@ -183,7 +196,7 @@ The BSC settlement verifier is an isolated capability. It is not yet connected t
 
 ## Operator-wide kill switch
 
-Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` creates `wolv_autonomy_global_control` with the global kill switch engaged by default. The reservation RPC and paper-fill commit RPC read-lock this control row and refuse new entries/fills while it is engaged. The paper exit RPC is intentionally not blocked, so configured risk-reducing exits can continue.
+Migration `20261112193119_add_autonomy_portfolio_hard_stops.sql` creates `wolv_autonomy_global_control` with the global kill switch engaged by default. The reservation RPC and paper-fill commit RPC read-lock this control row and refuse new entries/fills while it is engaged. The paper exit RPC is intentionally not blocked, so configured risk-reducing exits can continue.
 
 Use the server-side command to engage the stop (default) or explicitly release it:
 
