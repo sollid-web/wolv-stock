@@ -83,6 +83,7 @@ export type AgentExecutionIntent = {
     slippageBps: number
     maxPriceImpactBps: number
     sourcePriceMicros: bigint
+    entryPriceMicros: bigint
     createdAt: string
     policyHash: Hex
 }
@@ -375,7 +376,11 @@ export class AgentWorker {
                 targetToken: strategy.targetToken,
                 maxTradeValue: validator.maxTradeValue,
                 expiresAt: validator.policyExpiresAt,
-                intentSigner: validator.intentSigner
+                intentSigner: validator.intentSigner,
+                amountBnb: strategy.amountBnb,
+                entryPriceMicros: strategy.entryPriceMicros,
+                slippageBps: strategy.slippageBps,
+                maxPriceImpactBps: strategy.maxPriceImpactBps
             })
         } catch (error) {
             this.rejectCycle(strategy, telemetry(
@@ -455,6 +460,7 @@ export class AgentWorker {
                 slippageBps: strategy.slippageBps,
                 maxPriceImpactBps: strategy.maxPriceImpactBps,
                 sourcePriceMicros: market.priceMicros,
+                entryPriceMicros: strategy.entryPriceMicros,
                 createdAt: new Date(market.receivedAt ?? market.observedAt).toISOString(),
                 policyHash: validator.policyHash
             }
