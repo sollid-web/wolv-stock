@@ -12,7 +12,8 @@ export function createBscEvmTransactionSimulator(
   return {
     async simulate(input: PreparedEvmTransaction) {
       if (input.chainId !== "56") throw new Error("BSC simulator only accepts chain 56");
-      if (Date.parse(input.quoteExpiresAt) <= Date.now()) {
+      const quoteExpiry = Date.parse(input.quoteExpiresAt);
+      if (!Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now()) {
         throw new Error("Cannot simulate an expired execution quote");
       }
       const result = await client.simulateTransaction({
