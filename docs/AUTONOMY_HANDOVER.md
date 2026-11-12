@@ -25,7 +25,8 @@ The LLM is not the risk engine and cannot override wallet policy, token allowlis
 - Binance RFQ submit/status adapter and BSC transaction-detail settlement verifier as isolated provider building blocks.
 - Provider registry used by the autonomous worker for entry round-trip quotes, unsigned order building and paper exit quotes; configured provider preference and fail-closed chain/configuration selection.
 - Vendor-neutral quote/prepared-payload contracts, a normalized provider registry, and common-contract adapters for Binance RFQ and 1inch Classic. Provider fallback occurs before accepting a quote; quote evidence cannot be prepared by another provider.
-- Read-only BSC RPC client for chain verification, gas/native/ERC-20 balance reads, exact unsigned EVM transaction simulation and mined receipt validation; an adapter exposes it through the common EVM simulator contract.\n- Independent BSC Classic-swap settlement verifier that checks transaction sender/router/chain, confirmation depth, ERC-20 Transfer logs, exact input debit, minimum output credit and actual fee in wei.
+- Read-only BSC RPC client for chain verification, gas/native/ERC-20 balance reads, exact unsigned EVM transaction simulation and mined receipt validation; an adapter exposes it through the common EVM simulator contract.
+- Independent BSC Classic-swap settlement verifier that checks transaction sender/router/chain, confirmation depth, ERC-20 Transfer logs, exact input debit, minimum output credit and actual fee in wei.
 - Tests covering domain rules, provider response parsers, exit calculations, migration safety and configuration.
 
 The common-contract registry now registers both Binance and 1inch adapters (`WOLV_AUTONOMY_NORMALIZED_PROVIDER_ORDER`, default `binance-web3-aggregator,1inch-classic`). This registry is not yet used by the autonomous worker: the worker still uses the legacy Binance round-trip interface because 1inch does not yet satisfy the full two-sided tax, price-impact, USD gas-fee and settlement-evidence requirements. The BSC RPC simulator is also not yet wired into worker state transitions. See [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md), [ONEINCH_CLASSIC_ADAPTER.md](./ONEINCH_CLASSIC_ADAPTER.md), and [BSC_RPC_PREFLIGHT.md](./BSC_RPC_PREFLIGHT.md).
@@ -52,7 +53,8 @@ The branch adds these migrations:
 3. `20261110120000_create_autonomous_execution_queue.sql`
 4. `20261110150000_create_autonomy_portfolio_ledger.sql`
 5. `20261110170000_extend_paper_fill_exit_evidence.sql`
-6. `20261111100000_create_paper_exit_ledger.sql`\n7. `20261112100000_add_autonomy_portfolio_hard_stops.sql`
+6. `20261111100000_create_paper_exit_ledger.sql`
+7. `20261112100000_add_autonomy_portfolio_hard_stops.sql`
 
 Apply them only after verifying the linked Supabase project is the intended project:
 
@@ -163,4 +165,5 @@ The portfolio service loads open-position count and daily realized loss into the
 Configuration: `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` defaults to 1; `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS` defaults to the configured daily spend cap and must fit within the paper budget. These limits are denominated in the configured input token's smallest units. They are paper-policy controls until a separate live policy and live ledger exist.
 
 Risk snapshot retrieval uses `wolv_get_autonomy_risk_snapshot`, a database-side aggregate returning exact realized-loss text and distinct active positions. This avoids relying on a client-side paginated list for hard-stop decisions. The atomic reservation RPC repeats both caps while holding the portfolio row lock.
-\nThe BSC settlement verifier is an isolated capability. It is not yet connected to durable live-intent state or a signer, and its router target must be approved by an independent trusted-contract policy before use.\n
+
+The BSC settlement verifier is an isolated capability. It is not yet connected to durable live-intent state or a signer, and its router target must be approved by an independent trusted-contract policy before use.
