@@ -37,6 +37,7 @@ const typedData = {
   },
 };
 const policy = {
+  vendor: "vendor-test",
   chainId: 56,
   verifyingContracts: [typedData.domain.verifyingContract],
   primaryType: "RFQOrder",
@@ -85,6 +86,7 @@ test("sends a signed Privy request and recovers the EIP-712 wallet signature", a
     walletId: "wallet-test",
     walletAddress: wallet.address,
     signerOperationId: "wolv-signer-operation-0001",
+    providerVendor: "vendor-test",
     typedData,
     policy,
   });
@@ -132,6 +134,7 @@ test("refuses a wallet ID or address that differs from deployment custody config
     walletId: "different-wallet",
     walletAddress: wallet.address,
     signerOperationId: "wolv-signer-operation-0002",
+    providerVendor: "vendor-test",
     typedData,
     policy,
   }), /wallet ID does not match/);
@@ -139,6 +142,7 @@ test("refuses a wallet ID or address that differs from deployment custody config
     walletId: "wallet-test",
     walletAddress: `0x${"44".repeat(20)}`,
     signerOperationId: "wolv-signer-operation-0003",
+    providerVendor: "vendor-test",
     typedData,
     policy,
   }), /address does not match/);
@@ -159,6 +163,7 @@ test("fails closed when server-side Privy credentials or HTTP responses are inva
     walletId: "wallet-test",
     walletAddress: wallet.address,
     signerOperationId: "wolv-signer-operation-0004",
+    providerVendor: "vendor-test",
     typedData,
     policy,
   }), /HTTP 500/);
