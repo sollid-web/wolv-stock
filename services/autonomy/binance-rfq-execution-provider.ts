@@ -1,5 +1,5 @@
 import { getOrderStatus, submitOrder } from "../../lib/binance";
-import type { PreparedRfqOrder } from "./execution-contracts";
+import type { PreparedRfqOrder, RfqExecutionProvider } from "./execution-contracts";
 import type { ReconciliationResult, SubmissionResult } from "./execution-contracts";
 
 type RecordValue = Record<string, unknown>;
@@ -106,3 +106,18 @@ export async function reconcileValidatedBinanceRfq(input: {
     };
   }
 }
+
+
+export const binanceRfqExecutionProvider: RfqExecutionProvider = {
+  async submit(input) {
+    return submitValidatedBinanceRfq({
+      requestId: input.requestId, order: input.order, signature: input.signature,
+    });
+  },
+  async reconcile(input) {
+    if (!input.providerOrderId) {
+      return { status: "UNKNOWN", checkedAt: new Date().toISOString(), reason: "Binance platform order ID is required for status polling" };
+    }
+    return reconcileValidatedBinanceRfq({ providerOrderId: input.providerOrderId });
+  },
+};
