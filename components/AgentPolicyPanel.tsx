@@ -460,7 +460,7 @@ export default function AgentPolicyPanel() {
         && !currentSnapshot.revoked
         && currentSnapshot.expiresAt > BigInt(nowSeconds)
     )
-    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled)
+    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled && runtimeWorkerReadiness?.workerReady && runtimeWorkerReadiness.executionGateEnabled)
     return (
         <section className="mx-auto w-full max-w-6xl px-4 py-8">
             <div className="mb-5">
