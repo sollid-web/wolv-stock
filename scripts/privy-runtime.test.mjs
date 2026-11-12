@@ -1,15 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, createPrivateKey, createPublicKey, verify } from "node:crypto";
 import { privateKeyToAccount } from "viem/accounts";
-import { createPrivyEip712SignerFromEnv } from "../services/autonomy/privy-runtime.ts";
+import {
+  createPrivyEip712SignerFromEnv,
+  canonicalizePrivyAuthorizationRequest,
+} from "../services/autonomy/privy-runtime.ts";
 
 const wallet = privateKeyToAccount(`0x${"33".repeat(32)}`);
-const authorizationKey = generateKeyPairSync("ec", {
+const authPair = generateKeyPairSync("ec", {
   namedCurve: "prime256v1",
   privateKeyEncoding: { type: "pkcs8", format: "der" },
   publicKeyEncoding: { type: "spki", format: "der" },
-}).privateKey.toString("base64");
+});
+const authorizationKey = authPair.privateKey.toString("base64");
 const typedData = {
   domain: { name: "WOLV RFQ", version: "1", chainId: 56, verifyingContract: `0x${"aa".repeat(20)}` },
   types: {
@@ -56,30 +60,27 @@ const env = {
   PRIVY_WALLET_ADDRESS: wallet.address,
 };
 
-test("constructs the official Privy Node client and signs only its deployment-bound BSC wallet", async () => {
-  let clientOptions;
-  let signingRequest;
-  class FakePrivyClient {
-    constructor(options) { clientOptions = options; }
-    wallets() {
-      return {
-        ethereum: () => ({
-          async signTypedData(walletId, input) {
-            signingRequest = { walletId, input };
-            const typed = input.params.typed_data;
-            const signature = await wallet.signTypedData({
-              domain: typed.domain,
-              types: typed.types,
-              primaryType: typed.primary_type,
-              message: typed.message,
-            });
-            return { encoding: "hex", signature };
-          },
-        }),
-      };
-    }
-  }
-  const signer = createPrivyEip712SignerFromEnv(env, () => ({ PrivyClient: FakePrivyClient }));
+function response(signature) {
+  return new Response(JSON.stringify({
+    method: "eth_signTypedData_v4",
+    data: { encoding: "hex", signature },
+  }), { status: 200, headers: { "content-type": "application/json" } });
+}
+
+test("sends a signed Privy request and recovers the EIP-712 wallet signature", async () => {
+  let captured;
+  const fetchImpl = async (url, init) => {
+    captured = { url, init, body: JSON.parse(init.body) };
+    const signature = await wallet.signTypedData({
+      domain: captured.body.params.typed_data.domain,
+      types: captured.body.params.typed_data.types,
+      primaryType: captured.body.params.typed_data.primary_type,
+      message: captured.body.params.typed_data.message,
+    });
+    return response(signature);
+  };
+
+  const signer = createPrivyEip712SignerFromEnv(env, fetchImpl);
   const signature = await signer.sign({
     walletId: "wallet-test",
     walletAddress: wallet.address,
@@ -89,22 +90,44 @@ test("constructs the official Privy Node client and signs only its deployment-bo
   });
 
   assert.match(signature, /^0x[0-9a-f]{130}$/i);
-  assert.equal(clientOptions.appId, "app-test");
-  assert.equal(clientOptions.appSecret, "app-secret-test");
-  assert.deepEqual(clientOptions.requestExpiry, { defaultMs: 60_000 });
-  assert.equal(signingRequest.walletId, "wallet-test");
-  assert.equal(signingRequest.input.caip2, "eip155:56");
-  assert.equal(signingRequest.input.idempotency_key, "wolv-signer-operation-0001");
-  assert.deepEqual(signingRequest.input.authorization_context.authorization_private_keys, [authorizationKey]);
+  assert.equal(captured.url, "https://api.privy.io/v1/wallets/wallet-test/rpc");
+  assert.equal(captured.body.method, "eth_signTypedData_v4");
+  assert.equal(captured.body.chain_type, "ethereum");
+  assert.equal(captured.body.caip2, "eip155:56");
+  assert.equal(captured.body.params.typed_data.primary_type, "RFQOrder");
+  assert.equal(captured.init.headers["privy-app-id"], "app-test");
+  assert.equal(captured.init.headers["privy-idempotency-key"], "wolv-signer-operation-0001");
+  assert.match(captured.init.headers["privy-request-expiry"], /^[0-9]+$/);
+  assert.equal(
+    captured.init.headers.Authorization,
+    "Basic " + Buffer.from("app-test:app-secret-test").toString("base64"),
+  );
+
+  const authPayload = canonicalizePrivyAuthorizationRequest({
+    version: 1,
+    method: "POST",
+    url: captured.url,
+    body: captured.body,
+    headers: {
+      "privy-app-id": captured.init.headers["privy-app-id"],
+      "privy-idempotency-key": captured.init.headers["privy-idempotency-key"],
+      "privy-request-expiry": captured.init.headers["privy-request-expiry"],
+    },
+  });
+  const authKey = createPrivateKey({ key: Buffer.from(authorizationKey, "base64"), format: "der", type: "pkcs8" });
+  const authPublicKey = createPublicKey(authKey);
+  assert.equal(
+    verify("sha256", Buffer.from(authPayload), authPublicKey, Buffer.from(captured.init.headers["privy-authorization-signature"], "base64")),
+    true,
+  );
 });
 
 test("refuses a wallet ID or address that differs from deployment custody configuration", async () => {
-  class FakePrivyClient {
-    wallets() {
-      return { ethereum: () => ({ async signTypedData() { throw new Error("must not call signer"); } }) };
-    }
-  }
-  const signer = createPrivyEip712SignerFromEnv(env, () => ({ PrivyClient: FakePrivyClient }));
+  let calls = 0;
+  const signer = createPrivyEip712SignerFromEnv(env, async () => {
+    calls += 1;
+    return response("0x" + "aa".repeat(65));
+  });
   await assert.rejects(() => signer.sign({
     walletId: "different-wallet",
     walletAddress: wallet.address,
@@ -119,13 +142,24 @@ test("refuses a wallet ID or address that differs from deployment custody config
     typedData,
     policy,
   }), /address does not match/);
+  assert.equal(calls, 0);
 });
 
-test("fails closed when server-side Privy credentials or SDK are missing", () => {
-  assert.throws(() => createPrivyEip712SignerFromEnv({}, () => {
-    throw new Error("must not load sdk");
-  }), /PRIVY_APP_ID is required/);
-  assert.throws(() => createPrivyEip712SignerFromEnv(env, () => {
-    throw new Error("sdk missing");
-  }), /sdk missing/);
+test("fails closed when server-side Privy credentials or HTTP responses are invalid", async () => {
+  assert.throws(() => createPrivyEip712SignerFromEnv({}, async () => response("0x" + "aa".repeat(65))), /PRIVY_APP_ID is required/);
+  assert.throws(() => createPrivyEip712SignerFromEnv({
+    ...env,
+    PRIVY_AUTHORIZATION_PRIVATE_KEY: "not-a-pkcs8-key",
+  }, async () => response("0x" + "aa".repeat(65))), /PKCS8 P-256/);
+
+  const signer = createPrivyEip712SignerFromEnv(env, async () =>
+    new Response("upstream failure", { status: 500 }),
+  );
+  await assert.rejects(() => signer.sign({
+    walletId: "wallet-test",
+    walletAddress: wallet.address,
+    signerOperationId: "wolv-signer-operation-0004",
+    typedData,
+    policy,
+  }), /HTTP 500/);
 });
