@@ -1,5 +1,18 @@
 # WOLV Autonomy — Engineering Handover
 
+## Current verified status — 12 November 2026
+
+- Supabase has 15 WOLV autonomy migrations recorded. All 15 migration files in this branch now use the exact versions/names recorded by the connected project, so the CLI history can be reconciled without replaying already-applied schema changes.
+- The existing market-pulse tables were not modified. The autonomy and live-ledger tables are server-only, RLS-enabled, and inaccessible to anon/authenticated roles.
+- The live-attempt ledger, immutable event log, signer/settlement evidence gates, and provider idempotency retry deadline are implemented and applied. The live tables are empty.
+- The portfolio is not configured and the global kill switch remains engaged. No signer is connected, no live worker is wired, and no real order has been signed or submitted.
+- Privy is now validated as the preferred technical route for EIP-712 server signing on EVM chains, including BSC. It supports backend authorization contexts, agent wallets, and typed-data policy restrictions. It is not connected or authorized in WOLV; no wallet was created or funded.
+- The exact Binance RFQ EIP-712 payload/domain still needs a captured, non-broadcast fixture before a Privy policy or signer can safely be activated.
+- The latest code and migration tests have not been executed in a local checkout. No claim of passing tests or production readiness is made.
+
+Next implementation reference: [Privy agent signer design](PRIVY_AGENT_SIGNER.md).
+
+
 **Updated:** 2026-11-12  
 **Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`  
 **Repository:** https://github.com/sollid-web/wolv-stock  
