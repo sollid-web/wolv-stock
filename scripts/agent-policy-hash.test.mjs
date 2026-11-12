@@ -27,7 +27,7 @@ test("hashes the complete strategy policy using versioned ABI encoding", () => {
       { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" },
     ],
     [
-      "WOLV_AGENT_POLICY_V3", POLICY.strategyId, ACCOUNT, TOKEN, POLICY.maxTradeValue,
+      "WOLV_AGENT_POLICY_V4", POLICY.strategyId, ACCOUNT, TOKEN, POLICY.maxTradeValue,
       POLICY.expiresAt, SIGNER, POLICY.amountBnb, POLICY.entryPriceMicros,
       POLICY.slippageBps, POLICY.maxPriceImpactBps,
     ],
