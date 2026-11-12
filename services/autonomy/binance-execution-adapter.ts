@@ -71,7 +71,11 @@ function restoreQuote(quote: NormalizedExecutionQuote): ValidatedBinanceQuote {
  * approval transactions, order submission and settlement remain separate
  * capabilities and are intentionally not exposed by this adapter.
  */
-export const binanceExecutionAdapter: AutonomousExecutionAdapter = {
+export function createBinanceExecutionAdapter(dependencies: {
+  getQuote: typeof getValidatedBinanceRwaQuote;
+  buildOrder: typeof buildValidatedBinanceRfqOrder;
+} = { getQuote: getValidatedBinanceRwaQuote, buildOrder: buildValidatedBinanceRfqOrder }): AutonomousExecutionAdapter {
+  return {
   id: ID,
   supportedChainIds: [CHAIN],
   isConfigured: () =>
@@ -80,7 +84,7 @@ export const binanceExecutionAdapter: AutonomousExecutionAdapter = {
 
   async getQuote(input: ProviderQuoteRequest): Promise<NormalizedExecutionQuote> {
     if (input.chainId !== CHAIN) throw new Error("Binance RWA adapter supports BSC chain 56 only");
-    const quote = await getValidatedBinanceRwaQuote(input);
+    const quote = await dependencies.getQuote(input);
     return {
       provider: ID,
       chainId: quote.chainId,
@@ -121,7 +125,7 @@ export const binanceExecutionAdapter: AutonomousExecutionAdapter = {
     if (Date.parse(quote.expiresAt) <= Date.now()) {
       throw new Error("Binance quote expired before unsigned RFQ preparation");
     }
-    const order = await buildValidatedBinanceRfqOrder({
+    const order = await dependencies.buildOrder({
       quote,
       slippageBps: input.slippageBps,
       maxPriceImpactBps: input.maxPriceImpactBps,
@@ -143,4 +147,7 @@ export const binanceExecutionAdapter: AutonomousExecutionAdapter = {
       quoteExpiresAt: order.quoteExpiresAt,
     };
   },
-};
+  };
+}
+
+export const binanceExecutionAdapter = createBinanceExecutionAdapter();
