@@ -34,6 +34,7 @@ export type PortfolioPolicySnapshot = {
   inputTokenAddress: string;
   policyVersion: string;
   emergencyStop: boolean;
+  globalKillSwitch: boolean;
   paperBudgetAmount: string;
   reservedAmount: string;
   committedAmount: string;
@@ -87,6 +88,11 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
   if (typeof row.enabled !== "boolean" || typeof row.emergency_stop !== "boolean") {
     throw new Error("Portfolio policy has invalid enable/stop flags");
   }
+  const controlRows = await request("wolv_autonomy_global_control?select=kill_switch&singleton=eq.true&limit=1") as Array<Record<string, unknown>>;
+  if (controlRows.length !== 1 || typeof controlRows[0].kill_switch !== "boolean") {
+    throw new Error("Global autonomy control is missing or malformed");
+  }
+  const globalKillSwitch = controlRows[0].kill_switch;
   const utcDate = new Date().toISOString().slice(0, 10);
   const persistedDailySpend = String(row.daily_spend_date) < utcDate ? "0" : decimalString(row.daily_spend_amount_text, "daily_spend_amount");
   let currentPositionInputUnits = "0";
@@ -143,6 +149,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
     inputTokenAddress: String(row.input_token_address).toLowerCase(),
     policyVersion: String(row.policy_version),
     emergencyStop: row.emergency_stop,
+    globalKillSwitch,
     paperBudgetAmount: decimalString(row.paper_budget_amount_text, "paper_budget_amount"),
     reservedAmount: decimalString(row.reserved_amount_text, "reserved_amount"),
     committedAmount: decimalString(row.committed_amount_text, "committed_amount"),
