@@ -83,7 +83,7 @@ export interface TypedDataSigner {
 
 export interface ChainSettlementVerifier {
   /** Independently verifies a successful BSC receipt and wallet token balance deltas. */
-  verify(input: { ownerId: string; walletAddress: string; chainId: string; transactionHash: string; inputTokenAddress: string; outputTokenAddress: string }): Promise<
+  verify(input: { ownerId: string; walletAddress: string; chainId: string; transactionHash: string; inputTokenAddress: string; outputTokenAddress: string; expectedAmountIn: string; expectedAmountOut: string }): Promise<
     | { status: "SETTLED"; amountIn: string; amountOut: string; feeAmount: string; blockNumber: string }
     | { status: "PENDING" }
     | { status: "FAILED"; reasonCode: string }
