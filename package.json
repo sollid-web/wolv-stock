@@ -15,7 +15,8 @@
     "test:opportunity-scanner": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/opportunity-scanner.test.mjs",
     "autonomy:configure-paper": "node scripts/configure-autonomy-paper-portfolio.mjs",
     "autonomy:paper-worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/run-worker.mjs worker/autonomousPaperWorker.ts",
-    "autonomy:global-stop": "node scripts/autonomy-global-kill-switch.mjs"
+    "autonomy:global-stop": "node scripts/autonomy-global-kill-switch.mjs",
+    "autonomy:rfq-schema-probe": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/binance-rfq-schema-probe.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.24.0",
