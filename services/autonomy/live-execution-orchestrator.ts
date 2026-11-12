@@ -14,7 +14,8 @@ import type { PrivyEip712SignRequest } from "./privy-eip712-signer";
 export type LiveExecutionOutcome =
   | { status: "SUBMITTED"; attempt: LiveExecutionAttempt }
   | { status: "SUBMISSION_UNKNOWN"; attempt: LiveExecutionAttempt; reason: string }
-  | { status: "REJECTED"; attempt: LiveExecutionAttempt; reason: string };
+  | { status: "REJECTED"; attempt: LiveExecutionAttempt; reason: string }
+  | { status: "RECOVERY_REQUIRED"; attempt: LiveExecutionAttempt; reason: string };
 
 export interface LiveExecutionAttemptRepository {
   create(input: {
@@ -145,6 +146,7 @@ function ensureQuoteWithinPolicy(input: {
   if (policy.chainId !== "56" || !policy.allowedChainIds.includes("56")) {
     throw new Error("Live portfolio does not allow BNB Smart Chain");
   }
+  if (!policy.privyWalletId) throw new Error("A dedicated Privy execution wallet is not configured");
   if (policy.walletAddress.toLowerCase() !== input.walletAddress.toLowerCase()) {
     throw new Error("Live quote wallet does not match the configured portfolio wallet");
   }
@@ -306,7 +308,9 @@ export function createLiveExecutionOrchestrator(dependencies: {
             order.inputTokenAddress.toLowerCase() !== policy.inputTokenAddress.toLowerCase() ||
             order.outputTokenAddress.toLowerCase() !== input.outputTokenAddress.toLowerCase() ||
             order.amountIn !== input.amountIn ||
-            order.typedDataFormat !== "JSON_TYPED_DATA") {
+            order.approvalRequired || order.approvalTarget !== null ||
+            order.typedDataFormat !== "JSON_TYPED_DATA" ||
+            Date.parse(order.quoteExpiresAt) > Date.parse(checked.quoteExpiresAt)) {
           throw new Error("Unsigned RFQ order does not match the validated live quote or approved signing format");
         }
 
@@ -345,7 +349,7 @@ export function createLiveExecutionOrchestrator(dependencies: {
             walletAddress: policy.walletAddress,
             providerIdempotencyWindowSeconds: idempotencyWindow,
             policyVersion: policy.policyVersion,
-            quoteExpiresAt: order.quoteExpiresAt,
+            quoteExpiresAt: checked.quoteExpiresAt,
             providerQuoteId: order.quoteId,
             providerOrderId: order.orderId,
             tokenAddress: order.outputTokenAddress,
@@ -362,8 +366,16 @@ export function createLiveExecutionOrchestrator(dependencies: {
           throw error;
         }
 
-        await preflight(attempt);
-        const signerOperationId = "wolv-" + randomUUID();
+        if (!["PREPARED", "SIGNING_REQUESTED", "SIGNER_UNKNOWN", "SIGNED"].includes(attempt.status)) {
+          reservationCreated = false;
+          return {
+            status: "RECOVERY_REQUIRED",
+            attempt,
+            reason: "An existing live attempt is already in a post-signing state; the recovery worker owns it",
+          };
+        }
+
+        const signerOperationId = attempt.signer_operation_id ?? "wolv-" + randomUUID();
         const signerPolicy = bindPrivyEip712PolicyToOrder({
           template: await dependencies.loadPolicyTemplate(),
           order,
@@ -371,15 +383,26 @@ export function createLiveExecutionOrchestrator(dependencies: {
           minimumAmountOut: roundTrip.buyMinimumAmountOut,
         });
 
-        attempt = await move(attempt, "SIGNING_REQUESTED", "LIVE_EIP712_SIGNING_REQUESTED", {}, {
-          signer_operation_id: signerOperationId,
-          signer_address: policy.walletAddress,
-          prepared_payload_hash: order.typedDataHash,
-        });
+        if (attempt.status === "PREPARED") {
+          await preflight(attempt);
+          attempt = await move(attempt, "SIGNING_REQUESTED", "LIVE_EIP712_SIGNING_REQUESTED", {}, {
+            signer_operation_id: signerOperationId,
+            signer_address: policy.walletAddress,
+            prepared_payload_hash: order.typedDataHash,
+          });
+        } else if (attempt.signer_operation_id !== signerOperationId ||
+                   attempt.signer_address?.toLowerCase() !== policy.walletAddress.toLowerCase() ||
+                   attempt.prepared_payload_hash !== order.typedDataHash) {
+          reservationCreated = false;
+          return {
+            status: "RECOVERY_REQUIRED",
+            attempt,
+            reason: "Persisted signer operation or payload binding does not match the current RFQ order",
+          };
+        }
 
         let signature: string;
         try {
-          signerCallStarted = true;
           signature = await dependencies.signer.sign({
             walletId: policy.privyWalletId,
             walletAddress: policy.walletAddress,
@@ -387,25 +410,48 @@ export function createLiveExecutionOrchestrator(dependencies: {
             providerVendor: order.vendor,
             typedData: order.typedDataToSign,
             policy: signerPolicy,
-            beforeSign: async () => { await preflight(attempt!); },
+            beforeSign: async () => {
+              await preflight(attempt!);
+              signerCallStarted = true;
+            },
           });
+          signerCallStarted = true;
         } catch (error) {
-          attempt = await move(attempt, "SIGNER_UNKNOWN", "LIVE_SIGNER_OUTCOME_UNKNOWN", {
-            errorCode: error instanceof Error ? error.message.slice(0, 120) : "SIGNER_ERROR",
-          }, { last_error_code: "SIGNER_OUTCOME_UNKNOWN" });
+          if (!signerCallStarted) {
+            attempt = await move(attempt, "REJECTED", "LIVE_SIGNER_PRECHECK_REJECTED", {
+              errorCode: error instanceof Error ? error.message.slice(0, 120) : "SIGNER_PRECHECK_ERROR",
+            }, { last_error_code: "SIGNER_PRECHECK_REJECTED" });
+            await dependencies.repository.releaseBudget(attempt.owner_id, attempt.id);
+            reservationCreated = false;
+            return { status: "REJECTED", attempt, reason: "Signer preflight failed before a signing request was sent" };
+          }
+          if (attempt.status === "SIGNING_REQUESTED") {
+            attempt = await move(attempt, "SIGNER_UNKNOWN", "LIVE_SIGNER_OUTCOME_UNKNOWN", {
+              errorCode: error instanceof Error ? error.message.slice(0, 120) : "SIGNER_ERROR",
+            }, { last_error_code: "SIGNER_OUTCOME_UNKNOWN" });
+          }
           reservationCreated = false;
-          return { status: "SUBMISSION_UNKNOWN", attempt, reason: "Signer outcome is unknown; recovery must not resubmit" };
+          return { status: "RECOVERY_REQUIRED", attempt, reason: "Signer outcome is unknown; retry only with the same signer operation ID" };
         }
 
-        await preflight(attempt);
-        attempt = await move(attempt, "SIGNED", "LIVE_EIP712_SIGNATURE_CREATED", {
-          signerOperationId,
-          signaturePersisted: false,
-        });
+        if (attempt.status !== "SIGNED") {
+          await preflight(attempt);
+          attempt = await move(attempt, "SIGNED", "LIVE_EIP712_SIGNATURE_CREATED", {
+            signerOperationId,
+            signaturePersisted: false,
+          });
+        }
 
         let simulation: { fingerprint: string; simulatedAt: string };
+        const existingSimulationAt = attempt.simulated_at ? Date.parse(attempt.simulated_at) : NaN;
+        const existingSimulationFresh = !!attempt.simulation_fingerprint &&
+          /^[a-f0-9]{64}$/i.test(attempt.simulation_fingerprint) &&
+          Number.isFinite(existingSimulationAt) && existingSimulationAt <= now() + 5_000 &&
+          now() - existingSimulationAt <= 15_000;
         try {
-          simulation = await dependencies.simulator.simulate({ attempt, order, signature });
+          simulation = existingSimulationFresh
+            ? { fingerprint: attempt.simulation_fingerprint!, simulatedAt: attempt.simulated_at! }
+            : await dependencies.simulator.simulate({ attempt, order, signature });
         } catch (error) {
           return await abortAndRelease(attempt, error instanceof Error ? error.message.slice(0, 120) : "RFQ_SIMULATION_FAILED");
         }
@@ -414,15 +460,17 @@ export function createLiveExecutionOrchestrator(dependencies: {
             now() - Date.parse(simulation.simulatedAt) > 15_000) {
           return await abortAndRelease(attempt, "RFQ_SIMULATION_EVIDENCE_INVALID_OR_STALE");
         }
-        const simulationRecorded = await dependencies.repository.recordSimulation({
-          ownerId: attempt.owner_id,
-          attemptId: attempt.id,
-          orderHash: order.typedDataHash,
-          simulationFingerprint: simulation.fingerprint,
-          simulatedAt: simulation.simulatedAt,
-        });
-        if (!simulationRecorded) {
-          return await abortAndRelease(attempt, "RFQ_SIMULATION_EVIDENCE_REJECTED_BY_DATABASE");
+        if (!existingSimulationFresh) {
+          const simulationRecorded = await dependencies.repository.recordSimulation({
+            ownerId: attempt.owner_id,
+            attemptId: attempt.id,
+            orderHash: order.typedDataHash,
+            simulationFingerprint: simulation.fingerprint,
+            simulatedAt: simulation.simulatedAt,
+          });
+          if (!simulationRecorded) {
+            return await abortAndRelease(attempt, "RFQ_SIMULATION_EVIDENCE_REJECTED_BY_DATABASE");
+          }
         }
 
         await preflight(attempt);
@@ -489,7 +537,11 @@ export function createLiveExecutionOrchestrator(dependencies: {
               });
               reservationCreated = false;
             } else {
-              await abortAndRelease(attempt, "LIVE_SIGNING_PRECHECK_FAILED");
+              const rejected = await move(attempt, "REJECTED", "LIVE_SIGNER_PRECHECK_REJECTED", { reason }, {
+                last_error_code: "SIGNER_PRECHECK_REJECTED",
+              });
+              await dependencies.repository.releaseBudget(rejected.owner_id, rejected.id);
+              reservationCreated = false;
             }
           } else if (attempt.status === "SIGNED") {
             await abortAndRelease(attempt, "LIVE_PRE_SUBMISSION_FAILED");
@@ -497,6 +549,11 @@ export function createLiveExecutionOrchestrator(dependencies: {
             await move(attempt, "SUBMISSION_UNKNOWN", "LIVE_RFQ_SUBMISSION_OUTCOME_UNKNOWN", { reason }, {
               last_error_code: "SUBMISSION_OUTCOME_UNKNOWN",
             });
+            reservationCreated = false;
+          } else if (attempt.status === "SIGNER_UNKNOWN" || attempt.status === "SUBMISSION_UNKNOWN" ||
+                     attempt.status === "SUBMITTED" || attempt.status === "PROVIDER_PENDING" ||
+                     attempt.status === "PROVIDER_FILLED" || attempt.status === "SETTLEMENT_PENDING" ||
+                     attempt.status === "SECURITY_HOLD") {
             reservationCreated = false;
           }
         } else if (reservationCreated) {
