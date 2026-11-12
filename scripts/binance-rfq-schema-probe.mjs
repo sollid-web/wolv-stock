@@ -2,8 +2,6 @@
 import fs from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { getValidatedBinanceRwaQuote } from "../services/autonomy/binance-quote-provider.ts";
-import { buildValidatedBinanceRfqOrder } from "../services/autonomy/binance-rfq-order-provider.ts";
 
 function loadLocalEnv() {
   for (const file of [".env.local", ".env"]) {
@@ -17,16 +15,13 @@ function loadLocalEnv() {
   }
 }
 
-function arg(name, fallback) {
-  const index = process.argv.indexOf("--" + name);
-  return index >= 0 ? process.argv[index + 1] : fallback;
-}
-
-function schemaSummary(order) {
+export function schemaSummary(order) {
   const base = {
     format: order.typedDataFormat,
     sha256: order.typedDataHash,
-    byteLength: Buffer.byteLength(order.typedDataToSign, "utf8"),
+    byteLength: order.typedDataFormat === "HEX_EIP712_PAYLOAD"
+      ? Math.max(0, (order.typedDataToSign.length - 2) / 2)
+      : Buffer.byteLength(order.typedDataToSign, "utf8"),
   };
   if (order.typedDataFormat !== "JSON_TYPED_DATA") {
     return { ...base, opaqueHex: true, signingAllowedByCurrentWolvPolicy: false };
@@ -71,6 +66,8 @@ export async function runRfqSchemaProbe(args = process.argv.slice(2), env = proc
   if (!process.env.BINANCE_API_KEY || !process.env.BINANCE_SECRET_KEY) {
     throw new Error("BINANCE_API_KEY and BINANCE_SECRET_KEY are required in the local server environment.");
   }
+  const { getValidatedBinanceRwaQuote } = await import("../services/autonomy/binance-quote-provider.ts");
+  const { buildValidatedBinanceRfqOrder } = await import("../services/autonomy/binance-rfq-order-provider.ts");
   const quote = await getValidatedBinanceRwaQuote({
     chainId: "56", walletAddress, inputTokenAddress, outputTokenAddress, amountIn, slippageBps,
   });
