@@ -260,7 +260,7 @@ WOLV is focused on the main tokenized-stocks track:
 - User-authorized, non-custodial wallet execution
 - Clear distinction between reference prices and executable quotes
 - No perpetuals
-- No autonomous trade execution
+- The original hackathon submission used user-authorized execution. The current autonomy upgrade is separate and remains disabled until its signer, RFQ simulation and settlement gates are validated.
 
 Eligibility, restricted-region rules, and submission requirements are the participant’s responsibility. Review the [official hackathon rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks) and current Binance terms before submission.
 
@@ -280,4 +280,4 @@ WOLV uses the existing Supabase PostgreSQL database for the Binance market-price
 
 ## Autonomous execution engineering
 
-See [Autonomy Handover](docs/AUTONOMY_HANDOVER.md) for the current implementation status, migration order, validation commands and live-execution blockers. The committed worker is paper-only; do not assume real-wallet signing or trading is enabled.
+See [Autonomy Handover](docs/AUTONOMY_HANDOVER.md) for the current implementation status, migration history, validation commands and live-execution blockers. The market/opportunity and trading worker remains paper-only. A separate recovery-only worker can reconcile already-submitted live RFQ orders without creating new orders: `npm run autonomy:live-recovery-worker`. It requires the server Supabase service-role key, Binance Web3 API credentials, `WOLV_AUTONOMY_OWNER_ID`, `WOLV_BSC_RPC_URL`, and an explicitly configured live portfolio with verified transaction sender/router allowlists. It does not sign or submit trades.
