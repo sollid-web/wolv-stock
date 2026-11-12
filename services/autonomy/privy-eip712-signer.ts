@@ -1,3 +1,4 @@
+import { createPrivateKey } from "node:crypto";
 import { recoverTypedDataAddress } from "viem";
 
 export interface Eip712Field {
@@ -343,6 +344,19 @@ function assertAuthorizationPrivateKey(value: string): void {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length < 80 || value.length % 4 !== 0) {
     throw new Error("Privy authorization key must be base64-encoded PKCS8 P-256 private-key material");
   }
+  try {
+    const key = createPrivateKey({
+      key: Buffer.from(value, "base64"),
+      format: "der",
+      type: "pkcs8",
+    });
+    if (key.asymmetricKeyType !== "ec" ||
+        key.asymmetricKeyDetails?.namedCurve !== "prime256v1") {
+      throw new Error("wrong key type");
+    }
+  } catch {
+    throw new Error("Privy authorization key is not a valid PKCS8 P-256 private key");
+  }
 }
 
 export function createPrivyNodeEip712SigningClient(input: {
@@ -377,4 +391,11 @@ export function createPrivyNodeEip712SigningClient(input: {
       return { signature: response.signature };
     },
   };
+}
+
+export function createPrivyNodeEip712Signer(input: {
+  client: PrivyNodeClientLike;
+  authorizationPrivateKey: string;
+}) {
+  return createPrivyEip712Signer(createPrivyNodeEip712SigningClient(input));
 }
