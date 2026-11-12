@@ -3,11 +3,13 @@ import { test } from "node:test";
 import { encodeAbiParameters, keccak256 } from "viem";
 import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
+const OWNER = "0x0000000000000000000000000000000000000111";
 const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const TOKEN = "0x0000000000000000000000000000000000000456";
 const SIGNER = "0x0000000000000000000000000000000000000789";
 const POLICY = {
   strategyId: "aapl-entry",
+  ownerAddress: OWNER,
   account: ACCOUNT,
   targetToken: TOKEN,
   maxTradeValue: 500_000_000_000_000_000n,
@@ -22,12 +24,12 @@ const POLICY = {
 test("hashes the complete strategy policy using versioned ABI encoding", () => {
   const expected = keccak256(encodeAbiParameters(
     [
-      { type: "string" }, { type: "string" }, { type: "address" }, { type: "address" },
+      { type: "string" }, { type: "string" }, { type: "address" }, { type: "address" }, { type: "address" },
       { type: "uint192" }, { type: "uint64" }, { type: "address" },
       { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" },
     ],
     [
-      "WOLV_AGENT_POLICY_V4", POLICY.strategyId, ACCOUNT, TOKEN, POLICY.maxTradeValue,
+      "WOLV_AGENT_POLICY_V4", POLICY.strategyId, OWNER, ACCOUNT, TOKEN, POLICY.maxTradeValue,
       POLICY.expiresAt, SIGNER, POLICY.amountBnb, POLICY.entryPriceMicros,
       POLICY.slippageBps, POLICY.maxPriceImpactBps,
     ],
@@ -45,6 +47,7 @@ test("hashes the complete strategy policy using versioned ABI encoding", () => {
     ...POLICY,
     strategyId: "unknown-strategy",
   }));
+  assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, ownerAddress: TOKEN }));
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, account: TOKEN }));
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, amountBnb: POLICY.amountBnb + 1n }));
   assert.notEqual(hashAgentPolicy(POLICY), hashAgentPolicy({ ...POLICY, entryPriceMicros: POLICY.entryPriceMicros + 1n }));
@@ -67,6 +70,10 @@ test("rejects unknown or malformed strategy labels", () => {
 });
 
 test("rejects zero policy addresses and values outside contract bounds", () => {
+  assert.throws(
+    () => hashAgentPolicy({ ...POLICY, ownerAddress: "0x0000000000000000000000000000000000000000" }),
+    /must be nonzero/,
+  );
   assert.throws(
     () => hashAgentPolicy({ ...POLICY, account: "0x0000000000000000000000000000000000000000" }),
     /must be nonzero/,
