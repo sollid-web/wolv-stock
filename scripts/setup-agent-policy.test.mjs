@@ -14,6 +14,7 @@ import { bscTestnet } from "viem/chains";
 import { configureAgentPolicy } from "../lib/setupAgentPolicy.ts";
 
 const ACCOUNT = "0x0000000000000000000000000000000000000789";
+const OWNER = "0x0000000000000000000000000000000000000111";
 const HOOK = "0x0000000000000000000000000000000000000321";
 const TOKEN = "0x0000000000000000000000000000000000000456";
 const SIGNER = "0x0000000000000000000000000000000000000788";
@@ -162,6 +163,7 @@ test("installs hook then signs policy in separate single-call owner UserOperatio
     ownerKernelClient: harness.kernelClient,
     publicClient: harness.publicClient,
     validatorAddress: HOOK,
+    ownerAddress: OWNER,
     ...POLICY_STRATEGY,
     targetToken: TOKEN,
     intentSigner: SIGNER,
