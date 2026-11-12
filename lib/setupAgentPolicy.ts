@@ -99,6 +99,7 @@ export type ConfigureAgentPolicyInput = {
     ownerKernelClient: PolicyKernelClient
     publicClient: PublicClient
     validatorAddress: Address
+    strategyId: string
     targetToken: Address
     intentSigner: Address
     maxTradeValue: bigint
@@ -120,6 +121,9 @@ export async function configureAgentPolicy(
     const validatorAddress = getAddress(input.validatorAddress)
     const targetToken = getAddress(input.targetToken)
     const intentSigner = getAddress(input.intentSigner)
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(input.strategyId)) {
+        throw new TypeError("Policy strategy ID must be 1-64 safe identifier characters.")
+    }
     const chainId = input.publicClient.chain?.id
     if (chainId !== 56 && chainId !== 97) {
         throw new Error("Agent policy configuration supports only BSC or BSC testnet.")
@@ -136,6 +140,7 @@ export async function configureAgentPolicy(
     }
 
     const policyHash = hashAgentPolicy({
+        strategyId: input.strategyId,
         targetToken,
         maxTradeValue: input.maxTradeValue,
         expiresAt: input.expiresAt,
