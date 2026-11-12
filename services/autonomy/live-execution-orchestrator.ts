@@ -113,7 +113,7 @@ export interface LiveRfqSimulator {
     attempt: LiveExecutionAttempt;
     order: ValidatedBinanceRfqOrder;
     signature: string;
-  }): Promise<{ fingerprint: string; simulatedAt: string }>;
+  }): Promise<{ orderHash: string; fingerprint: string; simulatedAt: string }>;
 }
 
 function decimalToScaled18(value: string): bigint {
@@ -457,7 +457,7 @@ export function createLiveExecutionOrchestrator(dependencies: {
           });
         }
 
-        let simulation: { fingerprint: string; simulatedAt: string };
+        let simulation: { orderHash: string; fingerprint: string; simulatedAt: string };
         const existingSimulationAt = attempt.simulated_at ? Date.parse(attempt.simulated_at) : NaN;
         const existingSimulationFresh = !!attempt.simulation_fingerprint &&
           /^[a-f0-9]{64}$/i.test(attempt.simulation_fingerprint) &&
@@ -465,12 +465,13 @@ export function createLiveExecutionOrchestrator(dependencies: {
           now() - existingSimulationAt <= 15_000;
         try {
           simulation = existingSimulationFresh
-            ? { fingerprint: attempt.simulation_fingerprint!, simulatedAt: attempt.simulated_at! }
+            ? { orderHash: order.typedDataHash, fingerprint: attempt.simulation_fingerprint!, simulatedAt: attempt.simulated_at! }
             : await dependencies.simulator.simulate({ attempt, order, signature });
         } catch (error) {
           return await abortAndRelease(attempt, error instanceof Error ? error.message.slice(0, 120) : "RFQ_SIMULATION_FAILED");
         }
-        if (!/^[a-f0-9]{64}$/i.test(simulation.fingerprint) ||
+        if (simulation.orderHash.toLowerCase() !== order.typedDataHash.toLowerCase() ||
+            !/^[a-f0-9]{64}$/i.test(simulation.fingerprint) ||
             Date.parse(simulation.simulatedAt) > now() + 5_000 ||
             now() - Date.parse(simulation.simulatedAt) > 15_000) {
           return await abortAndRelease(attempt, "RFQ_SIMULATION_EVIDENCE_INVALID_OR_STALE");
