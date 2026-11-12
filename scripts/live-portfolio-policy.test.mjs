@@ -11,6 +11,7 @@ function portfolio(overrides = {}) {
   return {
     owner_id: ownerId,
     wallet_address: wallet,
+    live_privy_wallet_id: "privy-wallet-123",
     chain_id: "56",
     input_token_address: inputToken,
     policy_version: "live-policy-1",
@@ -73,6 +74,7 @@ test("loads a default-disabled policy and keeps kill switch state explicit", asy
   assert.equal(policy.enabled, false);
   assert.equal(policy.globalKillSwitch, true);
   assert.equal(policy.walletAddress, wallet);
+  assert.equal(policy.privyWalletId, "privy-wallet-123");
   assert.deepEqual(policy.allowedChainIds, ["56"]);
   assert.deepEqual(policy.allowedTokenAddresses, [outputToken]);
   assert.deepEqual(policy.allowedTransactionSenders, [wallet]);
