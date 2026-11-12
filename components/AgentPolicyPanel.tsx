@@ -29,6 +29,13 @@ type RuntimeSchedule = {
     enabled: boolean
 }
 
+type RuntimeWorkerReadiness = {
+    workerReady: boolean
+    workerConfigIssues: string[]
+    executionGateEnabled: boolean
+    executionGateReason: string | null
+}
+
 type PolicySnapshot = {
     account: Address
     chainId: number
@@ -98,6 +105,7 @@ export default function AgentPolicyPanel() {
     const [runtimeSchedule, setRuntimeSchedule] = useState<RuntimeSchedule | null>(null)
     const [runtimeScheduleLoaded, setRuntimeScheduleLoaded] = useState(false)
     const [runtimeSessionAuthenticated, setRuntimeSessionAuthenticated] = useState(false)
+    const [runtimeWorkerReadiness, setRuntimeWorkerReadiness] = useState<RuntimeWorkerReadiness | null>(null)
     const [runtimeBusy, setRuntimeBusy] = useState(false)
     const [runtimeError, setRuntimeError] = useState("")
 
@@ -249,6 +257,14 @@ export default function AgentPolicyPanel() {
             if (!scheduleResponse.ok || !Array.isArray(data.schedules)) {
                 throw new Error(typeof data.error === "string" ? data.error : "Autonomous schedule status could not be loaded.")
             }
+            if (typeof data.workerReady === "boolean" && typeof data.executionGateEnabled === "boolean") {
+                setRuntimeWorkerReadiness({
+                    workerReady: data.workerReady,
+                    workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
+                    executionGateEnabled: data.executionGateEnabled,
+                    executionGateReason: typeof data.executionGateReason === "string" ? data.executionGateReason : null,
+                })
+            }
             const matching = data.schedules.filter((item: unknown) => {
                 if (typeof item !== "object" || item === null || Array.isArray(item)) return false
                 const schedule = item as Record<string, unknown>
@@ -352,9 +368,17 @@ export default function AgentPolicyPanel() {
                 throw new Error(typeof data.error === "string" ? data.error : "The autonomous strategy could not be registered.")
             }
             setRuntimeSchedule({ scheduleId: data.scheduleId, name: strategy.strategyId, enabled: true })
+            if (typeof data.workerReady === "boolean" && typeof data.executionGateEnabled === "boolean") {
+                setRuntimeWorkerReadiness({
+                    workerReady: data.workerReady,
+                    workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
+                    executionGateEnabled: data.executionGateEnabled,
+                    executionGateReason: typeof data.executionGateReason === "string" ? data.executionGateReason : null,
+                })
+            }
             setPendingStrategy(null)
             setRuntimeScheduleLoaded(true)
-            setNotice("Autonomous strategy saved. The server worker will evaluate it every 60 seconds without per-trade approval.")
+            setNotice("Autonomous strategy saved. The worker evaluates it every 60 seconds when the worker process is running and execution gates are enabled; individual trades do not require owner approval.")
         } catch (cause) {
             setRuntimeError(cause instanceof Error ? cause.message : "The autonomous strategy could not be registered.")
         } finally {
@@ -508,6 +532,43 @@ export default function AgentPolicyPanel() {
                             <p className="mt-2 text-xs text-slate-500">Immediately disables agent execution for this smart account.</p>
                         </div>
                     )}
+                </div>
+            )}
+
+            {policyActive && currentSnapshot && !currentSnapshot.revoked && (
+                <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
+                    <h2 className="text-lg font-bold text-white">Autonomous execution</h2>
+                    {runtimeSchedule?.enabled ? (
+                        <>
+                            <p className="mt-2 text-sm text-emerald-300">Strategy {runtimeSchedule.name} is saved for unattended evaluation every 60 seconds. Trades execute automatically when the worker process is running, execution gates are enabled, and on-chain policy and market checks pass.</p>
+                            <p className="mt-1 break-all text-xs text-slate-500">Schedule ID: {runtimeSchedule.scheduleId}</p>
+                            {runtimeWorkerReadiness && (!runtimeWorkerReadiness.workerReady || !runtimeWorkerReadiness.executionGateEnabled) && (
+                                <p className="mt-2 text-xs text-amber-300">
+                                    {runtimeWorkerReadiness.workerConfigIssues.length > 0 ? "Missing worker configuration: " + runtimeWorkerReadiness.workerConfigIssues.join(", ") + ". " : ""}
+                                    {runtimeWorkerReadiness.executionGateReason ? "Execution gate: " + runtimeWorkerReadiness.executionGateReason : ""}
+                                </p>
+                            )}
+                            <button type="button" disabled={runtimeBusy} onClick={() => void setAutonomousScheduleEnabled(false)} className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-bold text-amber-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Pause autonomous worker"}</button>
+                        </>
+                    ) : runtimeSchedule && !runtimeSchedule.enabled ? (
+                        <>
+                            <p className="mt-2 text-sm text-amber-300">The autonomous schedule is paused. The on-chain policy remains installed but the worker will not claim this schedule.</p>
+                            <button type="button" disabled={runtimeBusy} onClick={() => void setAutonomousScheduleEnabled(true)} className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Resume autonomous worker"}</button>
+                        </>
+                    ) : pendingStrategy ? (
+                        <>
+                            <p className="mt-2 text-sm text-slate-300">The on-chain policy is configured for {pendingStrategy.strategyId}. Authorize one browser-wallet session and save the strategy; individual trades will not require wallet approval.</p>
+                            <button type="button" disabled={runtimeBusy} onClick={() => void enableAutonomousSchedule()} className="mt-4 rounded-xl bg-[#d9a80a] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-50">{runtimeBusy ? "Enabling..." : "Enable autonomous execution"}</button>
+                        </>
+                    ) : !runtimeSessionAuthenticated ? (
+                        <>
+                            <p className="mt-2 text-sm text-slate-300">Authorize the owner wallet once to view or register a persistent strategy schedule. This is not a per-trade approval.</p>
+                            <button type="button" disabled={runtimeBusy || !walletReady} onClick={async () => { setRuntimeBusy(true); const ok = await authenticateRuntimeSession(); if (ok) await refreshRuntimeSchedule(); setRuntimeBusy(false); }} className="mt-4 rounded-xl border border-slate-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{runtimeBusy ? "Authorizing..." : "Authorize autonomous worker"}</button>
+                        </>
+                    ) : (
+                        <p className="mt-2 text-sm text-slate-400">No autonomous strategy is registered for this smart account. Configure a strategy below to save one.</p>
+                    )}
+                    <p className="mt-3 text-xs text-slate-500">The server worker must be deployed and running. Execution remains disabled until the master autonomous-trading and live-submission gates are enabled; mainnet has additional authorization gates.</p>
                 </div>
             )}
 
