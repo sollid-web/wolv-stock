@@ -34,7 +34,7 @@ function parseArguments(argv) {
       confirmed = true;
       continue;
     }
-    if (!["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"].includes(argument)) {
+    if (!["--hook", "--account", "--owner-address", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"].includes(argument)) {
       throw new Error(`Unknown argument: ${argument}`);
     }
     if (values.has(argument)) throw new Error(`Duplicate argument: ${argument}`);
@@ -44,7 +44,7 @@ function parseArguments(argv) {
     index += 1;
   }
   if (!confirmed) throw new Error("Refusing to prepare policy calldata without --confirm-testnet.");
-  for (const required of ["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"]) {
+  for (const required of ["--hook", "--account", "--owner-address", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"]) {
     if (!values.has(required)) throw new Error(`Required argument missing: ${required}`);
   }
   return values;
@@ -54,6 +54,7 @@ async function main() {
   const args = parseArguments(process.argv.slice(2));
   const hookAddress = getAddress(args.get("--hook"));
   const accountAddress = getAddress(args.get("--account"));
+  const ownerAddress = getAddress(args.get("--owner-address"));
   const strategyId = args.get("--strategy-id");
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyId)) {
     throw new Error("--strategy-id must be 1-64 safe identifier characters.");
