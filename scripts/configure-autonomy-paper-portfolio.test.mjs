@@ -56,3 +56,24 @@ test("writes only the owner-scoped policy row using server-side credentials", as
   assert.equal(captured.body.enabled, false);
   assert.equal(captured.body.emergency_stop, true);
 });
+
+
+test("paper exit rules are disabled by default and can be explicitly configured", () => {
+  const disabled = buildPortfolioConfig(env);
+  assert.equal(disabled.paper_exit_enabled, false);
+  assert.equal(disabled.paper_take_profit_bps, null);
+  const enabled = buildPortfolioConfig({
+    ...env, WOLV_AUTONOMY_PAPER_TAKE_PROFIT_BPS: "500",
+    WOLV_AUTONOMY_PAPER_STOP_LOSS_BPS: "300",
+    WOLV_AUTONOMY_PAPER_MAX_HOLDING_MS: "86400000",
+  }, true, true);
+  assert.equal(enabled.paper_exit_enabled, true);
+  assert.equal(enabled.paper_take_profit_bps, 500);
+  assert.equal(enabled.paper_stop_loss_bps, 300);
+  assert.equal(enabled.paper_max_holding_ms, 86400000);
+});
+
+test("paper exits require explicit thresholds and validate their ranges", () => {
+  assert.throws(() => buildPortfolioConfig(env, true, true), /At least one paper exit threshold/);
+  assert.throws(() => buildPortfolioConfig({ ...env, WOLV_AUTONOMY_PAPER_STOP_LOSS_BPS: "10001" }, true, true), /outside its allowed range/);
+});
