@@ -26,10 +26,13 @@ function uuidV4(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-export function parseBinanceRfqSubmitResponse(response: unknown, now = Date.now()): SubmissionResult {
+export function parseBinanceRfqSubmitResponse(response: unknown, expectedOrderId: string, now = Date.now()): SubmissionResult {
   try {
     const data = envelope(response);
     const providerOrderId = nonEmpty(data.orderId, "data.orderId");
+    if (providerOrderId !== expectedOrderId) {
+      return { status: "UNKNOWN", observedAt: new Date(now).toISOString(), reason: "Submit response order ID does not match the prepared RFQ order" };
+    }
     const status = nonEmpty(data.status, "data.status");
     const createdAt = Number(data.createdAt);
     if (!Number.isSafeInteger(createdAt) || createdAt <= 0 || createdAt > now + 5_000 || now - createdAt > 60_000) {
@@ -109,7 +112,7 @@ export async function submitValidatedBinanceRfq(input: {
   }
   try {
     const response = await submitOrder(input.requestId, input.signature, input.order.vendor, input.order.orderId);
-    return parseBinanceRfqSubmitResponse(response);
+    return parseBinanceRfqSubmitResponse(response, input.order.orderId);
   } catch (error) {
     // A timeout may happen after provider acceptance. Never blindly resubmit with a new requestId.
     return {
