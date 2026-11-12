@@ -346,7 +346,7 @@ export default function AgentPolicyPanel() {
                 body: JSON.stringify({
                     name: strategy.strategyId,
                     intervalSeconds: 60,
-                    policyVersion: "WOLV_AGENT_POLICY_V3",
+                    policyVersion: "WOLV_AGENT_POLICY_V4",
                     policy: {
                         targetToken: strategy.targetToken,
                         maxTradeValueWei: strategy.maxTradeValueWei,
@@ -357,6 +357,7 @@ export default function AgentPolicyPanel() {
                     executionMode: "AUTONOMOUS",
                     strategyConfig: {
                         id: strategy.strategyId,
+                        ownerAddress: strategy.ownerAddress,
                         account: strategy.account,
                         targetToken: strategy.targetToken,
                         amountBnb: strategy.amountBnb,
