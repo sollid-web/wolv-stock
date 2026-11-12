@@ -18,6 +18,13 @@ WOLV Spot Lens is a BNB Smart Chain (**BSC**) tokenized-stock discovery, price-g
 - **Autonomy upgrade work:** [market opportunity scanner](./services/autonomy/opportunity-scanner.ts), [durable paper qualification worker](./worker/autonomousPaperWorker.ts), [autonomous execution architecture](./docs/AUTONOMOUS_EXECUTION_ARCHITECTURE.md), [provider registry and independence status](./docs/AUTONOMY_PROVIDER_REGISTRY.md), [1inch Classic adapter status](./docs/ONEINCH_CLASSIC_ADAPTER.md), [normalized provider contracts](./services/autonomy/provider-contracts.ts), [BSC RPC preflight](./docs/BSC_RPC_PREFLIGHT.md), [deterministic execution domain](./services/autonomy/execution-domain.ts), [Binance capability matrix](./docs/BINANCE_CAPABILITY_MATRIX.md), and [read-only provider probe](./scripts/binance-provider-probe.mjs)
 - **License:** [MIT](./LICENSE)
 
+## Agentic autonomy upgrade status
+
+The autonomy branch is intended to move WOLV beyond the original per-trade wallet-confirmation workflow. Its backend upgrade adds persistent opportunity qualification, deterministic portfolio/risk policy, paper entry and exit accounting, provider-neutral Binance/1inch adapters, BSC transaction simulation and independent settlement evidence.
+
+**Current boundary:** the existing deployed application remains user-confirmed. The autonomy branch is not merged or deployed, and its worker is still paper-only. The global kill switch is engaged by default. Unattended live execution is not complete: it still requires an explicitly authorized server-side signer/custody path, durable live-order recovery, trusted router/allowance policy, and full test execution. No real-fund trading is enabled by this branch.
+
+
 ## Why WOLV exists
 
 Tokenized-stock users often see a reference price without knowing whether that price is executable for their trade size, through a particular venue, at the current moment. WOLV makes that distinction visible:
