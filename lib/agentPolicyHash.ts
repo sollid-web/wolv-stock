@@ -35,7 +35,7 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
         || targetToken === "0x0000000000000000000000000000000000000000"
         || intentSigner === "0x0000000000000000000000000000000000000000"
     ) {
-        throw new TypeError("Policy token and intent signer must be nonzero addresses.")
+        throw new TypeError("Policy account, token, and intent signer must be nonzero addresses.")
     }
     if (input.maxTradeValue <= BigInt(0) || input.maxTradeValue > MAX_TRADE_VALUE || input.maxTradeValue > MAX_UINT192) {
         throw new RangeError("Policy maximum trade value must be between 1 wei and 0.5 BNB.")
