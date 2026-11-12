@@ -105,3 +105,14 @@ test("configures a bounded maximum concurrent outstanding-order count", () => {
   assert.equal(buildPortfolioConfig({ ...env, WOLV_AUTONOMY_MAX_OPEN_ORDERS: "5" }).max_open_orders, 5);
   assert.throws(() => buildPortfolioConfig({ ...env, WOLV_AUTONOMY_MAX_OPEN_ORDERS: "101" }), /MAX_OPEN_ORDERS/);
 });
+
+
+test("configures an exact non-negative BNB gas reserve floor in wei", () => {
+  assert.equal(buildPortfolioConfig(env).min_native_gas_balance_wei, "0");
+  assert.equal(buildPortfolioConfig({
+    ...env, WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI: "10000000000000000",
+  }).min_native_gas_balance_wei, "10000000000000000");
+  assert.throws(() => buildPortfolioConfig({
+    ...env, WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI: "0.01",
+  }), /non-negative integer in wei/);
+});
