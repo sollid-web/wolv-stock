@@ -275,3 +275,55 @@ export async function commitPaperPositionExit(input: {
   });
   return result === true;
 }
+
+export type PaperExitRecord = {
+  id: string; ownerId: string; chainId: string; tokenAddress: string;
+  quoteId: string; amountSold: string; grossProceedsInputUnits: string;
+  feeInputUnits: string; netProceedsInputUnits: string;
+  costBasisReleasedInputUnits: string; realizedPnlInputUnits: string;
+  reason: "TAKE_PROFIT" | "STOP_LOSS" | "MAX_HOLDING_TIME";
+  quoteObservedAt: string; createdAt: string;
+};
+
+export async function listPaperExitHistory(ownerId: string, limit = 100): Promise<PaperExitRecord[]> {
+  const query = new URLSearchParams({
+    select: [
+      "id", "owner_id", "chain_id", "token_address", "quote_id", "exit_reason",
+      "amount_sold_text:amount_sold::text",
+      "gross_proceeds_text:gross_proceeds_input_units::text",
+      "fee_text:fee_input_units::text", "net_proceeds_text:net_proceeds_input_units::text",
+      "cost_basis_released_text:cost_basis_released_input_units::text",
+      "realized_pnl_text:realized_pnl_input_units::text",
+      "quote_observed_at", "created_at",
+    ].join(","),
+    owner_id: "eq." + ownerId, order: "created_at.desc",
+    limit: String(Math.min(250, Math.max(1, Math.floor(limit)))),
+  });
+  const rows = await request("wolv_autonomy_paper_exits?" + query) as Array<Record<string, unknown>>;
+  return rows.map((row) => {
+    const reason = String(row.exit_reason);
+    if (!["TAKE_PROFIT", "STOP_LOSS", "MAX_HOLDING_TIME"].includes(reason)) {
+      throw new Error("Paper exit history contains an unknown exit reason");
+    }
+    const amountSold = String(row.amount_sold_text);
+    const grossProceedsInputUnits = String(row.gross_proceeds_text);
+    const feeInputUnits = String(row.fee_text);
+    const netProceedsInputUnits = String(row.net_proceeds_text);
+    const costBasisReleasedInputUnits = String(row.cost_basis_released_text);
+    const realizedPnlInputUnits = String(row.realized_pnl_text);
+    if (![amountSold, grossProceedsInputUnits, feeInputUnits, netProceedsInputUnits, costBasisReleasedInputUnits]
+      .every((value) => /^(0|[1-9][0-9]*)$/.test(value)) ||
+      !/^-?(0|[1-9][0-9]*)$/.test(realizedPnlInputUnits)) {
+      throw new Error("Paper exit history contains malformed base-unit amounts");
+    }
+    return {
+      id: String(row.id), ownerId: String(row.owner_id), chainId: String(row.chain_id),
+      tokenAddress: String(row.token_address).toLowerCase(), quoteId: String(row.quote_id),
+      amountSold, grossProceedsInputUnits, feeInputUnits, netProceedsInputUnits,
+      costBasisReleasedInputUnits, realizedPnlInputUnits,
+      reason: reason as PaperExitRecord["reason"],
+      quoteObservedAt: String(row.quote_observed_at), createdAt: String(row.created_at),
+    };
+  });
+}
+
