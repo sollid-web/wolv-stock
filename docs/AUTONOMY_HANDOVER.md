@@ -132,3 +132,7 @@ Running these commands is not required to review the source. Do not run them aga
 ## Review vehicle
 
 A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9. It is not mergeable yet because the implementation branch is 32 commits behind the current `main`; reconcile and review that divergence before merge.
+
+## Additional risk controls still required before live mode
+
+The current owner policy enforces order size, per-token position cost basis, daily spend, chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. It does not yet enforce a daily realized-loss stop, maximum concurrent positions/orders, portfolio-wide token concentration, minimum native-gas reserve or a separate operator-wide global kill switch. These must be implemented and tested before live execution; they must not be delegated to an LLM or inferred from strategy prompts.
