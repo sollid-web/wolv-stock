@@ -139,7 +139,7 @@ function roundTrip() {
   };
 }
 
-function order() {
+function order(overrides = {}) {
   return {
     provider: "binance-web3-aggregator",
     quoteId,
@@ -161,6 +161,7 @@ function order() {
     approvalRequired: false,
     preparedAt: new Date(now).toISOString(),
     quoteExpiresAt: expiresAt,
+    ...overrides,
   };
 }
 
