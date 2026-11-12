@@ -61,7 +61,7 @@ export function createBscRfqSettlementVerifier(
       inputTokenAddress: string;
       outputTokenAddress: string;
       expectedAmountIn: string;
-      minimumAmountOut: string;
+      expectedAmountOut: string;
       allowedTransactionSenders: string[];
       allowedTransactionTargets: string[];
       minConfirmations?: number;
@@ -89,7 +89,7 @@ export function createBscRfqSettlementVerifier(
       if (tokenIn === tokenOut) throw new Error("RFQ settlement input and output tokens must differ");
 
       const expectedIn = positiveUnits(input.expectedAmountIn, "expected input amount");
-      const minimumOut = positiveUnits(input.minimumAmountOut, "minimum output amount");
+      const expectedOut = positiveUnits(input.expectedAmountOut, "expected output amount");
 
       if (!input.allowedTransactionSenders.length || !input.allowedTransactionTargets.length) {
         throw new Error("RFQ settlement sender and target allowlists must both be configured");
@@ -161,7 +161,7 @@ export function createBscRfqSettlementVerifier(
       const actualInputDebit = inputOut - inputIn;
       const actualOutputCredit = outputIn - outputOut;
       if (!inputTransferSeen || !outputTransferSeen ||
-          actualInputDebit !== expectedIn || actualOutputCredit < minimumOut) {
+          actualInputDebit !== expectedIn || actualOutputCredit !== expectedOut) {
         return { status: "FAILED", reasonCode: "RFQ_TOKEN_DELTAS_DO_NOT_MATCH_EXECUTION_INTENT" };
       }
 
