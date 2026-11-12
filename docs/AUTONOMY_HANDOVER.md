@@ -167,3 +167,16 @@ Configuration: `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` defaults to 1; `WOLV_AUTONOMY_
 Risk snapshot retrieval uses `wolv_get_autonomy_risk_snapshot`, a database-side aggregate returning exact realized-loss text and distinct active positions. This avoids relying on a client-side paginated list for hard-stop decisions. The atomic reservation RPC repeats both caps while holding the portfolio row lock.
 
 The BSC settlement verifier is an isolated capability. It is not yet connected to durable live-intent state or a signer, and its router target must be approved by an independent trusted-contract policy before use.
+
+## Operator-wide kill switch
+
+Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` creates `wolv_autonomy_global_control` with the global kill switch engaged by default. The reservation RPC and paper-fill commit RPC read-lock this control row and refuse new entries/fills while it is engaged. The paper exit RPC is intentionally not blocked, so configured risk-reducing exits can continue.
+
+Use the server-side command to engage the stop (default) or explicitly release it:
+
+```bash
+npm run autonomy:global-stop
+npm run autonomy:global-stop -- --release
+```
+
+Release is an explicit operator action and should occur only after verifying the portfolio policy, provider health, RPC, signer status (for any future live mode) and intended operating environment. The command requires the Supabase service-role key on the server and writes an audit reason. No global switch was released as part of this implementation.
