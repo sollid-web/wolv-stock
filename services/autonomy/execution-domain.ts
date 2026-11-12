@@ -73,6 +73,7 @@ export type RiskPolicy = {
   maxGasCostUsd: string;
   minExpectedEdgeBps: number;
   maxOpenPositions?: number;
+  maxOpenOrders?: number;
   maxDailyRealizedLoss?: string;
 };
 
@@ -90,6 +91,7 @@ export type RiskCandidate = {
   gasCostUsd: string;
   expectedEdgeBps: number;
   currentOpenPositions?: number;
+  currentOpenOrders?: number;
   dailyRealizedLoss?: string;
 };
 
