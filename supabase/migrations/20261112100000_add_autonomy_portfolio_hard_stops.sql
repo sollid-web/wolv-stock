@@ -236,6 +236,7 @@ as $$
 declare
   reservation public.wolv_autonomy_reservations%rowtype;
   account public.wolv_autonomy_portfolios%rowtype;
+  global_kill_switch boolean;
 begin
   if p_amount_out is null or p_amount_out <= 0 or p_amount_out <> trunc(p_amount_out)
      or p_expected_exit_amount_out is null or p_expected_exit_amount_out <= 0 or p_expected_exit_amount_out <> trunc(p_expected_exit_amount_out)
@@ -246,6 +247,12 @@ begin
      or p_quote_observed_at is null or p_exit_quote_observed_at is null then
     return false;
   end if;
+
+  select kill_switch into global_kill_switch
+  from public.wolv_autonomy_global_control
+  where singleton = true
+  for share;
+  if not found or global_kill_switch then return false; end if;
 
   select * into reservation
   from public.wolv_autonomy_reservations
@@ -261,12 +268,6 @@ begin
     );
   end if;
   if reservation.status <> 'RESERVED' or reservation.expected_amount_out <> p_amount_out then return false; end if;
-
-  select kill_switch into global_kill_switch
-  from public.wolv_autonomy_global_control
-  where singleton = true
-  for share;
-  if not found or global_kill_switch then return false; end if;
 
   select * into account
   from public.wolv_autonomy_portfolios
