@@ -27,6 +27,10 @@ export interface LiveExecutionAttempt {
   provider: string;
   chain_id: "56";
   wallet_address: string;
+  token_address: string;
+  input_token_address: string;
+  expected_amount_in: string;
+  minimum_amount_out: string;
   status: LiveExecutionStatus;
   version: number;
   execution_side: "BUY" | "SELL";
