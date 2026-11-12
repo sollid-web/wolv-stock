@@ -90,9 +90,9 @@ The worker requires server-side environment variables, including:
 - `WOLV_AUTONOMY_WALLET_ADDRESS`
 - `WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS`
 - `WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS`
-- `WOLV_BSC_RPC_URL` (optional until the BSC RPC preflight/simulator is wired; remote endpoints must use HTTPS)
+- `WOLV_BSC_RPC_URL` (required when `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` is greater than zero; remote endpoints must use HTTPS)
 
-The paper portfolio configuration script also requires the budget, allowlists, max order/position/daily spend, slippage, price-impact, quote-age, gas-cost, network-fee-buffer and minimum-edge variables. It accepts `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` (default 1), `WOLV_AUTONOMY_MAX_OPEN_ORDERS` (default 1), `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS`, and `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` (default 0, which disables the optional floor) (default equal to max daily spend).
+The paper portfolio configuration script also requires the budget, allowlists, max order/position/daily spend, slippage, price-impact, quote-age, gas-cost, network-fee-buffer and minimum-edge variables. It accepts `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` (default 1), `WOLV_AUTONOMY_MAX_OPEN_ORDERS` (default 1), `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS`, and `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` (default 0, which disables the optional floor).
 
 By default, configuration writes a disabled policy with the emergency stop active. `--enable-paper` enables paper entries only. Paper exits are separately opt-in with `--enable-paper-exits` and at least one configured threshold:
 - `WOLV_AUTONOMY_PAPER_TAKE_PROFIT_BPS`
