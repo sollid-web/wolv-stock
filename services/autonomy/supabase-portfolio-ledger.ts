@@ -41,6 +41,7 @@ export type PortfolioPolicySnapshot = {
   currentPositionInputUnits: string;
   dailySpendIncludingReservations: string;
   networkFeeBufferBps: number;
+  paperExitPolicy: { enabled: boolean; takeProfitBps: number | null; stopLossBps: number | null; maxHoldingMs: number | null };
   riskPolicy: RiskPolicy;
 };
 
@@ -56,6 +57,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       "max_daily_spend_text:max_daily_spend::text", "max_slippage_bps", "max_price_impact_bps",
       "max_quote_age_ms", "max_gas_cost_usd_text:max_gas_cost_usd::text",
       "network_fee_buffer_bps", "min_expected_edge_bps",
+      "paper_exit_enabled", "paper_take_profit_bps", "paper_stop_loss_bps", "paper_max_holding_ms",
     ].join(","),
     owner_id: `eq.${ownerId}`,
     limit: "1",
@@ -131,6 +133,12 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
     currentPositionInputUnits,
     dailySpendIncludingReservations,
     networkFeeBufferBps: numeric(row.network_fee_buffer_bps, "network_fee_buffer_bps"),
+    paperExitPolicy: {
+      enabled: row.paper_exit_enabled === true,
+      takeProfitBps: row.paper_take_profit_bps == null ? null : numeric(row.paper_take_profit_bps, "paper_take_profit_bps"),
+      stopLossBps: row.paper_stop_loss_bps == null ? null : numeric(row.paper_stop_loss_bps, "paper_stop_loss_bps"),
+      maxHoldingMs: row.paper_max_holding_ms == null ? null : numeric(row.paper_max_holding_ms, "paper_max_holding_ms"),
+    },
     riskPolicy: {
       enabled: row.enabled && !row.emergency_stop,
       allowedChainIds: strings(row.allowed_chain_ids, "allowed_chain_ids"),
@@ -216,3 +224,54 @@ export async function commitPaperQuoteFill(input: {
     }),
   });
   return result === true;
+
+
+export type OpenPaperPosition = {
+  ownerId: string; chainId: string; tokenAddress: string;
+  amountUnits: string; costBasisInputUnits: string; openedAt: string;
+};
+
+export async function listOpenPaperPositions(ownerId: string, limit = 100): Promise<OpenPaperPosition[]> {
+  const query = new URLSearchParams({
+    select: "owner_id,chain_id,token_address,amount_units_text:amount_units::text,cost_basis_input_units_text:cost_basis_input_units::text,opened_at",
+    owner_id: "eq." + ownerId, amount_units: "gt.0",
+    order: "opened_at.asc", limit: String(Math.min(250, Math.max(1, Math.floor(limit)))),
+  });
+  const rows = await request("wolv_autonomy_positions?" + query) as Array<Record<string, unknown>>;
+  return rows.map((row) => {
+    const amountUnits = String(row.amount_units_text);
+    const costBasisInputUnits = String(row.cost_basis_input_units_text);
+    if (!/^[1-9][0-9]*$/.test(amountUnits) || !/^[1-9][0-9]*$/.test(costBasisInputUnits)) {
+      throw new Error("Paper position contains invalid base-unit amounts");
+    }
+    const openedAt = String(row.opened_at);
+    if (!Number.isFinite(Date.parse(openedAt))) throw new Error("Paper position has invalid opened_at");
+    return {
+      ownerId: String(row.owner_id), chainId: String(row.chain_id),
+      tokenAddress: String(row.token_address).toLowerCase(),
+      amountUnits, costBasisInputUnits, openedAt,
+    };
+  });
+}
+
+export async function commitPaperPositionExit(input: {
+  ownerId: string; exitIntentId: string; chainId: string; tokenAddress: string;
+  inputTokenAddress: string; quoteId: string; amountSold: string;
+  grossProceedsInputUnits: string; feeInputUnits: string; netProceedsInputUnits: string;
+  reason: "TAKE_PROFIT" | "STOP_LOSS" | "MAX_HOLDING_TIME"; quoteObservedAt: string;
+}): Promise<boolean> {
+  const result = await request("rpc/wolv_commit_autonomy_paper_exit", {
+    method: "POST",
+    body: JSON.stringify({
+      p_owner_id: input.ownerId, p_exit_intent_id: input.exitIntentId,
+      p_chain_id: input.chainId, p_token_address: input.tokenAddress,
+      p_input_token_address: input.inputTokenAddress, p_quote_id: input.quoteId,
+      p_amount_sold: input.amountSold,
+      p_gross_proceeds_input_units: input.grossProceedsInputUnits,
+      p_fee_input_units: input.feeInputUnits,
+      p_net_proceeds_input_units: input.netProceedsInputUnits,
+      p_exit_reason: input.reason, p_quote_observed_at: input.quoteObservedAt,
+    }),
+  });
+  return result === true;
+}
