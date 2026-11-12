@@ -54,8 +54,8 @@ revoke all on public.wolv_autonomy_paper_exits from anon, authenticated;
 grant select, insert, update, delete on public.wolv_autonomy_paper_exits to service_role;
 
 -- Atomic and idempotent paper close. Exits reduce exposure even if new-entry strategy
--- has been disabled; only the explicit paper-exit policy and emergency-stop state
--- are checked. No real transaction is signed or broadcast.
+-- has been disabled; the explicit paper-exit policy is checked independently of
+-- the new-entry emergency stop. No real transaction is signed or broadcast.
 create or replace function public.wolv_commit_autonomy_paper_exit(
   p_owner_id uuid,
   p_exit_intent_id uuid,
@@ -91,17 +91,25 @@ begin
      or p_exit_reason is null or p_exit_reason not in ('TAKE_PROFIT','STOP_LOSS','MAX_HOLDING_TIME')
      or p_quote_observed_at is null then return false; end if;
 
-  select * into prior_exit from public.wolv_autonomy_paper_exits
-    where owner_id = p_owner_id and exit_intent_id = p_exit_intent_id;
-  if found then
-    return prior_exit.quote_id = p_quote_id
-      and prior_exit.amount_sold = p_amount_sold
-      and prior_exit.net_proceeds_input_units = p_net_proceeds_input_units;
-  end if;
-
   select * into account from public.wolv_autonomy_portfolios
     where owner_id = p_owner_id for update;
   if not found or not account.paper_exit_enabled then return false; end if;
+
+  -- Serialize duplicate exit attempts on the owner portfolio before checking
+  -- the idempotency record and locking the position.
+  select * into prior_exit from public.wolv_autonomy_paper_exits
+    where owner_id = p_owner_id and exit_intent_id = p_exit_intent_id;
+  if found then
+    return prior_exit.chain_id = p_chain_id
+      and lower(prior_exit.token_address) = lower(p_token_address)
+      and lower(prior_exit.input_token_address) = lower(p_input_token_address)
+      and prior_exit.quote_id = p_quote_id
+      and prior_exit.amount_sold = p_amount_sold
+      and prior_exit.gross_proceeds_input_units = p_gross_proceeds_input_units
+      and prior_exit.fee_input_units = p_fee_input_units
+      and prior_exit.net_proceeds_input_units = p_net_proceeds_input_units
+      and prior_exit.exit_reason = p_exit_reason;
+  end if;
   if p_quote_observed_at > now() + interval '5 seconds'
      or p_quote_observed_at < now() - (account.max_quote_age_ms * interval '1 millisecond') then return false; end if;
 
