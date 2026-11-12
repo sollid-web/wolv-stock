@@ -104,6 +104,15 @@ async function findActiveAttempt(ownerId: string, intentId: string): Promise<Liv
   return rows.length ? parseAttempt(rows[0]) : null;
 }
 
+
+export async function getActiveLiveExecutionAttempt(
+  ownerId: string,
+  intentId: string,
+): Promise<LiveExecutionAttempt | null> {
+  if (!UUID.test(ownerId) || !UUID.test(intentId)) throw new Error("Invalid active live attempt lookup identifiers");
+  return findActiveAttempt(ownerId, intentId);
+}
+
 export async function createLiveExecutionAttempt(input: {
   ownerId: string;
   intentId: string;
