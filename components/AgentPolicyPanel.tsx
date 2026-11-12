@@ -44,12 +44,12 @@ type PolicySnapshot = {
 }
 
 const configuredChainId = Number(
-    process.env.NEXT_PUBLIC_BSC_CHAIN_ID
-    ?? process.env.NEXT_PUBLIC_CHAIN_ID
+    process.env.NEXT_PUBLIC_CHAIN_ID
+    ?? process.env.NEXT_PUBLIC_BSC_CHAIN_ID
     ?? "56"
 )
-const validatorEnv = process.env.NEXT_PUBLIC_VALIDATOR_ADDRESS
-    || process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS
+const validatorEnv = process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS
+    || process.env.NEXT_PUBLIC_VALIDATOR_ADDRESS
 const validatorAddress = validatorEnv && isAddress(validatorEnv)
     ? getAddress(validatorEnv)
     : null
