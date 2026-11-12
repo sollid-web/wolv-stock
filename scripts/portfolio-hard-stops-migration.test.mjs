@@ -45,3 +45,12 @@ test("paper-fill commit accepts normalized and legacy provider quote events", ()
   assert.match(migration, /e\.value->>'type' in \('BINANCE_ROUNDTRIP_QUOTES_VALIDATED','PROVIDER_ROUNDTRIP_QUOTES_VALIDATED'\)/);
   assert.match(migration, /wolv_commit_autonomy_paper_fill/);
 });
+
+
+test("global kill switch defaults stopped and is checked atomically for entries and paper fills", () => {
+  assert.match(migration, /wolv_autonomy_global_control/);
+  assert.match(migration, /values \(true, true, 'INITIAL_FAIL_CLOSED'\)/);
+  assert.match(migration, /if not found or global_kill_switch then return false/);
+  assert.match(migration, /wolv_set_autonomy_global_kill_switch/);
+  assert.match(migration, /grant execute on function public\.wolv_set_autonomy_global_kill_switch\(boolean, text\) to service_role/);
+});
