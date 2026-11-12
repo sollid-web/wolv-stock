@@ -245,3 +245,14 @@ test("halts new entries when the daily realized-loss cap is reached", () => {
     "RISK_APPROVED");
   assert.equal(evaluateRiskPolicy(bounded, candidate).code, "INVALID_NUMERIC_INPUT");
 });
+
+
+test("rejects a new reservation when the concurrent outstanding-order cap is reached", () => {
+  const bounded = { ...policy, maxOpenOrders: 2 };
+  assert.equal(evaluateRiskPolicy(bounded, { ...candidate, currentOpenOrders: 2 }).code, "MAX_OPEN_ORDERS_REACHED");
+  assert.deepEqual(
+    evaluateRiskPolicy(bounded, { ...candidate, currentOpenOrders: 1 }),
+    { allowed: true, code: "RISK_APPROVED" },
+  );
+  assert.equal(evaluateRiskPolicy(bounded, candidate).code, "INVALID_OPEN_ORDER_COUNT");
+});
