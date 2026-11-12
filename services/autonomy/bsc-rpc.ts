@@ -188,7 +188,7 @@ export function createBscRpcClient(input: {
   }
 
   async function getTransaction(transactionHash: string): Promise<{
-    hash: string; from: string; to: string; chainId: string;
+    hash: string; from: string; to: string; chainId: string; data: string; value: string;
   } | null> {
     await assertBsc();
     if (!HASH.test(transactionHash)) throw new Error("Invalid transaction hash");
@@ -200,7 +200,13 @@ export function createBscRpcClient(input: {
     if (typeof tx.from !== "string" || !ADDRESS.test(tx.from) || typeof tx.to !== "string" || !ADDRESS.test(tx.to)) throw new Error("BSC RPC transaction has invalid sender or target");
     const chainId = hexQuantity(tx.chainId, "transaction chain ID");
     if (BigInt(chainId).toString() !== "56") throw new Error("Transaction is not bound to BSC chain 56");
-    return { hash: transactionHash.toLowerCase(), from: tx.from.toLowerCase(), to: tx.to.toLowerCase(), chainId: "56" };
+    const data = tx.input ?? tx.data;
+    if (typeof data !== "string" || !HEX.test(data)) throw new Error("BSC RPC transaction has malformed calldata");
+    const value = hexQuantity(tx.value, "transaction native value");
+    return {
+      hash: transactionHash.toLowerCase(), from: tx.from.toLowerCase(), to: tx.to.toLowerCase(),
+      chainId: "56", data: data.toLowerCase(), value: BigInt(value).toString(),
+    };
   }
 
   async function getBlockNumber(): Promise<string> {
