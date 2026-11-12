@@ -81,6 +81,13 @@ function address(value: unknown, field: string): string {
   return result.toLowerCase();
 }
 
+function stringList(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) {
+    throw new Error("Live portfolio policy has invalid " + field);
+  }
+  return value.map((item) => String(item).trim());
+}
+
 function addressList(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !/^0x[0-9a-f]{40}$/i.test(item))) {
     throw new Error("Live portfolio policy has invalid " + field);
@@ -144,8 +151,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
     enabled: row.live_enabled,
     emergencyStop: row.live_emergency_stop || row.emergency_stop,
     globalKillSwitch: controlRows[0].kill_switch,
-    allowedChainIds: addressList(row.allowed_token_addresses ?? [], "allowed_token_addresses").length < 0
-      ? [] : (Array.isArray(row.allowed_chain_ids) ? row.allowed_chain_ids.map(String) : []),
+    allowedChainIds: stringList(row.allowed_chain_ids, "allowed_chain_ids"),
     allowedTokenAddresses: addressList(row.allowed_token_addresses, "allowed_token_addresses"),
     allowedInputTokenAddresses: addressList(row.allowed_input_token_addresses, "allowed_input_token_addresses"),
     budgetAmount: decimal(row.live_budget_amount_text, "live_budget_amount"),
