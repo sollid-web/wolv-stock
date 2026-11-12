@@ -39,10 +39,12 @@ export type Eip712PolicyValueSource =
   | "inputTokenAddress"
   | "outputTokenAddress"
   | "amountIn"
+  | "expectedAmountOut"
   | "minimumAmountOut"
   | "quoteExpiryUnixSeconds"
   | "quoteId"
-  | "orderId";
+  | "orderId"
+  | "vendor";
 
 export interface Eip712FieldBinding {
   role: string;
