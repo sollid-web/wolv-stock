@@ -98,6 +98,7 @@ export interface RfqExecutionProvider {
     intentId: string;
     requestId: string;
     order: PreparedRfqOrder;
+    signerAddress: string;
     signature: string;
   }): Promise<SubmissionResult>;
   /** Unknown outcomes are reconciled by requestId/provider order ID, never resubmitted blindly. */
