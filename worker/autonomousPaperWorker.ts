@@ -120,7 +120,7 @@ async function advanceIntent(intent: ExecutionIntent): Promise<ExecutionIntent> 
       : null;
     const version = intent.version;
     intent = {
-      ...next(intent, "QUOTED", "BINANCE_ROUNDTRIP_QUOTES_VALIDATED", {
+      ...next(intent, "QUOTED", "PROVIDER_ROUNDTRIP_QUOTES_VALIDATED", {
         provider: roundTrip.provider, networkFeeBufferBps: feeBufferBps,
         buyQuoteId: roundTrip.buy.quoteId, buyVendor: roundTrip.buy.vendorName,
         buyAmountIn: roundTrip.buy.amountIn, buyExpectedAmountOut: roundTrip.buy.expectedAmountOut,
