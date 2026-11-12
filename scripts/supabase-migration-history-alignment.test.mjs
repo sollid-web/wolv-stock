@@ -29,6 +29,7 @@ const expected = [
   "20261112222539_adjust_live_simulation_freshness_guard.sql",
   "20261112223108_add_live_settlement_contract_allowlists.sql",
   "20261112223218_bind_live_attempt_tokens_and_amounts.sql",
+  "20261112223453_index_live_execution_fill_owner_intent.sql",
 ];
 
 test("local Supabase migration filenames exactly match the connected project's applied history", () => {
