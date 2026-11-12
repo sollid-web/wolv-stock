@@ -223,7 +223,7 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
     gasCostUsd = parseFixedDecimal(candidate.gasCostUsd, "candidate.gasCostUsd");
     maxGasCostUsd = parseFixedDecimal(policy.maxGasCostUsd, "policy.maxGasCostUsd");
     if (policy.maxDailyRealizedLoss !== undefined) {
-      dailyRealizedLoss = parseNonNegativeDecimal(candidate.dailyRealizedLoss ?? "0", "candidate.dailyRealizedLoss");
+      dailyRealizedLoss = parseNonNegativeDecimal(candidate.dailyRealizedLoss ?? "", "candidate.dailyRealizedLoss");
       maxDailyRealizedLoss = parsePositiveDecimal(policy.maxDailyRealizedLoss, "policy.maxDailyRealizedLoss");
     }
   } catch (error) {
@@ -241,7 +241,7 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
         !Number.isSafeInteger(candidate.currentOpenPositions) || (candidate.currentOpenPositions as number) < 0) {
       return { allowed: false, code: "INVALID_POSITION_COUNT", reason: "Open-position policy evidence is missing or invalid" };
     }
-    if ((candidate.currentPosition === "0") && (candidate.currentOpenPositions as number) >= policy.maxOpenPositions) {
+    if (position === BigInt(0) && (candidate.currentOpenPositions as number) >= policy.maxOpenPositions) {
       return { allowed: false, code: "MAX_OPEN_POSITIONS_REACHED", reason: "Maximum concurrent open positions reached" };
     }
   }
