@@ -77,3 +77,24 @@ test("paper exits require explicit thresholds and validate their ranges", () => 
   assert.throws(() => buildPortfolioConfig(env, true, true), /At least one paper exit threshold/);
   assert.throws(() => buildPortfolioConfig({ ...env, WOLV_AUTONOMY_PAPER_STOP_LOSS_BPS: "10001" }, true, true), /outside its allowed range/);
 });
+
+
+test("configures a bounded number of concurrent positions and a daily realized-loss stop", () => {
+  const row = buildPortfolioConfig(env);
+  assert.equal(row.max_open_positions, 1);
+  assert.equal(row.max_daily_realized_loss, env.WOLV_AUTONOMY_MAX_DAILY_SPEND_BASE_UNITS);
+  const custom = buildPortfolioConfig({
+    ...env,
+    WOLV_AUTONOMY_MAX_OPEN_POSITIONS: "4",
+    WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS: "250000000",
+  });
+  assert.equal(custom.max_open_positions, 4);
+  assert.equal(custom.max_daily_realized_loss, "250000000");
+});
+
+test("rejects invalid concurrent-position and daily-loss limits", () => {
+  assert.throws(() => buildPortfolioConfig({ ...env, WOLV_AUTONOMY_MAX_OPEN_POSITIONS: "0" }), /MAX_OPEN_POSITIONS/);
+  assert.throws(() => buildPortfolioConfig({
+    ...env, WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS: "1000000001",
+  }), /within the paper budget/);
+});
