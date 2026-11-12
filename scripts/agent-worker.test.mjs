@@ -6,6 +6,7 @@ import {
   MAX_TRADE_BNB,
 } from "../services/agentWorker.ts";
 import { parseEther } from "viem";
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const strategy = {
   id: "aapl-entry",
@@ -16,8 +17,15 @@ const strategy = {
   slippageBps: 100,
   maxPriceImpactBps: 300,
 };
-const POLICY_HASH = `0x${"a".repeat(64)}`;
 const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
+const POLICY_EXPIRY = 2_000_000_000n;
+const POLICY_HASH = hashAgentPolicy({
+  strategyId: strategy.id,
+  targetToken: strategy.targetToken,
+  maxTradeValue: parseEther("0.5"),
+  expiresAt: POLICY_EXPIRY,
+  intentSigner: INTENT_SIGNER,
+});
 
 function validPolicyState(overrides = {}) {
   return {
@@ -28,7 +36,7 @@ function validPolicyState(overrides = {}) {
     policyConfigured: true,
     policyHash: POLICY_HASH,
     maxTradeValue: parseEther("0.5"),
-    policyExpiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+    policyExpiresAt: POLICY_EXPIRY,
     intentSigner: INTENT_SIGNER,
     ...overrides,
   };
@@ -105,6 +113,16 @@ test("anchors intent age to local market-data receipt time", async () => {
 
   assert.equal(intents.length, 1);
   assert.equal(intents[0].createdAt, new Date(receivedAt).toISOString());
+});
+
+test("rejects a strategy label that is not bound into the on-chain policy hash", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    strategies: [{ ...strategy, id: "unregistered-entry" }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
 });
 
 test("does not construct an intent when the price trigger is not met", async () => {
