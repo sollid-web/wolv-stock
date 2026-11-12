@@ -1,3 +1,5 @@
+import { recoverTypedDataAddress } from "viem";
+
 export interface Eip712Field {
   name: string;
   type: string;
@@ -13,6 +15,7 @@ export interface Eip712TypedData {
 export type Eip712FieldKind = "address" | "uint" | "string" | "bytes32";
 
 export interface ExpectedEip712Field {
+  role: string;
   path: string;
   value: string;
   kind: Eip712FieldKind;
@@ -25,6 +28,7 @@ export interface PrivyEip712Policy {
   expectedTypes: Record<string, Eip712Field[]>;
   expectedDomain?: Record<string, string>;
   expectedFields: ExpectedEip712Field[];
+  requiredRoles: string[];
 }
 
 export interface PrivyEip712SignRequest {
@@ -60,7 +64,7 @@ function canonicalize(value: unknown): string {
     const keys = Object.keys(value).sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(",")}}`;
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 
 function parseTypedData(value: unknown): Eip712TypedData {
@@ -96,6 +100,41 @@ function parseTypedData(value: unknown): Eip712TypedData {
   }
 
   return parsed as unknown as Eip712TypedData;
+}
+
+
+function validateMessageShape(
+  typedData: Eip712TypedData,
+  typeName: string,
+  value: unknown,
+  path: string,
+): void {
+  const fields = typedData.types[typeName];
+  if (!fields || !isPlainObject(value)) {
+    throw new Error(`EIP-712 nested struct is malformed: ${path}`);
+  }
+
+  const expectedNames = fields.map((field) => field.name).sort();
+  const actualNames = Object.keys(value).sort();
+  if (expectedNames.join("|") !== actualNames.join("|")) {
+    throw new Error(`EIP-712 message fields differ from the declared type: ${path}`);
+  }
+
+  for (const field of fields) {
+    const child = value[field.name];
+    const arrayMatch = field.type.match(/^(.*)\\[[0-9]*\\]$/);
+    const baseType = arrayMatch ? arrayMatch[1] : field.type;
+    if (!typedData.types[baseType] || baseType === "EIP712Domain") continue;
+
+    if (arrayMatch) {
+      if (!Array.isArray(child)) throw new Error(`EIP-712 array field is malformed: ${path}.${field.name}`);
+      child.forEach((item, index) =>
+        validateMessageShape(typedData, baseType, item, `${path}.${field.name}[${index}]`)
+      );
+    } else {
+      validateMessageShape(typedData, baseType, child, `${path}.${field.name}`);
+    }
+  }
 }
 
 function readPath(root: Record<string, unknown>, path: string): unknown {
@@ -199,8 +238,15 @@ export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip
     }
   }
 
-  if (!request.policy.expectedFields.length) {
-    throw new Error("At least one explicit EIP-712 message field binding is required");
+  validateMessageShape(typedData, typedData.primaryType, typedData.message, typedData.primaryType);
+
+  if (!request.policy.expectedFields.length || !request.policy.requiredRoles.length) {
+    throw new Error("Explicit EIP-712 message bindings and required roles are mandatory");
+  }
+
+  const seenRoles = new Set(request.policy.expectedFields.map((field) => field.role));
+  for (const role of request.policy.requiredRoles) {
+    if (!seenRoles.has(role)) throw new Error(`Required EIP-712 policy role is missing: ${role}`);
   }
 
   const seenPaths = new Set<string>();
@@ -230,6 +276,20 @@ export function createPrivyEip712Signer(client: PrivyEip712SigningClient) {
 
       if (!result || typeof result.signature !== "string" || !SIGNATURE_PATTERN.test(result.signature)) {
         throw new Error("Privy returned a malformed EIP-712 signature");
+      }
+
+      const recoveryTypes = { ...typedData.types };
+      delete recoveryTypes.EIP712Domain;
+      const recoveryInput = {
+        domain: { ...typedData.domain, chainId: 56 },
+        types: recoveryTypes,
+        primaryType: typedData.primaryType,
+        message: typedData.message,
+        signature: result.signature as `0x${string}`,
+      } as unknown as Parameters<typeof recoverTypedDataAddress>[0];
+      const recoveredAddress = await recoverTypedDataAddress(recoveryInput);
+      if (recoveredAddress.toLowerCase() !== request.walletAddress.toLowerCase()) {
+        throw new Error("Privy signature recovered to a different wallet than the quote-bound signer");
       }
       return result.signature;
     },
