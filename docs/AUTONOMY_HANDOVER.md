@@ -13,11 +13,11 @@ Upgrade WOLV from a human-approved trading interface into a policy-driven autono
 
 ## Current verified state
 
-- The connected Supabase project has 25 WOLV migrations applied. All 25 migration files in this branch use the exact recorded version/name pairs; a test guards against migration filename drift.
+- The connected Supabase project has 26 WOLV migrations applied. All 26 migration files in this branch use the exact recorded version/name pairs; a test guards against migration filename drift.
 - The existing public.tokenized_market_pulse table was left intact with its four existing rows.
 - The WOLV autonomy, paper-ledger and live-execution tables are server-only and RLS-enabled. Anonymous and authenticated roles cannot access private execution records.
 - Live portfolio controls include atomic order/position/daily-loss/budget caps, native BNB reserve checks, explicit RFQ settlement sender/router allowlists and a global kill switch.
-- Durable live attempts bind owner, intent, wallet, token pair, expected amounts, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID and policy version. State transitions are versioned and audited. Signatures and raw typed data are not persisted.
+- Durable live attempts bind owner, intent, wallet, token pair, expected input/minimum output, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID, policy version and immutable vendor sender/router allowlist snapshots. Provider fills must match the persisted order ID, exact input and minimum output; chain settlement must match the provider fill. State transitions are versioned and audited. Signatures and raw typed data are not persisted.
 - A separate reconciliation-only worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against explicit vendor sender/router allowlists, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
 - Settlement recovery continues while the new-entry kill switch is engaged. The kill switch still blocks new live entries.
 - The live portfolio is not configured. The global kill switch remains engaged. There are no live attempts, fills, positions or exits, and no real order has been signed or submitted.
@@ -90,7 +90,7 @@ This worker only reconciles already-persisted live attempts. It does not sign or
 
 ## Supabase migration history
 
-The connected Supabase project has 25 applied migrations. The branch contains these exact versioned files:
+The connected Supabase project has 26 applied migrations. The branch contains these exact versioned files:
 
 1. 20261112193035_create_market_price_cache.sql
 2. 20261112193042_create_market_opportunities.sql
@@ -117,6 +117,7 @@ The connected Supabase project has 25 applied migrations. The branch contains th
 23. 20261112223453_index_live_execution_fill_owner_intent.sql
 24. 20261112223600_move_live_simulation_gate_to_pre_submit.sql
 25. 20261112224003_enforce_live_fill_order_amount_binding.sql
+26. 20261112224135_snapshot_live_settlement_allowlists.sql
 
 These migrations are already applied to the connected WOLV Supabase project. Verify the linked target and compare local/remote history before any push:
 
