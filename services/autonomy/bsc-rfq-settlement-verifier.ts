@@ -112,6 +112,7 @@ export function createBscRfqSettlementVerifier(
       if (!transaction) return { status: "PENDING", reason: "TRANSACTION_LOOKUP_PENDING" };
       if (transaction.hash.toLowerCase() !== input.transactionHash.toLowerCase() ||
           transaction.chainId !== "56" ||
+          transaction.value !== "0" ||
           !senders.includes(address(transaction.from, "transaction sender")) ||
           !targets.includes(address(transaction.to, "transaction target"))) {
         return { status: "FAILED", reasonCode: "RFQ_TRANSACTION_OUTSIDE_VERIFIED_VENDOR_ALLOWLIST" };
