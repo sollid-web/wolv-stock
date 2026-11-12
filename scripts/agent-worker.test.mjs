@@ -133,6 +133,16 @@ test("rejects a strategy label that is not bound into the on-chain policy hash",
   assert.equal(intents.length, 0);
 });
 
+test("rejects a strategy owner that differs from the owner-bound policy hash", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    strategies: [{ ...strategy, ownerAddress: "0x0000000000000000000000000000000000000999" }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
+});
+
 test("rejects strategy parameter changes that are not in the on-chain policy hash", async () => {
   const { worker, telemetry, intents } = createHarness({
     strategies: [{ ...strategy, slippageBps: 150 }],
