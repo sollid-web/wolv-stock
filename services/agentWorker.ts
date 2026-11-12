@@ -373,6 +373,7 @@ export class AgentWorker {
         try {
             expectedPolicyHash = hashAgentPolicy({
                 strategyId: strategy.id,
+                account: strategy.account,
                 targetToken: strategy.targetToken,
                 maxTradeValue: validator.maxTradeValue,
                 expiresAt: validator.policyExpiresAt,
