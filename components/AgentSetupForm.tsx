@@ -5,6 +5,7 @@ import {
     getAddress,
     isAddress,
     parseEther,
+    parseUnits,
     type Address,
     type Hex,
     type PublicClient
@@ -73,6 +74,10 @@ export default function AgentSetupForm({
 }: AgentSetupFormProps) {
     const [targetToken, setTargetToken] = useState(installedTargetToken ?? "")
     const [strategyId, setStrategyId] = useState("")
+    const [strategyAmountBnb, setStrategyAmountBnb] = useState("")
+    const [entryPriceUsd, setEntryPriceUsd] = useState("")
+    const [slippageBps, setSlippageBps] = useState("100")
+    const [maxPriceImpactBps, setMaxPriceImpactBps] = useState("300")
     const [maxTradeValue, setMaxTradeValue] = useState("")
     const [intentSigner, setIntentSigner] = useState(process.env.NEXT_PUBLIC_AGENT_SIGNER_ADDRESS ?? "")
     const [expirationDate, setExpirationDate] = useState("")
@@ -115,6 +120,32 @@ export default function AgentSetupForm({
             if (maxTradeValueWei <= BigInt(0) || maxTradeValueWei > MAX_TRADE_VALUE) {
                 throw new AgentPolicyValidationError("Maximum trade value must be greater than zero and no more than 0.5 BNB.")
             }
+            let strategyAmountWei: bigint
+            let entryPriceMicros: bigint
+            try {
+                strategyAmountWei = parseEther(strategyAmountBnb)
+            } catch {
+                throw new AgentPolicyValidationError("Enter a valid strategy trade amount in BNB.")
+            }
+            try {
+                entryPriceMicros = parseUnits(entryPriceUsd, 6)
+            } catch {
+                throw new AgentPolicyValidationError("Enter a valid entry-price threshold in USD (up to 6 decimal places).")
+            }
+            const strategySlippageBps = Number(slippageBps)
+            const strategyMaxPriceImpactBps = Number(maxPriceImpactBps)
+            if (strategyAmountWei <= BigInt(0) || strategyAmountWei > maxTradeValueWei) {
+                throw new AgentPolicyValidationError("Strategy trade amount must be positive and no greater than the maximum trade value.")
+            }
+            if (entryPriceMicros <= BigInt(0)) {
+                throw new AgentPolicyValidationError("Entry-price threshold must be greater than zero.")
+            }
+            if (!Number.isSafeInteger(strategySlippageBps) || strategySlippageBps < 1 || strategySlippageBps > 500) {
+                throw new AgentPolicyValidationError("Maximum slippage must be between 1 and 500 basis points.")
+            }
+            if (!Number.isSafeInteger(strategyMaxPriceImpactBps) || strategyMaxPriceImpactBps < 1 || strategyMaxPriceImpactBps > 300) {
+                throw new AgentPolicyValidationError("Maximum price impact must be between 1 and 300 basis points.")
+            }
             if (!expirationDate) {
                 throw new AgentPolicyValidationError("Choose a policy expiration date.")
             }
@@ -129,7 +160,11 @@ export default function AgentSetupForm({
                 targetToken: normalizedTarget,
                 maxTradeValue: maxTradeValueWei,
                 expiresAt: expirySeconds,
-                intentSigner: normalizedSigner
+                intentSigner: normalizedSigner,
+                amountBnb: strategyAmountWei,
+                entryPriceMicros,
+                slippageBps: strategySlippageBps,
+                maxPriceImpactBps: strategyMaxPriceImpactBps
             })
             const result = await configureAgentPolicy({
                 ownerKernelClient,
@@ -140,6 +175,10 @@ export default function AgentSetupForm({
                 intentSigner: normalizedSigner,
                 maxTradeValue: maxTradeValueWei,
                 expiresAt: expirySeconds,
+                amountBnb: strategyAmountWei,
+                entryPriceMicros,
+                slippageBps: strategySlippageBps,
+                maxPriceImpactBps: strategyMaxPriceImpactBps,
                 onUserOperationSubmitted: (step, hash) => {
                     setUserOperationHashes((current) => [...current, { step, hash }])
                 }
@@ -180,6 +219,28 @@ export default function AgentSetupForm({
                 />
                 <span className="block text-xs text-slate-500">Must exactly match the strategy ID in the autonomous worker configuration. Unregistered labels will fail the on-chain policy hash check.</span>
             </label>
+
+            <label className="block space-y-1.5 text-sm text-slate-300">
+                <span>Strategy Trade Amount (BNB)</span>
+                <input className={inputClass} type="number" inputMode="decimal" min="0" max="0.5" step="any" value={strategyAmountBnb} onChange={(event) => setStrategyAmountBnb(event.target.value)} placeholder="0.1" required />
+            </label>
+
+            <label className="block space-y-1.5 text-sm text-slate-300">
+                <span>Entry Price Threshold (USD)</span>
+                <input className={inputClass} type="number" inputMode="decimal" min="0" step="0.000001" value={entryPriceUsd} onChange={(event) => setEntryPriceUsd(event.target.value)} placeholder="e.g. 100.00" required />
+                <span className="block text-xs text-slate-500">The worker's price trigger is included in the policy hash. Enter the same threshold used by the strategy.</span>
+            </label>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5 text-sm text-slate-300">
+                    <span>Maximum Slippage (BPS)</span>
+                    <input className={inputClass} type="number" min="1" max="500" step="1" value={slippageBps} onChange={(event) => setSlippageBps(event.target.value)} required />
+                </label>
+                <label className="block space-y-1.5 text-sm text-slate-300">
+                    <span>Maximum Price Impact (BPS)</span>
+                    <input className={inputClass} type="number" min="1" max="300" step="1" value={maxPriceImpactBps} onChange={(event) => setMaxPriceImpactBps(event.target.value)} required />
+                </label>
+            </div>
 
             <label className="block space-y-1.5 text-sm text-slate-300">
                 <span>Target Token Address</span>
