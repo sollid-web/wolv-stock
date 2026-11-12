@@ -57,7 +57,7 @@ function address(value: unknown, field: string): string {
   return value.toLowerCase();
 }
 function uint(value: unknown, field: string): string {
-  const result = typeof value === "number" ? String(value) : value;
+  const result = value;
   if (typeof result !== "string" || !UINT.test(result) || BigInt(result) <= BigInt(0)) {
     throw new Error("1inch response has invalid " + field);
   }
@@ -119,11 +119,18 @@ export function parseOneInchClassicQuote(
 export function parseOneInchClassicTransaction(
   response: unknown,
   quote: OneInchClassicQuote,
+  slippageBps: number,
   now = Date.now(),
 ): OneInchClassicTransaction {
   if (Date.parse(quote.expiresAt) <= now) throw new Error("1inch quote expired before transaction construction");
   if (!record(response) || !record(response.tx)) throw new Error("1inch swap response is missing transaction data");
   const tx = response.tx;
+  const returnedInput = uint(response.srcAmount, "srcAmount");
+  const returnedOutput = uint(response.dstAmount, "dstAmount");
+  if (returnedInput !== quote.amountIn) throw new Error("1inch swap transaction input amount differs from quote");
+  if (!Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 5000) throw new Error("Invalid slippage for 1inch transaction validation");
+  const minimumOutput = BigInt(quote.expectedAmountOut) * BigInt(10_000 - slippageBps) / BigInt(10_000);
+  if (BigInt(returnedOutput) < minimumOutput) throw new Error("1inch swap transaction output is below the quote minimum");
   const to = address(tx.to, "tx.to");
   const data = tx.data;
   if (typeof data !== "string" || !HEX.test(data) || data.length < 10) {
@@ -187,7 +194,7 @@ export function createOneInchClassicClient(input: {
         slippage: String(slippageBps / 100),
         disableEstimate: "false", allowPartialFill: "false",
       });
-      return parseOneInchClassicTransaction(response, quote, input.now?.() ?? Date.now());
+      return parseOneInchClassicTransaction(response, quote, slippageBps, input.now?.() ?? Date.now());
     },
   };
 }
