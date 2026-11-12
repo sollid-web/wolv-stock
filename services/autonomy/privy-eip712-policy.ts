@@ -72,14 +72,20 @@ export function parsePrivyEip712PolicyTemplate(value: unknown): PrivyEip712Polic
         typeof raw.role !== "string" ||
         typeof raw.path !== "string" ||
         !["address", "uint", "string", "bytes32"].includes(String(raw.kind)) ||
-        typeof raw.source !== "string" || !SOURCES.has(raw.source as Eip712PolicyValueSource)) {
+        typeof raw.source !== "string" ||
+        (raw.source !== "typedDataField" && !SOURCES.has(raw.source as Eip712PolicyValueSource)) ||
+        (raw.source === "typedDataField" && (typeof raw.sourcePath !== "string" || !raw.sourcePath.trim())) ||
+        (raw.allowedValues !== undefined &&
+          (!Array.isArray(raw.allowedValues) || raw.allowedValues.some((value) => typeof value !== "string" || !value)))) {
       throw new Error("Privy EIP-712 policy contains a malformed field binding");
     }
     return {
       role: raw.role,
       path: raw.path,
       kind: raw.kind as Eip712FieldBinding["kind"],
-      source: raw.source as Eip712PolicyValueSource,
+      source: raw.source as Eip712FieldBinding["source"],
+      ...(typeof raw.sourcePath === "string" ? { sourcePath: raw.sourcePath } : {}),
+      ...(Array.isArray(raw.allowedValues) ? { allowedValues: raw.allowedValues as string[] } : {}),
     };
   });
 
@@ -132,6 +138,15 @@ export function bindPrivyEip712PolicyToOrder(input: {
     throw new Error("RFQ order expired before EIP-712 policy binding");
   }
 
+  let typedDataMessage: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(input.order.typedDataToSign) as unknown;
+    if (!record(parsed) || !record(parsed.message)) throw new Error("RFQ typed-data message is malformed");
+    typedDataMessage = parsed.message;
+  } catch {
+    throw new Error("RFQ typed-data JSON is malformed");
+  }
+
   return bindPrivyEip712Policy(input.template, {
     walletAddress: input.walletAddress.toLowerCase(),
     inputTokenAddress: input.order.inputTokenAddress.toLowerCase(),
@@ -143,5 +158,5 @@ export function bindPrivyEip712PolicyToOrder(input: {
     quoteId: input.order.quoteId,
     orderId: input.order.orderId,
     vendor: input.order.vendor,
-  });
+  }, typedDataMessage);
 }
