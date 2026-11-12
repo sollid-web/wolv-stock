@@ -157,3 +157,39 @@ begin
   return true;
 end;
 $$;
+
+
+-- One bounded database snapshot avoids PostgREST row limits truncating loss
+-- totals or concurrent-position counts in the worker's risk evaluation.
+create or replace function public.wolv_get_autonomy_risk_snapshot(
+  p_owner_id uuid
+) returns table (
+  open_positions bigint,
+  daily_realized_loss numeric
+)
+language sql stable security definer set search_path = public
+as $$
+  with utc_window as (
+    select date_trunc('day', now() at time zone 'UTC') at time zone 'UTC' as day_start
+  ),
+  active_positions as (
+    select chain_id, lower(token_address) as token_address
+    from public.wolv_autonomy_positions
+    where owner_id = p_owner_id and amount_units > 0
+    union
+    select chain_id, lower(token_address) as token_address
+    from public.wolv_autonomy_reservations
+    where owner_id = p_owner_id and status = 'RESERVED'
+  ),
+  realized_losses as (
+    select coalesce(sum(-e.realized_pnl_input_units), 0) as loss
+    from public.wolv_autonomy_paper_exits e, utc_window w
+    where e.owner_id = p_owner_id and e.realized_pnl_input_units < 0
+      and e.created_at >= w.day_start and e.created_at < w.day_start + interval '1 day'
+  )
+  select (select count(*) from active_positions), realized_losses.loss
+  from realized_losses;
+$$;
+
+revoke all on function public.wolv_get_autonomy_risk_snapshot(uuid) from public, anon, authenticated;
+grant execute on function public.wolv_get_autonomy_risk_snapshot(uuid) to service_role;
