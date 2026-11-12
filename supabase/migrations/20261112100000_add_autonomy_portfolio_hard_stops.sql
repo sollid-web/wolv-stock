@@ -315,3 +315,23 @@ begin
   return true;
 end;
 $$;
+
+
+create or replace function public.wolv_set_autonomy_global_kill_switch(
+  p_kill_switch boolean,
+  p_reason text
+) returns boolean
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_kill_switch is null or p_reason is null or length(trim(p_reason)) < 3 or length(p_reason) > 300 then
+    return false;
+  end if;
+  update public.wolv_autonomy_global_control
+    set kill_switch = p_kill_switch, reason = trim(p_reason), updated_at = now()
+    where singleton = true;
+  return found;
+end;
+$$;
+revoke all on function public.wolv_set_autonomy_global_kill_switch(boolean, text) from public, anon, authenticated;
+grant execute on function public.wolv_set_autonomy_global_kill_switch(boolean, text) to service_role;
