@@ -48,6 +48,14 @@ export function buildPortfolioConfig(env, enablePaper = false, enablePaperExits 
   const maxOrder = units("WOLV_AUTONOMY_MAX_ORDER_BASE_UNITS");
   const maxPosition = units("WOLV_AUTONOMY_MAX_POSITION_BASE_UNITS");
   const maxDailySpend = units("WOLV_AUTONOMY_MAX_DAILY_SPEND_BASE_UNITS");
+  const maxOpenPositionsRaw = env.WOLV_AUTONOMY_MAX_OPEN_POSITIONS?.trim() || "1";
+  if (!/^[1-9][0-9]*$/.test(maxOpenPositionsRaw) || !Number.isSafeInteger(Number(maxOpenPositionsRaw)) || Number(maxOpenPositionsRaw) > 100) {
+    throw new Error("WOLV_AUTONOMY_MAX_OPEN_POSITIONS must be an integer from 1 to 100.");
+  }
+  const maxDailyRealizedLoss = env.WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS?.trim() || maxDailySpend;
+  if (!/^[1-9][0-9]*$/.test(maxDailyRealizedLoss) || BigInt(maxDailyRealizedLoss) > BigInt(paperBudget)) {
+    throw new Error("WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS must be a positive integer within the paper budget.");
+  }
   if (BigInt(maxOrder) > BigInt(paperBudget) || BigInt(maxPosition) > BigInt(paperBudget) ||
       BigInt(maxDailySpend) > BigInt(paperBudget) || BigInt(maxOrder) > BigInt(maxDailySpend)) {
     throw new Error("Order, position and daily limits must fit inside the configured paper budget.");
@@ -92,6 +100,8 @@ export function buildPortfolioConfig(env, enablePaper = false, enablePaperExits 
     max_order_amount: maxOrder,
     max_position_amount: maxPosition,
     max_daily_spend: maxDailySpend,
+    max_open_positions: Number(maxOpenPositionsRaw),
+    max_daily_realized_loss: maxDailyRealizedLoss,
     max_slippage_bps: integer("WOLV_AUTONOMY_MAX_SLIPPAGE_BPS", 0, 5000),
     max_price_impact_bps: integer("WOLV_AUTONOMY_MAX_PRICE_IMPACT_BPS", 0, 10000),
     max_quote_age_ms: integer("WOLV_AUTONOMY_MAX_QUOTE_AGE_MS", 1000, 3600000),
