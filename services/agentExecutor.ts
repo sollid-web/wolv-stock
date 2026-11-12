@@ -644,6 +644,7 @@ export class AgentExecutor {
             try {
                 expectedPolicyHash = hashAgentPolicy({
                     strategyId: intent.strategyId,
+                    ownerAddress: intent.ownerAddress,
                     account: intent.account,
                     targetToken: intent.targetToken,
                     maxTradeValue: validator.maxTradeValue,
