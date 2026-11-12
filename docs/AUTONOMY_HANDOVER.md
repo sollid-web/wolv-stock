@@ -1,62 +1,96 @@
 # WOLV Autonomy — Engineering Handover
 
-## Current verified status — 12 November 2026
-
-- The connected Supabase project has 24 WOLV migrations recorded. The branch contains matching versioned SQL files and a test that checks local migration filenames against the applied history.
-- The existing market-pulse table remains intact with its four original rows. WOLV autonomy, paper-ledger and live-execution tables are server-only and RLS-enabled; client roles cannot read or write private execution records.
-- Live portfolio controls include atomic order/position/daily-loss/budget caps, BNB reserve checks, explicit RFQ settlement sender/router allowlists, and a global kill switch.
-- Durable live attempts bind owner, intent, wallet, token pair, expected amounts, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID and policy version. Signing and submission transitions are versioned and audited; signatures and raw typed data are never persisted.
-- A separate reconciliation-only live recovery worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against explicit vendor sender/router allowlists, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
-- The recovery worker continues settlement reconciliation while the new-entry kill switch is engaged. New live entries remain blocked.
-- The portfolio is not configured. The global kill switch remains engaged. There are no live attempts, fills, positions or exits, and no real order has been signed or submitted.
-- Privy EIP-712 policy binding and a Node SDK adapter are implemented. The adapter validates BSC domain, vendor, verifying contract, exact type/message schema, wallet/tokens/amounts/expiry, stable signer-operation ID and recovered signer address. The @privy-io/node dependency, app credentials and wallet authorization are not installed/configured.
-- The exact Binance RFQ typed-data schema still requires a real, non-broadcast fixture. A vendor-specific RFQ simulation capability is also still missing; the live database gate requires a fresh simulation proof after signing and before submission.
-- Tests have been added but have not been executed in a local checkout. No claim of passing tests or production readiness is made.
-
-Next technical references: PRIVY_AGENT_SIGNER.md and the recovery worker command documented below.
-
-**Updated:** 2026-11-12  
-**Implementation branch:** `autonomy/rebuild-from-hackathon-baseline`  
-**Repository:** https://github.com/sollid-web/wolv-stock  
-**Execution mode in the current worker:** paper-only
+Updated: 12 November 2026
+Repository: sollid-web/wolv-stock
+Implementation branch: autonomy/rebuild-from-hackathon-baseline
+Pull request: #9 (draft; not merged)
+Current trading worker mode: PAPER_ONLY
+Live recovery worker mode: RECONCILIATION_ONLY
 
 ## Objective
 
-WOLV is being upgraded from a human-approved trading interface into a policy-driven autonomous system. Routine eligible trades should not require a person to approve every order. A person authorizes the wallet/capital envelope and can revoke or stop the strategy; deterministic code enforces limits on every action.
+Upgrade WOLV from a human-approved trading interface into a policy-driven autonomous system. Routine eligible trades should not require a person to approve each order. A person authorizes the custody wallet and capital envelope, and can revoke or stop the strategy. Deterministic code enforces limits on every action. The LLM is not the risk engine and cannot override wallet policy, token allowlists, budgets, slippage limits or emergency controls.
 
-The LLM is not the risk engine and cannot override wallet policy, token allowlists, budgets, slippage limits or emergency controls.
+## Current verified state
 
-## Implemented on this branch
+- The connected Supabase project has 25 WOLV migrations applied. All 25 migration files in this branch use the exact recorded version/name pairs; a test guards against migration filename drift.
+- The existing public.tokenized_market_pulse table was left intact with its four existing rows.
+- The WOLV autonomy, paper-ledger and live-execution tables are server-only and RLS-enabled. Anonymous and authenticated roles cannot access private execution records.
+- Live portfolio controls include atomic order/position/daily-loss/budget caps, native BNB reserve checks, explicit RFQ settlement sender/router allowlists and a global kill switch.
+- Durable live attempts bind owner, intent, wallet, token pair, expected amounts, RFQ quote/order IDs, payload hash, stable UUIDv4 request ID and policy version. State transitions are versioned and audited. Signatures and raw typed data are not persisted.
+- A separate reconciliation-only worker polls Binance RFQ status by the pre-persisted provider order ID, verifies BSC receipts and ERC-20 wallet deltas against explicit vendor sender/router allowlists, and commits a live fill only after independent chain settlement. It never creates or submits a new order.
+- Settlement recovery continues while the new-entry kill switch is engaged. The kill switch still blocks new live entries.
+- The live portfolio is not configured. The global kill switch remains engaged. There are no live attempts, fills, positions or exits, and no real order has been signed or submitted.
+- Privy EIP-712 policy binding and a Node SDK adapter are implemented. The adapter validates BSC domain, vendor, verifying contract, exact type/message schema, wallet/tokens/amounts/expiry, stable signer-operation ID and recovered signer address. The @privy-io/node dependency, app credentials and wallet authorization are not installed/configured.
+- The exact Binance RFQ typed-data schema still requires a real, non-broadcast fixture. A vendor-specific RFQ simulation capability is also missing; the live database requires fresh simulation proof after signing and before submission.
+- Tests have been added but have not been executed in a local checkout. No claim of passing tests or production readiness is made.
 
-- Supabase/PostgreSQL-backed market price cache and opportunity scanner.
+## Implemented components
+
+### Market data and opportunity discovery
+
+- Supabase/PostgreSQL-backed market-price latest/history cache.
+- Binance RWA market-price collector and freshness-aware API.
+- Reference-price dislocation scanner and market-opportunity API.
+- Market signals are research-only until fresh executable quotes are obtained.
+
+### Paper trading and risk
+
 - Persistent execution intents, event audit history, compare-and-swap state transitions and worker leases.
-- Strict Binance BSC RWA RFQ quote parsing, buy/reverse-sell quote validation and conservative round-trip edge calculation.
-- Unsigned Binance RFQ order construction and typed-data hashing/metadata validation.
-- Owner-scoped paper portfolio policies, atomic budget reservation and paper entry fills.
-- Restart recovery for non-terminal paper intents.
-- Deterministic paper take-profit, stop-loss and maximum-holding-time rules, disabled by default.
-- Conservative paper exit valuation, including slippage, output-token tax and buffered network-fee estimates.
-- Atomic owner-scoped paper exit ledger with cost-basis release and realized paper P&L.
-- Binance RFQ submit/status adapter and BSC transaction-detail settlement verifier as isolated provider building blocks.
-- Provider registry used by the autonomous worker for entry round-trip quotes, unsigned order building and paper exit quotes; configured provider preference and fail-closed chain/configuration selection.
-- Vendor-neutral quote/prepared-payload contracts, a normalized provider registry, and common-contract adapters for Binance RFQ and 1inch Classic. Provider fallback occurs before accepting a quote; quote evidence cannot be prepared by another provider.
-- Read-only BSC RPC client for chain verification, gas/native/ERC-20 balance reads, exact unsigned EVM transaction simulation and mined receipt validation; an adapter exposes it through the common EVM simulator contract.
-- Independent BSC Classic-swap settlement verifier that checks transaction sender/router/chain, confirmation depth, ERC-20 Transfer logs, exact input debit, minimum output credit and actual## Not yet production-ready
+- Binance BSC RWA RFQ quote parsing, buy/reverse-sell quote validation and conservative round-trip edge calculation.
+- Paper budget reservations, atomic paper fills, paper positions, take-profit/stop-loss/max-holding-time exits and realized paper P&L.
+- Portfolio hard stops for order size, per-token position, daily spend, maximum open positions/orders, daily realized loss and optional native gas reserve.
+- Global kill switch is engaged by default. Risk-reducing paper exits are not blocked by the new-entry stop.
 
-The market/opportunity worker and trading worker remain paper-only. The live recovery worker is reconciliation-only; it cannot initiate new orders. The remaining gates before unattended live trading are:
+### Live execution foundations
 
-1. Privy transport and custody: install and lock the official Node SDK, configure the Privy app and authorization key, and explicitly authorize a dedicated, capped BSC execution wallet. No wallet may be created, imported, funded or enabled without that authorization.
-2. Real Binance RFQ schema: capture a fresh unsigned RFQ payload using the actual target vendor and wallet. Confirm the EIP-712 domain, verifying contract, primary type, all message fields, nonce, expiry, spender and token/amount binding. The current signer policy intentionally rejects opaque hex typed-data payloads.
-3. RFQ simulation: the live database requires an exact-order simulation proof after signing and immediately before submission. The existing BSC eth_call/eth_estimateGas simulator handles ordinary EVM transactions, not Binance vendor-executed RFQ typed-data orders. A documented vendor-specific RFQ simulation/preview endpoint or a validated signed-order simulation route must be implemented. Do not fabricate a simulation fingerprint.
-4. Live entry orchestration: wire policy load, fresh round-trip quotes, atomic live budget reservation, durable attempt creation, Privy signing, RFQ simulation, submit and state persistence into a separate live-entry worker. It must remain disabled by default and respect the global stop.
-5. Live exits and P&L: the live ledger currently supports BUY entry fills. A full autonomous system also needs SELL exit reservations, policy checks, settlement accounting, realized P&L, loss stops and recovery for partially filled exits.
-6. Runtime validation: run the full test suite, type-check, lint and build locally; run provider fixtures and BSC settlement tests; then perform a small, capped, explicitly authorized pilot. No deployment has been performed.
+- Live portfolio schema and atomic live budget reservation/release RPCs.
+- Durable live attempt table and immutable audit-event table.
+- Stable request IDs, provider order IDs persisted before submit, signer-operation references, prepared payload hashes, versioned state transitions and recovery queries.
+- Retry after ambiguous submission is limited to the same request ID and only within the recorded provider idempotency window. Once the window expires, blind resubmission is rejected.
+- Signing requires a durable signer operation ID, a prepared-payload fingerprint and a signer address matching the wallet bound to the quote.
+- Provider-filled and chain-settled are distinct states. The database requires actual amount, transaction, fee and block evidence before SETTLED; actual input and minimum output must match the pre-bound intent.
+- The recovery worker is available as npm run autonomy:live-recovery-worker. It reconciles existing orders and settlement only; it is not a new-order worker.
+- The RFQ settlement verifier checks BSC chain, vendor sender/router allowlists, transaction receipt status, confirmation depth, wallet token transfer deltas and actual gas fee.
+- A Privy Node SDK adapter is present behind an injected client interface. It uses a server-side authorization context and stable idempotency key; no Privy wallet or credential is connected.
 
-The reconciliation-only worker can be started with: npm run autonomy:live-recovery-worker
+### Provider integrations
 
-It requires server-side Supabase credentials, Binance Web3 credentials, WOLV_AUTONO## Supabase migrations
+- Legacy Binance round-trip adapter remains the only provider used by the paper worker.
+- Provider-neutral normalized contracts and registry include Binance and 1inch Classic, but the normalized registry is not yet used by the worker.
+- 1inch Classic still needs full tax/honeypot, USD gas-fee, price-impact, approval target, simulation and settlement evidence integration before it can be used for autonomous execution.
+- BSC RPC provides read-only chain checks, gas/native/ERC-20 balance reads, ordinary EVM transaction simulation and receipt/transaction lookup.
+- Ordinary EVM transaction simulation does not automatically simulate Binance vendor-executed RFQ typed-data orders.
 
-The connected Supabase project has 24 applied migrations. The branch contains these exact versioned files:
+## Remaining gates before unattended live trading
+
+1. **Privy runtime and custody.** Add and lock the official @privy-io/node dependency, instantiate the client in the server runtime, configure the Privy app and authorization key, and explicitly authorize a dedicated capped BSC execution wallet. No wallet may be created, imported, funded or enabled without that authorization.
+2. **Real Binance RFQ schema.** Capture a fresh unsigned RFQ payload using the actual target vendor and wallet. Confirm the EIP-712 domain, verifying contract, primary type, all message fields, nonce, expiry, spender and token/amount binding. Opaque hex typed-data payloads remain rejected by the signer.
+3. **RFQ simulation.** The live database requires exact-order simulation proof after signing and immediately before submission. The existing BSC eth_call/eth_estimateGas simulator handles ordinary EVM transactions, not Binance vendor-executed RFQ typed-data orders. Implement a documented vendor-specific RFQ simulation/preview endpoint or a validated signed-order simulation route. Do not fabricate a simulation fingerprint.
+4. **Live entry orchestration.** Wire live policy load, fresh round-trip quotes, atomic live budget reservation, durable attempt creation, Privy signing, RFQ simulation, submit and state persistence into a separate live-entry worker. It must remain disabled by default and respect the global stop.
+5. **Live exits and P&L.** The live ledger currently supports BUY entry fills. A complete autonomous system also needs SELL exit reservations, policy checks, settlement accounting, realized P&L, loss stops and recovery for partially filled exits.
+6. **Runtime validation.** Run the full test suite, type-check, lint and build locally; run provider fixtures and BSC settlement tests; then perform a small, capped, explicitly authorized pilot. No deployment has been performed.
+
+## Recovery-only worker
+
+Start with:
+
+npm run autonomy:live-recovery-worker
+
+Required server-side configuration:
+- NEXT_PUBLIC_SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+- BINANCE_API_KEY
+- BINANCE_SECRET_KEY
+- WOLV_AUTONOMY_OWNER_ID
+- WOLV_BSC_RPC_URL
+- Live portfolio sender/router allowlists containing verified vendor settlement addresses
+
+This worker only reconciles already-persisted live attempts. It does not sign or submit new orders. It must not be treated as an autonomous trading worker.
+
+## Supabase migration history
+
+The connected Supabase project has 25 applied migrations. The branch contains these exact versioned files:
 
 1. 20261112193035_create_market_price_cache.sql
 2. 20261112193042_create_market_opportunities.sql
@@ -82,234 +116,43 @@ The connected Supabase project has 24 applied migrations. The branch contains th
 22. 20261112223218_bind_live_attempt_tokens_and_amounts.sql
 23. 20261112223453_index_live_execution_fill_owner_intent.sql
 24. 20261112223600_move_live_simulation_gate_to_pre_submit.sql
+25. 20261112224003_enforce_live_fill_order_amount_binding.sql
 
 These migrations are already applied to the connected WOLV Supabase project. Verify the linked target and compare local/remote history before any push:
 
 npx supabase migration list
 
-For a fresh project only, after linking the intended project, apply the migrations with:
+For a fresh project only, after linking the intended project, apply migrations with:
 
 npx supabase db push
 npx supabase migration list
 
 Never put the service-role key in source code, browser variables or chat.
 
-3351_harden_autonomy_database_privileges.sql
-9. 20261112193435_index_autonomy_foreign_keys.sql
-10. 20261112193721_create_durable_live_execution_attempts.sql
-11. 20261112193911_fix_live_execution_audit_redaction.sql
-12. 20261112193943_fix_live_execution_audit_redaction_v2.sql
-13. 20261112194033_enforce_live_submission_retry_window.sql
-14. 20261112194235_enforce_live_execution_evidence.sql
-15. 20261112194339_index_live_execution_event_owner_intent.sql
-
-These migrations are already applied to the connected WOLV Supabase project. Before running a migration command, confirm the linked project and compare the local and remote histories:
-
-```bash
-npx supabase migration list
-```
-
-For a fresh project only, after linking the intended project, apply the migrations with:
-
-```bash
-npx supabase db push
-npx supabase migration list
-```
-
-The migration-history alignment test fails if the local filenames drift from the applied versions. Do not rename these files without applying a corresponding migration-history repair. Never put the service-role key in source code, browser variables or chat.
-
 ## Local validation commands
 
-Use Node.js with native TypeScript type stripping support and the repository's installed dependencies:
+Use the repository's Node.js version and installed dependencies:
 
-```bash
 npm install
 npm run test:logic
 npm run lint
 npm run build
-```
 
-The test script runs `scripts/*.test.mjs`, including normalized provider registry, Binance normalized adapter, Binance RFQ schema probe, BSC RPC, EVM simulation, BSC ERC-20 settlement verifier, portfolio hard-stop, global kill-switch, paper-exit and RFQ execution tests. These commands have not yet been run against the current branch.
+The tests cover execution-domain rules, Binance provider parsing, normalized provider contracts, BSC RPC and settlement verification, portfolio hard stops, paper exits, live execution recovery, Privy EIP-712 policy and migration-history alignment. They have not been executed in this environment.
 
-## Paper worker configuration
+## Operator safety
 
-The worker requires server-side environment variables, including:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY` (server/worker only)
-- `BINANCE_API_KEY`
-- `BINANCE_SECRET_KEY`
-- `WOLV_AUTONOMY_OWNER_ID`
-- `WOLV_AUTONOMY_WALLET_ADDRESS`
-- `WOLV_AUTONOMY_INPUT_TOKEN_ADDRESS`
-- `WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS`
-- `WOLV_BSC_RPC_URL` (required when `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` is greater than zero; remote endpoints must use HTTPS)
+- Keep the global kill switch engaged until the dedicated wallet, policy, RFQ schema, simulation, settlement and recovery gates have been verified.
+- Do not store private keys, seed phrases, Privy authorization keys, signatures or raw typed-data payloads in logs, source control or chat.
+- The signer must enforce an independent default-deny policy. The WOLV strategy engine is an additional control, not the only control.
+- Never enable live execution until signing, simulation, settlement, revocation, recovery and duplicate-order tests pass.
+- No deployment, merge to main, wallet creation, wallet import, funding or live order submission has been performed.
 
-The paper portfolio configuration script also requires the budget, allowlists, max order/position/daily spend, slippage, price-impact, quote-age, gas-cost, network-fee-buffer and minimum-edge variables. It accepts `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` (default 1), `WOLV_AUTONOMY_MAX_OPEN_ORDERS` (default 1), `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS`, and `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` (default 0, which disables the optional floor).
+## Related design documents
 
-By default, configuration writes a disabled policy with the emergency stop active. `--enable-paper` enables paper entries only. Paper exits are separately opt-in with `--enable-paper-exits` and at least one configured threshold:
-- `WOLV_AUTONOMY_PAPER_TAKE_PROFIT_BPS`
-- `WOLV_AUTONOMY_PAPER_STOP_LOSS_BPS`
-- `WOLV_AUTONOMY_PAPER_MAX_HOLDING_MS`
-
-The paper worker command is:
-
-```bash
-npm run autonomy:paper-worker
-```
-
-The market data worker command is:
-
-```bash
-npm run market:worker
-```
-
-Running these commands is not required to review the source. Do not run them against production until migrations, environment, wallet address, allowlists and paper policy have been verified.
-
-## Branch and merge status
-
-- Work is isolated on `autonomy/rebuild-from-hackathon-baseline`.
-- `main` has not been modified by this implementation.
-- The implementation branch was created from the hackathon baseline commit `ef67f625b5a67b528761b7832cb27e52174fb5dd`.
-- The repository's `main` has since advanced; compare and reconcile the branch against the current `main` before merging.
-- Do not force-push, reset local changes, or merge to production without reviewing the resulting diff.
-
-## Safety and operational rules
-
-- No private keys, seed phrases, signer authorization keys or session files belong in logs, source control or chat.
-- A signer must enforce an independent default-deny policy. The WOLV strategy engine is an additional control, not the only control.
-- Unknown submission outcomes are not retryable as new orders. Reconcile first and reuse the exact request ID for retries of the same order.
-- Emergency stop blocks new entries. Risk-reducing exits should remain available under a separately enabled, bounded exit policy.
-- Paper fills and paper P&L are simulations, not wallet balances, real execution or realized on-chain profit.
-- Never enable live execution until signing, simulation, settlement, revocation, recovery and duplicate-order tests all pass.
-
-## Primary engineering references
-
-- `docs/AUTONOMOUS_EXECUTION_ARCHITECTURE.md`
-- `docs/BINANCE_CAPABILITY_MATRIX.md`
-- `docs/RFQ_SIGNER_ACCEPTANCE_PLAN.md`
-- `docs/MARKET_PRICE_CACHE.md`
-
-## Review vehicle
-
-A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9. GitHub currently reports it as not mergeable. The implementation branch is 32 commits behind the current `main`; inspect and reconcile that divergence before merge.
-
-## Additional risk controls still required before live mode
-
-The owner policy and atomic reservation RPC now enforce order size, per-token position cost basis, daily spend, maximum concurrent token positions and outstanding reservations, daily realized paper-loss stop, optional native BNB gas reserve floor (checked through BSC RPC), chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. The paper path also caps concurrent outstanding reservations separately from open positions. Still required before live execution: durable live-order count enforcement, portfolio-wide exposure/concentration limits, signer-boundary revalidation of native gas reserve, and a live-loss ledger based on independently settled trades. These controls must be deterministic and independently tested.
-
-## Provider-neutral execution and BSC preflight update (2026-11-12)
-
-The branch now contains:
-- `services/autonomy/provider-contracts.ts`: normalized quote and prepared-payload types for EVM transactions and EIP-712 orders.
-- `services/autonomy/normalized-provider-registry.ts`: configured-provider ordering, request/response binding and quote freshness checks. Fallback is attempted only before a quote is accepted.
-- `services/autonomy/binance-execution-adapter.ts`: maps Binance's strict RFQ quote parser and unsigned RFQ order builder to the normalized contract.
-- `services/autonomy/provider-registry.ts`: registers Binance and 1inch in the normalized registry, separately from the legacy registry used by the current paper worker.
-- `services/autonomy/bsc-rpc.ts` and `services/autonomy/bsc-evm-simulator.ts`: read-only BSC chain checks, balance/gas reads, exact unsigned EVM simulation and receipt validation.
-
-Tests added: `scripts/normalized-provider-registry.test.mjs`, `scripts/binance-execution-adapter.test.mjs`, `scripts/binance-rfq-schema-probe.test.mjs`, `scripts/bsc-rpc.test.mjs`, `scripts/bsc-evm-simulator.test.mjs`, `scripts/bsc-settlement-verifier.test.mjs`, `scripts/portfolio-hard-stops-migration.test.mjs`, and `scripts/autonomy-global-kill-switch.test.mjs`. They have **not** been executed in this environment. The BSC RPC layer has no signing or broadcast method. The worker remains paper-only. A durable live-attempt ledger exists, but no signer transport, live worker, order submission or live transaction path has been activated.
-
-## Portfolio hard-stop update (2026-11-12)
-
-Migration `20261112193119_add_autonomy_portfolio_hard_stops.sql` adds atomic maximum-open-position, maximum-outstanding-order and daily realized-loss stops to the Supabase reservation RPC. The RPC locks the owner portfolio, counts distinct open/reserved token positions, counts active reservations, sums negative paper-exit P&L for the UTC day, and rejects new reservations when any cap is reached. It also accepts both the legacy Binance round-trip audit event and the normalized provider event name; this prevents a quote-event naming mismatch from silently blocking reservation.
-
-The portfolio service loads open-position count, outstanding-reservation count and daily realized loss into the deterministic risk candidate. `evaluateRiskPolicy` rejects missing evidence, enforces both concurrency limits, rejects new assets at the open-position limit, and permits adding to an already-open position subject to its per-token cap. The worker optionally checks the live wallet's BNB balance against the configured wei floor using BSC RPC. The database RPC independently repeats the concurrency and daily-loss hard stops at reservation time.
-
-Configuration: `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` and `WOLV_AUTONOMY_MAX_OPEN_ORDERS` both default to 1; `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS` defaults to the configured daily spend cap and must fit within the paper budget; `WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI` defaults to 0 (disabled). The realized-loss limit is denominated in the configured input token's smallest units; the native gas floor is denominated in wei. They are paper-policy controls until a separate live policy and live ledger exist.
-
-Risk snapshot retrieval uses `wolv_get_autonomy_risk_snapshot`, a database-side aggregate returning exact realized-loss text and distinct active positions. This avoids relying on a client-side paginated list for hard-stop decisions. The atomic reservation RPC repeats all database-enforceable caps while holding the portfolio row lock.
-
-The BSC settlement verifier is an isolated capability. It is not yet connected to durable live-intent state or a signer, and its router target must be approved by an independent trusted-contract policy before use.
-
-## Operator-wide kill switch
-
-Migration `20261112193119_add_autonomy_portfolio_hard_stops.sql` creates `wolv_autonomy_global_control` with the global kill switch engaged by default. The reservation RPC and paper-fill commit RPC read-lock this control row and refuse new entries/fills while it is engaged. The paper exit RPC is intentionally not blocked, so configured risk-reducing exits can continue.
-
-Use the server-side command to engage the stop (default) or explicitly release it:
-
-```bash
-npm run autonomy:global-stop
-npm run autonomy:global-stop -- --release
-```
-
-Release is an explicit operator action and should occur only after verifying the portfolio policy, provider health, RPC, signer status (for any future live mode) and intended operating environment. The command requires the Supabase service-role key on the server and writes an audit reason. No global switch was released as part of this implementation.
-
-## Binance RFQ schema evidence
-
-A safe read-only RFQ schema probe is available as `npm run autonomy:rfq-schema-probe`. It builds a fresh quote and unsigned RFQ order using local server credentials, then prints only schema metadata and hashes—not raw typed data. This is the next evidence step before a signer can be implemented. If the payload is opaque hex, the current policy deliberately rejects it.
-
-
-## Connected Supabase deployment status — 12 November 2026
-
-The connected Supabase project was inspected and all 15 WOLV autonomy migrations were applied. The migration files in this branch have been renamed to the exact versions and names recorded by Supabase; the history-alignment test prevents accidental filename drift.
-
-Applied migration names:
-- create_market_price_cache
-- create_market_opportunities
-- create_autonomous_execution_queue
-- create_autonomy_portfolio_ledger
-- extend_paper_fill_exit_evidence
-- create_paper_exit_ledger
-- add_autonomy_portfolio_hard_stops
-- harden_autonomy_database_privileges
-- index_autonomy_foreign_keys
-- create_durable_live_execution_attempts
-- fix_live_execution_audit_redaction
-- fix_live_execution_audit_redaction_v2
-- enforce_live_submission_retry_window
-- enforce_live_execution_evidence
-- index_live_execution_event_owner_intent
-
-Verified database state:
-- Existing public.tokenized_market_pulse remains intact with 4 rows.
-- No autonomy portfolio is configured.
-- Execution intents/events/leases: 0.
-- Paper positions/fills/exits: 0.
-- Cached prices/history/opportunities: 0.
-- Live execution attempts/events: 0.
-- Global kill switch: true, reason INITIAL_FAIL_CLOSED.
-- No live order has been signed, submitted or broadcast.
-
-Database hardening:
-- WOLV security-definer functions use search_path = pg_catalog, public.
-- The market-price trigger function is not directly executable by anon/authenticated roles.
-- The three public market-data tables are SELECT-only for anon/authenticated roles; public writes are revoked.
-- Execution, portfolio and live-attempt tables retain RLS with no client-facing policies; they are server/service-role only.
-- Foreign-key indexes identified by the Supabase performance advisor have been added.
-
-Latest Supabase advisor results:
-- Security: only INFO findings for RLS-enabled autonomy tables with no policies. This is intentional; do not add browser policies without an explicit owner-scoped access design.
-- Performance: no remaining unindexed-foreign-key finding. Remaining unused-index INFO findings are expected before the worker processes workload.
-
-The migrations being applied does not mean the market-data workers are running, a portfolio is configured, or live execution is enabled. The global kill switch remains engaged.
-
-## Database and live-recovery hardening — 12 November 2026
-
-The connected Supabase project now has 15 recorded migrations applied for the WOLV autonomy workstream. This includes the existing market cache, opportunity scanner, paper execution/portfolio ledger, paper exits, database privilege hardening, FK indexes, and the live-attempt recovery ledger.
-
-Verified database state:
-- The existing market-pulse tables were left untouched.
-- Market cache and opportunity tables retain read access for the application; anonymous/authenticated write privileges were revoked. Server routes use the service-role client.
-- Autonomy, paper-ledger and live-execution tables have RLS enabled with no client-facing policies. The service role is the only application access path.
-- The live-attempt and event tables are empty. No live execution has been initiated.
-- The portfolio is not configured. The global kill switch remains engaged.
-- The live transition RPC is executable by service_role, not anon or authenticated.
-- The security advisor reports only informational RLS-without-policy findings for server-only autonomy tables. The performance advisor's unindexed-FK finding for the live event ledger was fixed with an owner/intent index. Unused-index findings are expected before workload traffic exists.
-
-### Durable live-attempt ledger
-
-New schema and service:
-- wolv_live_execution_attempts stores a stable UUID v4 request ID, provider and wallet binding, quote/order identifiers, payload fingerprint, durable signer-operation reference, transaction hash, actual amounts, fee and settlement block.
-- wolv_live_execution_events is append-only and records every status transition.
-- Optimistic version checks and a database transition RPC prevent concurrent state corruption.
-- A live attempt can only be inserted in PREPARED for an owner-scoped RISK_APPROVED intent.
-- Signing transitions require a durable signer operation ID, a SHA-256 prepared-payload fingerprint, and a signer address matching the wallet bound to the quote.
-- Provider-filled state requires a provider order ID, transaction hash and positive actual amounts.
-- SETTLED requires transaction hash, actual input/output amounts, fee and block evidence; the database requires these values to match the provider-fill evidence.
-- The event interface rejects signature material, typed data, private keys, raw transactions and calldata. No signature or raw signing payload is stored.
-- An ambiguous submit can only be retried using the same persisted request ID while the provider idempotency deadline remains valid. Once it expires, the database rejects resubmission and requires reconciliation or a security hold.
-
-The live ledger is scaffolding, not a live execution system. It is not wired into the worker and has no signer/custody provider. No real trades are possible through this path yet.
-
-### Latest database verification
-
-The database verification confirmed the live-attempt schema, RLS, service-role-only access, signer/settlement guards and empty live ledger. The latest security advisor run returned no ERROR/WARNING security findings; its remaining RLS-without-policy entries are intentional for server-only tables. The remaining performance INFO findings are unused indexes on tables that have not yet received workload traffic.
+- docs/PRIVY_AGENT_SIGNER.md
+- docs/RFQ_SIGNER_ACCEPTANCE_PLAN.md
+- docs/AUTONOMOUS_EXECUTION_ARCHITECTURE.md
+- docs/BINANCE_CAPABILITY_MATRIX.md
+- docs/BSC_RPC_PREFLIGHT.md
+- docs/ONEINCH_CLASSIC_ADAPTER.md
