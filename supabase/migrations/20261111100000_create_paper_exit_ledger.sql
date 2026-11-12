@@ -101,7 +101,7 @@ begin
 
   select * into account from public.wolv_autonomy_portfolios
     where owner_id = p_owner_id for update;
-  if not found or not account.paper_exit_enabled or account.emergency_stop then return false; end if;
+  if not found or not account.paper_exit_enabled then return false; end if;
   if p_quote_observed_at > now() + interval '5 seconds'
      or p_quote_observed_at < now() - (account.max_quote_age_ms * interval '1 millisecond') then return false; end if;
 
