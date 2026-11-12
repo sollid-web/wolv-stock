@@ -39,6 +39,7 @@ function portfolio(overrides = {}) {
     live_max_quote_age_ms: 0,
     live_max_gas_cost_usd_text: "0",
     live_min_expected_edge_bps: 0,
+    network_fee_buffer_bps: 10000,
     ...overrides,
   };
 }
