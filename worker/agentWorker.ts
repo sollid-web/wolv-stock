@@ -91,10 +91,12 @@ function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
 
     return parsed.map((value, index): AgentStrategy => {
         if (!isRecord(value)) throw new Error(`Strategy ${index} must be an object.`)
-        const { id, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
+        const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
         if (
             typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
-            || typeof account !== "string" || !isAddress(account)
+            || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
+            || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
+        || typeof account !== "string" || !isAddress(account)
             || typeof targetToken !== "string" || !isAddress(targetToken)
             || typeof amountBnb !== "string"
             || typeof entryPriceMicros !== "string" || !/^[0-9]+$/.test(entryPriceMicros)
@@ -118,6 +120,7 @@ function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
         }
         return {
             id,
+            ownerAddress: getAddress(ownerAddress),
             account: getAddress(account),
             targetToken: normalizedTarget,
             amountBnb: parsedAmount,
@@ -296,9 +299,9 @@ type PersistentScheduleRuntime = {
     context: PersistentScheduleContext
 }
 
-function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig): AgentStrategy {
+function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, expectedOwnerAddress: string): AgentStrategy {
     if (!isRecord(value)) throw new Error("Persisted strategy configuration must be an object.")
-    const { id, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
+    const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
     if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
         || typeof account !== "string" || !isAddress(account)
         || typeof targetToken !== "string" || !isAddress(targetToken)
@@ -308,6 +311,8 @@ function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig): A
         || typeof maxPriceImpactBps !== "number" || !Number.isInteger(maxPriceImpactBps) || maxPriceImpactBps < 1 || maxPriceImpactBps > 300) {
         throw new Error("Persisted strategy is missing a required field or contains an invalid value.")
     }
+    const normalizedOwner = getAddress(ownerAddress)
+    if (normalizedOwner !== getAddress(expectedOwnerAddress)) throw new Error("Persisted strategy owner does not match the schedule owner.")
     const normalizedTarget = getAddress(targetToken)
     if (normalizedTarget !== config.targetTokenAddress) throw new Error("Persisted strategy token does not match the configured agent token.")
     const parsedAmount = parseEther(amountBnb)
@@ -316,6 +321,7 @@ function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig): A
     if (parsedEntry <= BigInt(0)) throw new Error("Persisted strategy entry-price threshold must be positive.")
     return {
         id,
+        ownerAddress: normalizedOwner,
         account: getAddress(account),
         targetToken: normalizedTarget,
         amountBnb: parsedAmount,
@@ -479,7 +485,7 @@ async function createPersistentWorkerRuntime() {
         }
         let strategy: AgentStrategy
         try {
-            strategy = parseStoredStrategy(schedule.strategyConfig, config)
+            strategy = parseStoredStrategy(schedule.strategyConfig, config, ownerAddress)
         } catch (error) {
             await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now()).catch(() => undefined)
             await store.recordAlert({ ownerAddress, severity: "WARNING", kind: "INVALID_STRATEGY_CONFIG",
