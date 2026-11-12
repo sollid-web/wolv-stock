@@ -49,6 +49,7 @@ Expected server-only settings after explicit custody authorization:
 - PRIVY_WALLET_ID
 - PRIVY_WALLET_ADDRESS
 - PRIVY_AUTHORIZATION_PRIVATE_KEY
+- WOLV_BINANCE_RFQ_EIP712_POLICY_JSON (approved vendor-specific domain/type/field binding template)
 
 Never use NEXT_PUBLIC_ prefixes for these values. Never commit them or send them in chat. The authorization private key is a Privy API request-signing credential, expected as a PKCS8 P-256 PEM key (the adapter also normalizes base64 DER); it is distinct from the wallet's secp256k1 signing key held within Privy's wallet infrastructure.
 
