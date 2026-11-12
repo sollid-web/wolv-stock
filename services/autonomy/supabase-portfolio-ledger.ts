@@ -161,6 +161,9 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
     dailySpendAmount: persistedDailySpend,
     currentPositionInputUnits,
     dailySpendIncludingReservations,
+    currentOpenPositions,
+    currentOpenOrders,
+    dailyRealizedLoss,
     networkFeeBufferBps: numeric(row.network_fee_buffer_bps, "network_fee_buffer_bps"),
     paperExitPolicy: {
       enabled: row.paper_exit_enabled === true,
