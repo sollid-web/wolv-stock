@@ -58,6 +58,10 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
   if (!UUID.test(String(row.request_id)) || row.chain_id !== "56" ||
       !ADDRESS.test(String(row.wallet_address)) || !ADDRESS.test(String(row.token_address)) ||
       !ADDRESS.test(String(row.input_token_address)) ||
+      !Array.isArray(row.settlement_allowed_senders) || row.settlement_allowed_senders.length === 0 ||
+      row.settlement_allowed_senders.some((value) => typeof value !== "string" || !ADDRESS.test(value)) ||
+      !Array.isArray(row.settlement_allowed_targets) || row.settlement_allowed_targets.length === 0 ||
+      row.settlement_allowed_targets.some((value) => typeof value !== "string" || !ADDRESS.test(value)) ||
       !/^[1-9][0-9]*$/.test(String(row.expected_amount_in)) ||
       !/^[1-9][0-9]*$/.test(String(row.minimum_amount_out))) {
     throw new Error("Live execution attempt has invalid request, chain or wallet binding.");
@@ -115,6 +119,8 @@ export async function createLiveExecutionAttempt(input: {
   inputTokenAddress: string;
   expectedAmountIn: string;
   minimumAmountOut: string;
+  settlementAllowedSenders: string[];
+  settlementAllowedTargets: string[];
   preparedPayloadHash: string;
   executionSide?: "BUY";
 }): Promise<LiveExecutionAttempt> {
@@ -127,6 +133,10 @@ export async function createLiveExecutionAttempt(input: {
       !input.providerOrderId.trim() || input.providerOrderId.length > 128 ||
       !ADDRESS.test(input.tokenAddress) || !ADDRESS.test(input.inputTokenAddress) ||
       !/^[1-9][0-9]*$/.test(input.expectedAmountIn) || !/^[1-9][0-9]*$/.test(input.minimumAmountOut) ||
+      !Array.isArray(input.settlementAllowedSenders) || !input.settlementAllowedSenders.length ||
+      input.settlementAllowedSenders.some((value) => !ADDRESS.test(value)) ||
+      !Array.isArray(input.settlementAllowedTargets) || !input.settlementAllowedTargets.length ||
+      input.settlementAllowedTargets.some((value) => !ADDRESS.test(value)) ||
       !/^[a-f0-9]{64}$/i.test(input.preparedPayloadHash) || !Number.isFinite(quoteExpiry) || quoteExpiry <= Date.now() ||
       (input.executionSide ?? "BUY") !== "BUY" ||
       input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
@@ -149,6 +159,8 @@ export async function createLiveExecutionAttempt(input: {
         active.input_token_address.toLowerCase() !== input.inputTokenAddress.toLowerCase() ||
         active.expected_amount_in !== input.expectedAmountIn ||
         active.minimum_amount_out !== input.minimumAmountOut ||
+        active.settlement_allowed_senders.map((value) => value.toLowerCase()).sort().join("|") !== input.settlementAllowedSenders.map((value) => value.toLowerCase()).sort().join("|") ||
+        active.settlement_allowed_targets.map((value) => value.toLowerCase()).sort().join("|") !== input.settlementAllowedTargets.map((value) => value.toLowerCase()).sort().join("|") ||
         active.prepared_payload_hash !== input.preparedPayloadHash ||
         active.execution_side !== (input.executionSide ?? "BUY")) {
       throw new Error("An active live attempt exists with a different provider or wallet binding.");
@@ -198,6 +210,8 @@ export async function createLiveExecutionAttempt(input: {
     input_token_address: input.inputTokenAddress.toLowerCase(),
     expected_amount_in: input.expectedAmountIn,
     minimum_amount_out: input.minimumAmountOut,
+    settlement_allowed_senders: input.settlementAllowedSenders.map((value) => value.toLowerCase()),
+    settlement_allowed_targets: input.settlementAllowedTargets.map((value) => value.toLowerCase()),
     prepared_payload_hash: input.preparedPayloadHash,
     status: "PREPARED",
   };
@@ -224,6 +238,8 @@ export async function createLiveExecutionAttempt(input: {
         raced.input_token_address.toLowerCase() === input.inputTokenAddress.toLowerCase() &&
         raced.expected_amount_in === input.expectedAmountIn &&
         raced.minimum_amount_out === input.minimumAmountOut &&
+        raced.settlement_allowed_senders.map((value) => value.toLowerCase()).sort().join("|") === input.settlementAllowedSenders.map((value) => value.toLowerCase()).sort().join("|") &&
+        raced.settlement_allowed_targets.map((value) => value.toLowerCase()).sort().join("|") === input.settlementAllowedTargets.map((value) => value.toLowerCase()).sort().join("|") &&
         raced.prepared_payload_hash === input.preparedPayloadHash &&
         raced.execution_side === (input.executionSide ?? "BUY")) return raced;
     throw error;
