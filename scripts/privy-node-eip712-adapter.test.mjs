@@ -1,11 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import {
   createPrivyNodeEip712SigningClient,
 } from "../services/autonomy/privy-eip712-signer.ts";
 
 const walletAddress = "0x1111111111111111111111111111111111111111";
-const authorizationKey = Buffer.from("test-privy-authorization-pkcs8-key-material-".repeat(3)).toString("base64");
+const authorizationKey = generateKeyPairSync("ec", {
+  namedCurve: "prime256v1",
+  privateKeyEncoding: { type: "pkcs8", format: "der" },
+  publicKeyEncoding: { type: "spki", format: "der" },
+}).privateKey.toString("base64");
 const signature = `0x${"a".repeat(130)}`;
 
 function typedData() {
