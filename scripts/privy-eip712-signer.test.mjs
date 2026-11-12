@@ -172,7 +172,7 @@ test("rejects malformed signatures and signatures from another wallet", async ()
 
 test("Privy Node adapter uses BSC CAIP-2, typed_data, authorization context and idempotency key", async () => {
   const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const authorizationPrivateKey = privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+  const authorizationPrivateKey = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
   let received;
   const client = {
     wallets() {
