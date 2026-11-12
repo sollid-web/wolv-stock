@@ -207,9 +207,19 @@ test("keeps settlement pending until enough independent chain evidence exists", 
   assert.deepEqual(h.committed, []);
 });
 
-test("failed independent settlement releases the live budget", async () => {
+test("chain evidence mismatch enters security hold and keeps the reservation locked", async () => {
   const h = harness([attempt({ status: "SETTLEMENT_PENDING" })], {
-    settlementResult: { status: "FAILED", reasonCode: "TOKEN_DELTA_MISMATCH" },
+    settlementResult: { status: "FAILED", reasonCode: "BSC_RFQ_TOKEN_DELTA_MISMATCH" },
+  });
+  const report = await h.recovery.run(ownerId);
+  assert.equal(h.state.get(attempt().id).status, "SECURITY_HOLD");
+  assert.deepEqual(h.released, []);
+  assert.equal(report.held, 1);
+});
+
+test("a reverted BSC transaction releases the live budget", async () => {
+  const h = harness([attempt({ status: "SETTLEMENT_PENDING" })], {
+    settlementResult: { status: "FAILED", reasonCode: "BSC_TRANSACTION_REVERTED" },
   });
   const report = await h.recovery.run(ownerId);
   assert.equal(h.state.get(attempt().id).status, "FAILED");
