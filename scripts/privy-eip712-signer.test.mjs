@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { privateKeyToAccount } from "viem/accounts";
-import { createPrivyEip712Signer, validatePrivyEip712Request } from "../services/autonomy/privy-eip712-signer.ts";
+import { createPrivyEip712Signer, createPrivyNodeEip712SigningClient, validatePrivyEip712Request } from "../services/autonomy/privy-eip712-signer.ts";
 
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const otherAccount = privateKeyToAccount(`0x${"22".repeat(32)}`);
@@ -167,4 +168,44 @@ test("rejects malformed signatures and signatures from another wallet", async ()
     },
   });
   await assert.rejects(() => wrongSigner.sign(request), /different wallet/);
+});
+
+test("Privy Node adapter uses BSC CAIP-2, typed_data, authorization context and idempotency key", async () => {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const authorizationPrivateKey = privateKey.export({ type: "pkcs8", format: "der" }).toString("base64");
+  let received;
+  const client = {
+    wallets() {
+      return {
+        ethereum() {
+          return {
+            async signTypedData(walletId, input) {
+              received = { walletId, input };
+              return { signature: `0x${"a".repeat(130)}` };
+            },
+          };
+        },
+      };
+    },
+  };
+  const signingClient = createPrivyNodeEip712SigningClient({ client, authorizationPrivateKey });
+  const typedData = makeRequest().typedData;
+  const result = await signingClient.signTypedData({
+    walletId: "privy-wallet-1",
+    walletAddress: account.address,
+    typedData,
+    idempotencyKey: "wolv-live-sign-op-0001",
+  });
+  assert.match(result.signature, /^0x[a-f0-9]{130}$/i);
+  assert.equal(received.walletId, "privy-wallet-1");
+  assert.equal(received.input.caip2, "eip155:56");
+  assert.equal(received.input.idempotency_key, "wolv-live-sign-op-0001");
+  assert.deepEqual(received.input.authorization_context.authorization_private_keys, [authorizationPrivateKey]);
+  assert.deepEqual(received.input.params.typed_data, {
+    domain: typedData.domain,
+    message: typedData.message,
+    primary_type: typedData.primaryType,
+    types: typedData.types,
+  });
+  assert.equal("address" in received.input, false);
 });
