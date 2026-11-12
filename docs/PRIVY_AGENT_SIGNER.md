@@ -68,6 +68,15 @@ The adapter passes the persisted signer-operation ID as the Privy idempotency ke
 
 This is the policy/verification layer, not a connected Privy transport. The repository does not yet install @privy-io/node, configure an authorization context, or connect a Privy wallet. The tests have been authored but have not been executed in a local checkout.
 
+## Runtime integration status
+
+- services/autonomy/privy-eip712-signer.ts contains the fail-closed typed-data validator, signer wrapper, server authorization context and idempotency-key binding.
+- services/autonomy/privy-node-runtime.ts loads the official @privy-io/node SDK dynamically and requires server-only app ID, app secret, wallet ID, wallet address and authorization private key.
+- scripts/privy-node-runtime.test.mjs covers the runtime configuration fail-closed checks.
+- The SDK dependency is not yet in package.json/package-lock.json, and the runtime loader has not been executed against a real Privy app. Install and lock the official SDK before connecting it to the live-entry worker.
+- The live-entry orchestrator now sequences policy checks, quote validation, reservation, attempt persistence, signing, RFQ simulation, gas recheck and submission. It requires a vendor-specific RFQ simulator dependency; none is currently registered, so live entry remains disabled.
+- A separate recovery-only worker is implemented and does not sign or submit new orders.
+
 ## Implementation sequence
 
 1. Capture and fixture-test a real Binance RFQ EIP-712 payload on BSC without signing or broadcasting.
