@@ -10,8 +10,8 @@ import {
     type Address,
     type Hex
 } from "viem"
-import { useAccount, useWalletClient } from "wagmi"
-import AgentSetupForm from "@/components/AgentSetupForm"
+import { useAccount, useSignMessage, useWalletClient } from "wagmi"
+import AgentSetupForm, { type AgentConfiguredStrategy } from "@/components/AgentSetupForm"
 import {
     AGENT_POLICY_HOOK_ABI
 } from "@/lib/setupAgentPolicy"
@@ -22,6 +22,12 @@ import {
     type AgentKernelClient
 } from "@/lib/kernelClient"
 import { isBscNetworkAllowedOnPath, isSupportedBscChainId } from "@/lib/bscChain"
+
+type RuntimeSchedule = {
+    scheduleId: string
+    name: string
+    enabled: boolean
+}
 
 type PolicySnapshot = {
     account: Address
@@ -76,6 +82,7 @@ export default function AgentPolicyPanel() {
     const pathname = usePathname()
     const { address, chainId, isConnected } = useAccount()
     const { data: walletClient } = useWalletClient()
+    const { signMessageAsync } = useSignMessage()
     const [kernelClient, setKernelClient] = useState<AgentKernelClient | null>(null)
     const [publicClient, setPublicClient] = useState<ReturnType<typeof getAgentPublicClient> | null>(null)
     const [clientOwnerKey, setClientOwnerKey] = useState("")
@@ -87,6 +94,12 @@ export default function AgentPolicyPanel() {
     const [notice, setNotice] = useState("")
     const [busy, setBusy] = useState(false)
     const [lastUserOperation, setLastUserOperation] = useState<Hex | null>(null)
+    const [pendingStrategy, setPendingStrategy] = useState<AgentConfiguredStrategy | null>(null)
+    const [runtimeSchedule, setRuntimeSchedule] = useState<RuntimeSchedule | null>(null)
+    const [runtimeScheduleLoaded, setRuntimeScheduleLoaded] = useState(false)
+    const [runtimeSessionAuthenticated, setRuntimeSessionAuthenticated] = useState(false)
+    const [runtimeBusy, setRuntimeBusy] = useState(false)
+    const [runtimeError, setRuntimeError] = useState("")
 
     const chainConfigured = isSupportedBscChainId(configuredChainId)
     const configuredNetworkName = configuredChainId === 97
@@ -205,6 +218,173 @@ export default function AgentPolicyPanel() {
         }
     }, [address, chainId, walletClient, walletReady, refreshPolicy, bundlerConfigured, bundlerVariable])
 
+    const refreshRuntimeSchedule = useCallback(async () => {
+        if (!address || !isConnected || !currentDerivedAccount) {
+            setRuntimeScheduleLoaded(false)
+            setRuntimeSchedule(null)
+            setRuntimeSessionAuthenticated(false)
+            return
+        }
+        try {
+            const sessionResponse = await fetch("/api/agent/session", {
+                cache: "no-store",
+                credentials: "same-origin"
+            })
+            const session = await sessionResponse.json()
+            if (!sessionResponse.ok || session.authenticated !== true ||
+                typeof session.address !== "string" || session.address.toLowerCase() !== address.toLowerCase()) {
+                setRuntimeSessionAuthenticated(false)
+                setRuntimeSchedule(null)
+                setRuntimeScheduleLoaded(true)
+                return
+            }
+            setRuntimeSessionAuthenticated(true)
+            const scheduleResponse = await fetch("/api/agent/schedules", {
+                cache: "no-store",
+                credentials: "same-origin"
+            })
+            const data = await scheduleResponse.json()
+            if (!scheduleResponse.ok || !Array.isArray(data.schedules)) {
+                throw new Error(typeof data.error === "string" ? data.error : "Autonomous schedule status could not be loaded.")
+            }
+            const matching = data.schedules.filter((item: unknown) => {
+                if (typeof item !== "object" || item === null || Array.isArray(item)) return false
+                const schedule = item as Record<string, unknown>
+                const config = schedule.strategyConfig
+                return schedule.strategyType === "BSC_AGENT_TRADE" &&
+                    schedule.executionMode === "AUTONOMOUS" &&
+                    typeof config === "object" && config !== null && !Array.isArray(config) &&
+                    typeof (config as Record<string, unknown>).account === "string" &&
+                    (config as Record<string, unknown>).account.toLowerCase() === currentDerivedAccount.toLowerCase()
+            }) as Array<Record<string, unknown>>
+            const selected = matching.find(item => item.enabled === true) ?? matching[0]
+            setRuntimeSchedule(selected && typeof selected.scheduleId === "string" && typeof selected.name === "string"
+                ? { scheduleId: selected.scheduleId, name: selected.name, enabled: selected.enabled === true }
+                : null)
+            setRuntimeError("")
+        } catch (cause) {
+            setRuntimeError(cause instanceof Error ? cause.message : "Autonomous schedule status could not be loaded.")
+        } finally {
+            setRuntimeScheduleLoaded(true)
+        }
+    }, [address, isConnected, currentDerivedAccount])
+
+    useEffect(() => {
+        void refreshRuntimeSchedule()
+    }, [refreshRuntimeSchedule])
+
+    async function authenticateRuntimeSession(): Promise<boolean> {
+        if (!isConnected || !address) {
+            setRuntimeError("Connect the owner wallet before enabling autonomous execution.")
+            return false
+        }
+        try {
+            const challengeResponse = await fetch("/api/agent/session/challenge", {
+                method: "POST",
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ address })
+            })
+            const challenge = await challengeResponse.json()
+            if (!challengeResponse.ok || typeof challenge.message !== "string") {
+                throw new Error(typeof challenge.error === "string" ? challenge.error : "Autonomous worker wallet authentication is unavailable.")
+            }
+            const signature = await signMessageAsync({ message: challenge.message })
+            const response = await fetch("/api/agent/session", {
+                method: "POST",
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ address, message: challenge.message, signature })
+            })
+            const session = await response.json()
+            if (!response.ok || session.authenticated !== true) {
+                throw new Error(typeof session.error === "string" ? session.error : "Autonomous worker wallet authentication failed.")
+            }
+            setRuntimeSessionAuthenticated(true)
+            return true
+        } catch (cause) {
+            setRuntimeError(cause instanceof Error ? cause.message : "Autonomous worker wallet authentication failed.")
+            return false
+        }
+    }
+
+    async function enableAutonomousSchedule() {
+        if (!pendingStrategy) return
+        setRuntimeBusy(true)
+        setRuntimeError("")
+        try {
+            if (!runtimeSessionAuthenticated && !(await authenticateRuntimeSession())) return
+            const strategy = pendingStrategy
+            const response = await fetch("/api/agent/schedules", {
+                method: "POST",
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: strategy.strategyId,
+                    intervalSeconds: 60,
+                    policyVersion: "WOLV_AGENT_POLICY_V2",
+                    policy: {
+                        targetToken: strategy.targetToken,
+                        maxTradeValueWei: strategy.maxTradeValueWei,
+                        expiresAt: strategy.expiresAt,
+                        intentSigner: strategy.intentSigner
+                    },
+                    strategyType: "BSC_AGENT_TRADE",
+                    executionMode: "AUTONOMOUS",
+                    strategyConfig: {
+                        id: strategy.strategyId,
+                        account: strategy.account,
+                        targetToken: strategy.targetToken,
+                        amountBnb: strategy.amountBnb,
+                        entryPriceMicros: strategy.entryPriceMicros,
+                        slippageBps: strategy.slippageBps,
+                        maxPriceImpactBps: strategy.maxPriceImpactBps
+                    }
+                })
+            })
+            const data = await response.json()
+            if (!response.ok || typeof data.scheduleId !== "string" || data.execution !== "AUTONOMOUS_SCHEDULED") {
+                throw new Error(typeof data.error === "string" ? data.error : "The autonomous strategy could not be registered.")
+            }
+            setRuntimeSchedule({ scheduleId: data.scheduleId, name: strategy.strategyId, enabled: true })
+            setPendingStrategy(null)
+            setRuntimeScheduleLoaded(true)
+            setNotice("Autonomous strategy saved. The server worker will evaluate it every 60 seconds without per-trade approval.")
+        } catch (cause) {
+            setRuntimeError(cause instanceof Error ? cause.message : "The autonomous strategy could not be registered.")
+        } finally {
+            setRuntimeBusy(false)
+        }
+    }
+
+    async function setAutonomousScheduleEnabled(enabled: boolean) {
+        if (!runtimeSchedule) return
+        setRuntimeBusy(true)
+        setRuntimeError("")
+        try {
+            const response = await fetch("/api/agent/schedules", {
+                method: "PATCH",
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ scheduleId: runtimeSchedule.scheduleId, enabled })
+            })
+            const data = await response.json()
+            if (!response.ok || data.enabled !== enabled) {
+                throw new Error(typeof data.error === "string" ? data.error : "The autonomous schedule could not be updated.")
+            }
+            setRuntimeSchedule({ ...runtimeSchedule, enabled })
+            setNotice(enabled ? "Autonomous schedule resumed." : "Autonomous schedule paused. On-chain policy remains installed.")
+        } catch (cause) {
+            setRuntimeError(cause instanceof Error ? cause.message : "The autonomous schedule could not be updated.")
+        } finally {
+            setRuntimeBusy(false)
+        }
+    }
+
     async function revokeAgent() {
         if (!activeKernelClient || !activePublicClient || !currentSnapshot || !validatorAddress || !address) return
         setBusy(true)
@@ -250,7 +430,7 @@ export default function AgentPolicyPanel() {
         && !currentSnapshot.revoked
         && currentSnapshot.expiresAt > BigInt(nowSeconds)
     )
-    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused)
+    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled)
     return (
         <section className="mx-auto w-full max-w-6xl px-4 py-8">
             <div className="mb-5">
@@ -272,7 +452,7 @@ export default function AgentPolicyPanel() {
                         active={Boolean(currentSnapshot?.installed)}
                     />
                     <StatusIndicator
-                        label={readyForExecution ? "Ready for execution" : "Execution unavailable"}
+                        label={runtimeSchedule?.enabled ? "Autonomous schedule enabled" : "No autonomous schedule"}
                         active={readyForExecution}
                     />
                 </div>
@@ -301,6 +481,7 @@ export default function AgentPolicyPanel() {
             )}
             {error && <p role="alert" className="mb-5 text-sm text-rose-300">{error}</p>}
             {notice && <p role="status" className="mb-5 text-sm text-emerald-300">{notice}</p>}
+            {runtimeError && <p role="alert" className="mb-5 text-sm text-rose-300">{runtimeError}</p>}
             {lastUserOperation && (
                 <p className="mb-5 break-all text-xs text-slate-400">Revocation UserOperation: {lastUserOperation}</p>
             )}
@@ -330,7 +511,9 @@ export default function AgentPolicyPanel() {
                 </div>
             )}
 
-            {walletReady && currentSnapshot && !policyActive && !currentSnapshot.revoked && validatorAddress && (
+            {walletReady && currentSnapshot && !currentSnapshot.revoked &&
+                (!policyActive || (runtimeScheduleLoaded && runtimeSessionAuthenticated && !runtimeSchedule?.enabled)) &&
+                !pendingStrategy && validatorAddress && (
                 <AgentSetupForm
                     ownerKernelClient={activeKernelClient}
                     publicClient={activePublicClient}
@@ -342,7 +525,9 @@ export default function AgentPolicyPanel() {
                         : bundlerConfigured
                             ? "Preparing the Kernel smart account..."
                             : `Configure ${bundlerVariable} before submitting agent policy transactions.`}
-                    onConfigured={async () => {
+                    onConfigured={async (strategy) => {
+                        setPendingStrategy(strategy)
+                        setNotice("On-chain policy verified. Enable autonomous execution to persist this strategy.")
                         if (activeKernelClient && address) {
                             if (activePublicClient) {
                                 await refreshPolicy(
