@@ -249,6 +249,10 @@ test("blocks mainnet submission even when live submission is enabled", async () 
 });
 
 test("network resolver requires separate acknowledgement for mainnet", () => {
+  assert.equal(resolveAgentExecutionNetwork(97, {
+    ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "false",
+  }).allowed, false);
   assert.deepEqual(resolveAgentExecutionNetwork(97, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
     WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
