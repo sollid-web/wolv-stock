@@ -1,3 +1,18 @@
+-- One operator-wide stop applies to every owner and strategy. New installations
+-- start stopped; only the server-side control function may release it.
+create table if not exists public.wolv_autonomy_global_control (
+  singleton boolean primary key default true check (singleton = true),
+  kill_switch boolean not null default true,
+  reason text not null default 'INITIAL_FAIL_CLOSED',
+  updated_at timestamptz not null default now()
+);
+insert into public.wolv_autonomy_global_control(singleton, kill_switch, reason)
+values (true, true, 'INITIAL_FAIL_CLOSED')
+on conflict (singleton) do nothing;
+alter table public.wolv_autonomy_global_control enable row level security;
+revoke all on public.wolv_autonomy_global_control from anon, authenticated;
+grant select on public.wolv_autonomy_global_control to service_role;
+
 -- Additional hard stops for autonomous portfolio breadth and realized losses.
 -- Defaults remain conservative; existing disabled portfolios stay disabled.
 alter table public.wolv_autonomy_portfolios
@@ -39,6 +54,7 @@ declare
   open_position_count integer;
   daily_realized_loss numeric(78,0);
   candidate_already_open boolean;
+  global_kill_switch boolean;
   utc_day_start timestamptz := date_trunc('day', now() at time zone 'UTC') at time zone 'UTC';
 begin
   if p_amount_in is null or p_amount_in <= 0 or p_amount_in <> trunc(p_amount_in)
@@ -46,6 +62,12 @@ begin
      or p_expected_amount_out <> trunc(p_expected_amount_out) then
     return false;
   end if;
+
+  select kill_switch into global_kill_switch
+  from public.wolv_autonomy_global_control
+  where singleton = true
+  for share;
+  if not found or global_kill_switch then return false; end if;
 
   select * into existing
   from public.wolv_autonomy_reservations
@@ -239,6 +261,12 @@ begin
     );
   end if;
   if reservation.status <> 'RESERVED' or reservation.expected_amount_out <> p_amount_out then return false; end if;
+
+  select kill_switch into global_kill_switch
+  from public.wolv_autonomy_global_control
+  where singleton = true
+  for share;
+  if not found or global_kill_switch then return false; end if;
 
   select * into account
   from public.wolv_autonomy_portfolios
