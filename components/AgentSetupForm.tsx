@@ -31,6 +31,7 @@ export type AgentConfiguredStrategy = {
 
 type AgentSetupFormProps = {
     ownerKernelClient: AgentKernelClient | null
+    ownerAddress: Address
     publicClient: PublicClient | null
     validatorAddress: Address
     installedTargetToken?: Address
@@ -80,6 +81,7 @@ function getFriendlySetupError(error: unknown): string {
 
 export default function AgentSetupForm({
     ownerKernelClient,
+    ownerAddress,
     publicClient,
     validatorAddress,
     installedTargetToken,
