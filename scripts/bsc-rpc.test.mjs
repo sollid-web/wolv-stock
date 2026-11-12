@@ -78,7 +78,7 @@ test("BSC client validates mined receipt and distinguishes failed transactions",
     if (method === "eth_chainId") return "0x38";
     if (method === "eth_getTransactionReceipt") return {
       transactionHash: txHash, status: "0x0", blockNumber: "0x100",
-      gasUsed: "0x5208", effectiveGasPrice: "0x3b9aca00",
+      gasUsed: "0x5208", effectiveGasPrice: "0x3b9aca00", logs: [],
     };
     throw new Error("unexpected method " + method);
   });
