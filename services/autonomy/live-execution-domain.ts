@@ -89,7 +89,7 @@ export function isRecoverableLiveExecutionStatus(status: LiveExecutionStatus): b
 }
 
 export function assertSafeLiveExecutionDetail(detail: Record<string, unknown>): void {
-  const forbidden = /^(signature|typedData|privateKey|secret|rawTransaction)$/i;
+  const forbidden = /^(signature|signatureData|typedData|typed_data|privateKey|private_key|secret|rawTransaction|raw_transaction|rawTx|calldata)$/i;
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
       value.forEach(visit);
