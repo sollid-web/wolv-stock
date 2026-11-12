@@ -178,6 +178,7 @@ export function createOneInchClassicClient(input: {
     return response.json() as Promise<unknown>;
   }
   return {
+    isConfigured: () => !!apiKey.trim(),
     async getQuote(quoteRequest: OneInchQuoteRequest): Promise<OneInchClassicQuote> {
       const response = await apiRequest("quote", {
         src: quoteRequest.inputTokenAddress, dst: quoteRequest.outputTokenAddress,
