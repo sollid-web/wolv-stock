@@ -16,7 +16,7 @@ const HEADERS = { "Cache-Control": "no-store" };
 
 function getWorkerReadiness() {
   const missing = [
-    !process.env.AGENT_PRIVATE_KEY ? "AGENT_PRIVATE_KEY" : null,
+    !/^0x[0-9a-f]{64}$/i.test(process.env.AGENT_PRIVATE_KEY ?? "") ? "AGENT_PRIVATE_KEY" : null,
     !process.env.AGENT_MARKET_DATA_MODULE ? "AGENT_MARKET_DATA_MODULE" : null,
     !process.env.AGENT_OWNER_VALIDATOR_MODULE ? "AGENT_OWNER_VALIDATOR_MODULE" : null,
     !process.env.REDIS_URL ? "REDIS_URL" : null,
