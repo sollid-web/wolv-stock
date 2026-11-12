@@ -141,7 +141,7 @@ A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9.
 
 ## Additional risk controls still required before live mode
 
-The current owner policy enforces order size, per-token position cost basis, daily spend, chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. It does not yet enforce a daily realized-loss stop, maximum concurrent positions/orders, portfolio-wide token concentration, minimum native-gas reserve or a separate operator-wide global kill switch. These must be implemented and tested before live execution; they must not be delegated to an LLM or inferred from strategy prompts.
+The owner policy and atomic reservation RPC now enforce order size, per-token position cost basis, daily spend, maximum concurrent token positions, daily realized paper-loss stop, chain/token/input-token allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Still required before live execution: maximum concurrent order count (separate from open positions), portfolio-wide exposure/concentration limits, a native-gas reserve floor, an operator-wide global kill switch, and a live-loss ledger based on independently settled trades. These controls must be deterministic and independently tested.
 
 ## Provider-neutral execution and BSC preflight update (2026-11-12)
 
@@ -161,3 +161,5 @@ Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds an atomic 
 The portfolio service loads open-position count and daily realized loss into the deterministic risk candidate. `evaluateRiskPolicy` rejects missing loss evidence when the cap is configured, rejects new assets at the concurrent-position limit, and permits adding to an already-open position subject to its per-token cap. The database RPC independently repeats the hard-stop checks at reservation time.
 
 Configuration: `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` defaults to 1; `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS` defaults to the configured daily spend cap and must fit within the paper budget. These limits are denominated in the configured input token's smallest units. They are paper-policy controls until a separate live policy and live ledger exist.
+
+Risk snapshot retrieval uses `wolv_get_autonomy_risk_snapshot`, a database-side aggregate returning exact realized-loss text and distinct active positions. This avoids relying on a client-side paginated list for hard-stop decisions. The atomic reservation RPC repeats both caps while holding the portfolio row lock.
