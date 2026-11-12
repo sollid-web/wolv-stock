@@ -10,6 +10,7 @@ import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const strategy = {
   id: "aapl-entry",
+  ownerAddress: "0x0000000000000000000000000000000000000111",
   account: "0x0000000000000000000000000000000000000789",
   targetToken: "0x0000000000000000000000000000000000000456",
   amountBnb: parseEther("0.1"),
@@ -21,6 +22,7 @@ const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
 const POLICY_EXPIRY = 2_000_000_000n;
 const POLICY_HASH = hashAgentPolicy({
   strategyId: strategy.id,
+  ownerAddress: strategy.ownerAddress,
   account: strategy.account,
   targetToken: strategy.targetToken,
   maxTradeValue: parseEther("0.5"),
@@ -96,6 +98,7 @@ test("passes preflight then publishes a bounded intent and capacity telemetry", 
   assert.equal(intents[0].amountOutMin > 0n, true);
   assert.equal(intents[0].slippageBps, strategy.slippageBps);
   assert.equal(intents[0].maxPriceImpactBps, strategy.maxPriceImpactBps);
+  assert.equal(intents[0].ownerAddress, strategy.ownerAddress);
   assert.equal(intents[0].policyHash, POLICY_HASH);
   assert.equal("intentNonce" in intents[0], false);
   assert.equal(worker.hasPendingIntent, true);
