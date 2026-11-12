@@ -292,21 +292,34 @@ export async function transitionLiveExecutionAttempt(input: {
     });
   }
   if (input.nextStatus === "PROVIDER_FILLED") {
+    const providerOrderId = evidence.provider_order_id ?? current.provider_order_id;
+    const amountIn = evidence.amount_in ?? current.amount_in;
+    const amountOut = evidence.amount_out ?? current.amount_out;
     assertProviderFillEvidence({
-      providerOrderId: evidence.provider_order_id ?? current.provider_order_id,
+      providerOrderId,
       transactionHash: evidence.transaction_hash ?? current.transaction_hash,
-      amountIn: evidence.amount_in ?? current.amount_in,
-      amountOut: evidence.amount_out ?? current.amount_out,
+      amountIn,
+      amountOut,
     });
+    if (providerOrderId !== current.provider_order_id ||
+        amountIn !== current.expected_amount_in ||
+        BigInt(amountOut!) < BigInt(current.minimum_amount_out)) {
+      throw new Error("Provider fill does not match the persisted RFQ order, exact input or minimum output");
+    }
   }
   if (input.nextStatus === "SETTLED") {
+    const amountIn = evidence.amount_in ?? current.amount_in ?? undefined;
+    const amountOut = evidence.amount_out ?? current.amount_out ?? undefined;
     assertLiveExecutionSettlementEvidence({
       transaction_hash: evidence.transaction_hash ?? current.transaction_hash ?? undefined,
-      amount_in: evidence.amount_in ?? current.amount_in ?? undefined,
-      amount_out: evidence.amount_out ?? current.amount_out ?? undefined,
+      amount_in: amountIn,
+      amount_out: amountOut,
       fee_amount: evidence.fee_amount ?? current.fee_amount ?? undefined,
       settlement_block: evidence.settlement_block ?? current.settlement_block ?? undefined,
     });
+    if (amountIn !== current.expected_amount_in || BigInt(amountOut!) < BigInt(current.minimum_amount_out)) {
+      throw new Error("Independent chain settlement does not satisfy the persisted RFQ order amounts");
+    }
   }
 
   const result = await request("rpc/wolv_live_execution_attempt_transition", {
