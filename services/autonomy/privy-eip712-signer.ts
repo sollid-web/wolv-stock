@@ -122,7 +122,7 @@ function validateMessageShape(
 
   for (const field of fields) {
     const child = value[field.name];
-    const arrayMatch = field.type.match(/^(.*)\\[[0-9]*\\]$/);
+    const arrayMatch = field.type.match(/^(.*)\[[0-9]*\]$/);
     const baseType = arrayMatch ? arrayMatch[1] : field.type;
     if (!typedData.types[baseType] || baseType === "EIP712Domain") continue;
 
@@ -301,6 +301,80 @@ export function createPrivyEip712Signer(client: PrivyEip712SigningClient) {
         throw new Error("Privy signature recovered to a different wallet than the quote-bound signer");
       }
       return result.signature;
+    },
+  };
+}
+
+
+/**
+ * Structural surface of the official @privy-io/node 0.39.x public API.
+ * Keep the adapter dependency-injected so tests can exercise the exact request
+ * without requiring Privy credentials or making network calls.
+ */
+export interface PrivyNodeEthereumWalletService {
+  signTypedData(
+    walletId: string,
+    input: {
+      address: string;
+      caip2: "eip155:56";
+      params: {
+        typed_data: {
+          domain: Record<string, unknown>;
+          message: Record<string, unknown>;
+          primary_type: string;
+          types: Record<string, Eip712Field[]>;
+        };
+      };
+      authorization_context: { authorization_private_keys: string[] };
+      idempotency_key: string;
+    },
+  ): Promise<{ encoding: "hex"; signature: string }>;
+}
+
+export interface PrivyNodeWalletsService {
+  ethereum(): PrivyNodeEthereumWalletService;
+}
+
+export interface PrivyNodeClientLike {
+  wallets(): PrivyNodeWalletsService;
+}
+
+function assertAuthorizationPrivateKey(value: string): void {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length < 80 || value.length % 4 !== 0) {
+    throw new Error("Privy authorization key must be base64-encoded PKCS8 P-256 private-key material");
+  }
+}
+
+export function createPrivyNodeEip712SigningClient(input: {
+  client: PrivyNodeClientLike;
+  authorizationPrivateKey: string;
+}): PrivyEip712SigningClient {
+  assertAuthorizationPrivateKey(input.authorizationPrivateKey);
+
+  return {
+    async signTypedData(request) {
+      const response = await input.client.wallets().ethereum().signTypedData(request.walletId, {
+        address: request.walletAddress,
+        caip2: "eip155:56",
+        params: {
+          typed_data: {
+            domain: request.typedData.domain,
+            message: request.typedData.message,
+            primary_type: request.typedData.primaryType,
+            types: request.typedData.types,
+          },
+        },
+        authorization_context: {
+          authorization_private_keys: [input.authorizationPrivateKey],
+        },
+        idempotency_key: request.idempotencyKey,
+      });
+
+      if (!response || response.encoding !== "hex" ||
+          typeof response.signature !== "string" || !SIGNATURE_PATTERN.test(response.signature)) {
+        throw new Error("Privy Node SDK returned a malformed EIP-712 signature response");
+      }
+      return { signature: response.signature };
     },
   };
 }
