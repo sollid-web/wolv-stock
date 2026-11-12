@@ -538,7 +538,7 @@ export default function AgentPolicyPanel() {
                 </div>
             )}
 
-            {policyActive && currentSnapshot && !currentSnapshot.revoked && (
+            {currentSnapshot && !currentSnapshot.revoked && (policyActive || pendingStrategy) && (
                 <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
                     <h2 className="text-lg font-bold text-white">Autonomous execution</h2>
                     {runtimeSchedule?.enabled ? (
@@ -592,14 +592,16 @@ export default function AgentPolicyPanel() {
                     onConfigured={async (strategy) => {
                         setPendingStrategy(strategy)
                         setNotice("On-chain policy verified. Enable autonomous execution to persist this strategy.")
-                        if (activeKernelClient && address) {
-                            if (activePublicClient) {
+                        if (activeKernelClient && address && activePublicClient) {
+                            try {
                                 await refreshPolicy(
                                     getAddress(activeKernelClient.account.address),
                                     activeKernelClient.chain?.id ?? configuredChainId,
                                     getAddress(address),
                                     activePublicClient
                                 )
+                            } catch (cause) {
+                                setRuntimeError(cause instanceof Error ? cause.message : "Policy readback will retry shortly.")
                             }
                         }
                     }}
