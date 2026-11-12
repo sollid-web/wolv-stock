@@ -13,11 +13,6 @@ function hexQuantity(value: unknown, field: string): string {
   }
   return value;
 }
-function toSafeInteger(value: string, field: string): number {
-  const parsed = BigInt(value);
-  if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("BSC RPC " + field + " exceeds safe integer range");
-  return Number(parsed);
-}
 function normalizeAddress(value: string, field: string): string {
   if (!ADDRESS.test(value)) throw new Error("Invalid " + field + " address");
   return value.toLowerCase();
