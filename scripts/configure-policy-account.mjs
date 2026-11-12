@@ -102,6 +102,7 @@ async function main() {
   }
   const policyHash = hashAgentPolicy({
     strategyId,
+    account,
     targetToken,
     maxTradeValue,
     expiresAt,
