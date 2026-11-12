@@ -101,3 +101,34 @@ test("BSC client rejects insecure remote RPC URLs and malformed receipts", async
   const client = createBscRpcClient({ rpcUrl: "https://rpc.example", fetchImpl: malformed.fetchImpl });
   await assert.rejects(client.getReceipt(txHash), /unknown status/);
 });
+
+
+test("BSC client binds transaction sender, target and chain and reads head block", async () => {
+  const fake = rpcFetch((method) => {
+    if (method === "eth_chainId") return "0x38";
+    if (method === "eth_getTransactionByHash") return {
+      hash: txHash, from: wallet, to: token, chainId: "0x38",
+    };
+    if (method === "eth_blockNumber") return "0x1234";
+    throw new Error("unexpected method " + method);
+  });
+  const client = createBscRpcClient({ rpcUrl: "https://rpc.example", fetchImpl: fake.fetchImpl });
+  assert.deepEqual(await client.getTransaction(txHash), {
+    hash: txHash, from: wallet, to: token, chainId: "56",
+  });
+  assert.equal(await client.getBlockNumber(), "4660");
+});
+
+test("BSC receipt rejects missing or malformed transfer-log evidence", async () => {
+  const fake = rpcFetch((method) => {
+    if (method === "eth_chainId") return "0x38";
+    if (method === "eth_getTransactionReceipt") return {
+      transactionHash: txHash, status: "0x1", blockNumber: "0x100",
+      gasUsed: "0x5208", effectiveGasPrice: "0x3b9aca00",
+      logs: [{ address: token, topics: ["0x1234"], data: "0x01" }],
+    };
+    throw new Error("unexpected method " + method);
+  });
+  const client = createBscRpcClient({ rpcUrl: "https://rpc.example", fetchImpl: fake.fetchImpl });
+  await assert.rejects(client.getReceipt(txHash), /malformed log fields/);
+});
