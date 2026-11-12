@@ -172,7 +172,7 @@ export function createBscRpcClient(input: {
       const log = item as Record<string, unknown>;
       if (typeof log.address !== "string" || !ADDRESS.test(log.address) ||
           !Array.isArray(log.topics) || log.topics.some((topic) => typeof topic !== "string" || !HASH.test(topic)) ||
-          typeof log.data !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(log.data)) {
+          typeof log.data !== "string" || !HEX.test(log.data)) {
         throw new Error("BSC RPC receipt contains malformed log fields");
       }
       return { address: log.address.toLowerCase(), topics: log.topics as string[], data: log.data };
