@@ -8,6 +8,7 @@ import {
 
 export type AgentPolicyHashInput = {
     strategyId: string
+    ownerAddress: Address
     account: Address
     targetToken: Address
     maxTradeValue: bigint
@@ -27,15 +28,17 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
     if (typeof input.strategyId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(input.strategyId)) {
         throw new TypeError("Policy strategy ID must be 1-64 safe identifier characters.")
     }
+    const ownerAddress = getAddress(input.ownerAddress)
     const account = getAddress(input.account)
     const targetToken = getAddress(input.targetToken)
     const intentSigner = getAddress(input.intentSigner)
     if (
-        account === "0x0000000000000000000000000000000000000000"
+        ownerAddress === "0x0000000000000000000000000000000000000000"
+        || account === "0x0000000000000000000000000000000000000000"
         || targetToken === "0x0000000000000000000000000000000000000000"
         || intentSigner === "0x0000000000000000000000000000000000000000"
     ) {
-        throw new TypeError("Policy account, token, and intent signer must be nonzero addresses.")
+        throw new TypeError("Policy owner, account, token, and intent signer must be nonzero addresses.")
     }
     if (input.maxTradeValue <= BigInt(0) || input.maxTradeValue > MAX_TRADE_VALUE || input.maxTradeValue > MAX_UINT192) {
         throw new RangeError("Policy maximum trade value must be between 1 wei and 0.5 BNB.")
@@ -58,12 +61,12 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
 
     return keccak256(encodeAbiParameters(
         [
-            { type: "string" }, { type: "string" }, { type: "address" }, { type: "address" },
+            { type: "string" }, { type: "string" }, { type: "address" }, { type: "address" }, { type: "address" },
             { type: "uint192" }, { type: "uint64" }, { type: "address" },
             { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" }
         ],
         [
-            "WOLV_AGENT_POLICY_V3", input.strategyId, account, targetToken,
+            "WOLV_AGENT_POLICY_V4", input.strategyId, ownerAddress, account, targetToken,
             input.maxTradeValue, input.expiresAt, intentSigner,
             input.amountBnb, input.entryPriceMicros, input.slippageBps, input.maxPriceImpactBps
         ]
