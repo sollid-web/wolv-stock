@@ -6,6 +6,8 @@ import {
   assertSafeLiveExecutionDetail,
   assertLiveExecutionSettlementEvidence,
   canRetryUnknownSubmission,
+  assertLiveExecutionSignerEvidence,
+  assertProviderFillEvidence,
 } from "../services/autonomy/live-execution-domain.ts";
 
 test("allows safe live execution progression and rejects illegal shortcuts", () => {
@@ -61,4 +63,47 @@ test("unknown submission retries stop exactly at the provider idempotency deadli
   assert.equal(canRetryUnknownSubmission("SUBMISSION_UNKNOWN", deadline, Date.parse(deadline)), false);
   assert.equal(canRetryUnknownSubmission("SUBMISSION_UNKNOWN", null, now), false);
   assert.equal(canRetryUnknownSubmission("SUBMITTED", deadline, now), false);
+});
+
+test("signer evidence must be durable and bound to the quoted wallet", () => {
+  const wallet = `0x${"a".repeat(40)}`;
+  assert.doesNotThrow(() => assertLiveExecutionSignerEvidence({
+    walletAddress: wallet,
+    signerAddress: wallet,
+    signerOperationId: "signer-op-0001",
+    preparedPayloadHash: "a".repeat(64),
+  }));
+  assert.throws(() => assertLiveExecutionSignerEvidence({
+    walletAddress: wallet,
+    signerAddress: `0x${"b".repeat(40)}`,
+    signerOperationId: "signer-op-0001",
+    preparedPayloadHash: "a".repeat(64),
+  }));
+  assert.throws(() => assertLiveExecutionSignerEvidence({
+    walletAddress: wallet,
+    signerAddress: wallet,
+    signerOperationId: "short",
+    preparedPayloadHash: "a".repeat(64),
+  }));
+});
+
+test("provider fill requires an order ID, transaction hash and positive actual amounts", () => {
+  assert.doesNotThrow(() => assertProviderFillEvidence({
+    providerOrderId: "order-123",
+    transactionHash: `0x${"a".repeat(64)}`,
+    amountIn: "100",
+    amountOut: "99",
+  }));
+  assert.throws(() => assertProviderFillEvidence({
+    providerOrderId: "order-123",
+    transactionHash: "0xdead",
+    amountIn: "100",
+    amountOut: "99",
+  }));
+  assert.throws(() => assertProviderFillEvidence({
+    providerOrderId: "order-123",
+    transactionHash: `0x${"a".repeat(64)}`,
+    amountIn: "0",
+    amountOut: "99",
+  }));
 });
