@@ -225,3 +225,23 @@ test("paper quote fills are terminal and expired quotes can be refreshed", () =>
     type: "LATE_FAILURE", at: "2026-11-08T12:00:08.000Z", actor: "worker",
   }), /terminal state/);
 });
+
+
+test("rejects a new asset when maximum concurrent positions are already open", () => {
+  const bounded = { ...policy, maxOpenPositions: 2 };
+  const full = { ...candidate, currentPosition: "0", currentOpenPositions: 2 };
+  assert.equal(evaluateRiskPolicy(bounded, full).code, "MAX_OPEN_POSITIONS_REACHED");
+  assert.deepEqual(
+    evaluateRiskPolicy(bounded, { ...full, currentPosition: "100" }),
+    { allowed: true, code: "RISK_APPROVED" },
+  );
+});
+
+test("halts new entries when the daily realized-loss cap is reached", () => {
+  const bounded = { ...policy, maxDailyRealizedLoss: "5000000" };
+  assert.equal(evaluateRiskPolicy(bounded, { ...candidate, dailyRealizedLoss: "5000000" }).code,
+    "DAILY_REALIZED_LOSS_LIMIT_REACHED");
+  assert.equal(evaluateRiskPolicy(bounded, { ...candidate, dailyRealizedLoss: "4999999" }).code,
+    "RISK_APPROVED");
+  assert.equal(evaluateRiskPolicy(bounded, candidate).code, "INVALID_NUMERIC_INPUT");
+});
