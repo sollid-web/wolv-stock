@@ -78,7 +78,7 @@ test("loads a default-disabled policy and keeps kill switch state explicit", asy
   assert.deepEqual(policy.allowedTransactionTargets, ["0x4444444444444444444444444444444444444444"]);
 });
 
-test("refuses an enabled policy while global stop is engaged", async (t) => {
+test("returns an enabled policy with the global stop visible so settlement recovery can continue", async (t) => {
   withSupabaseResponses(t, [portfolio({
     live_enabled: true,
     live_emergency_stop: false,
@@ -93,7 +93,9 @@ test("refuses an enabled policy while global stop is engaged", async (t) => {
     live_max_slippage_bps: 100,
     live_max_price_impact_bps: 200,
   })], true);
-  await assert.rejects(() => loadLiveExecutionPolicy(ownerId), /incomplete, stopped or zero-limit/);
+  const policy = await loadLiveExecutionPolicy(ownerId);
+  assert.equal(policy.enabled, true);
+  assert.equal(policy.globalKillSwitch, true);
 });
 
 test("accepts a complete enabled policy only when the global stop is released", async (t) => {
