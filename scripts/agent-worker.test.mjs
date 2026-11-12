@@ -25,6 +25,10 @@ const POLICY_HASH = hashAgentPolicy({
   maxTradeValue: parseEther("0.5"),
   expiresAt: POLICY_EXPIRY,
   intentSigner: INTENT_SIGNER,
+  amountBnb: strategy.amountBnb,
+  entryPriceMicros: strategy.entryPriceMicros,
+  slippageBps: strategy.slippageBps,
+  maxPriceImpactBps: strategy.maxPriceImpactBps,
 });
 
 function validPolicyState(overrides = {}) {
@@ -118,6 +122,16 @@ test("anchors intent age to local market-data receipt time", async () => {
 test("rejects a strategy label that is not bound into the on-chain policy hash", async () => {
   const { worker, telemetry, intents } = createHarness({
     strategies: [{ ...strategy, id: "unregistered-entry" }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
+});
+
+test("rejects strategy parameter changes that are not in the on-chain policy hash", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    strategies: [{ ...strategy, slippageBps: 150 }],
   });
   await worker.evaluateOnce();
 
