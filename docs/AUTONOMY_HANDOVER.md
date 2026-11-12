@@ -24,10 +24,10 @@ The LLM is not the risk engine and cannot override wallet policy, token allowlis
 - Atomic owner-scoped paper exit ledger with cost-basis release and realized paper P&L.
 - Binance RFQ submit/status adapter and BSC transaction-detail settlement verifier as isolated provider building blocks.
 - Provider registry used by the autonomous worker for entry round-trip quotes, unsigned order building and paper exit quotes; configured provider preference and fail-closed chain/configuration selection.
-- Isolated 1inch Classic BNB quote and unsigned transaction adapter with strict request binding and parser tests; documented separately because its execution model and risk evidence are not interchangeable with Binance RFQ.
+- Vendor-neutral quote/prepared-payload contracts and isolated 1inch Classic BNB quote/unsigned transaction adapter with strict request binding and parser tests; documented separately because its execution model and risk evidence are not interchangeable with Binance RFQ.
 - Tests covering domain rules, provider response parsers, exit calculations, migration safety and configuration.
 
-1inch Classic adapter implementation and integration gates: [ONEINCH_CLASSIC_ADAPTER.md](./ONEINCH_CLASSIC_ADAPTER.md). It is not yet active in the worker. Provider-independence status and adapter contract: see [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md). Binance is currently the only registered adapter; no second provider is active.
+1inch Classic adapter implementation and integration gates: [ONEINCH_CLASSIC_ADAPTER.md](./ONEINCH_CLASSIC_ADAPTER.md). It is not yet active in the worker; Binance's legacy worker adapter has not yet migrated to the new common contract. Provider-independence status and adapter contract: see [AUTONOMY_PROVIDER_REGISTRY.md](./AUTONOMY_PROVIDER_REGISTRY.md). Binance is currently the only registered adapter; no second provider is active.
 
 ## Not yet production-ready
 
