@@ -12,15 +12,15 @@ const envelope = (data, timestamp = now) => ({ code: 0, success: true, timestamp
 test("accepts a valid RFQ submit acknowledgement without calling it settled", () => {
   const result = parseBinanceRfqSubmitResponse(envelope({
     orderId, status: "PENDING_VENDOR", createdAt: now,
-  }), now);
+  }), orderId, now);
   assert.equal(result.status, "SUBMITTED");
   if (result.status === "SUBMITTED") assert.equal(result.providerOrderId, orderId);
 });
 test("malformed submit responses remain unknown, not rejected", () => {
-  assert.equal(parseBinanceRfqSubmitResponse({ code: 0, success: true, data: {} }, now).status, "UNKNOWN");
+  assert.equal(parseBinanceRfqSubmitResponse({ code: 0, success: true, data: {} }, orderId, now).status, "UNKNOWN");
   assert.equal(parseBinanceRfqSubmitResponse(envelope({
     orderId, status: "PENDING_VENDOR", createdAt: now - 120_000,
-  }), now).status, "UNKNOWN");
+  }), orderId, now).status, "UNKNOWN");
 });
 test("pending vendor and on-chain states remain pending", () => {
   for (const status of ["PENDING_VENDOR", "PENDING_ONCHAIN"]) {
@@ -43,4 +43,11 @@ test("mismatched IDs, stale snapshots and missing settlement evidence remain unk
   assert.equal(parseBinanceRfqStatusResponse(envelope({
     orderId, status: "FILLED", txHash: "bad", fromAmount: "1", toAmount: "2",
   }), orderId, now).status, "UNKNOWN");
+});
+
+test("submit acknowledgement must return the prepared provider order ID", () => {
+  const result = parseBinanceRfqSubmitResponse(envelope({
+    orderId: "different-order", status: "PENDING_VENDOR", createdAt: now,
+  }), orderId, now);
+  assert.equal(result.status, "UNKNOWN");
 });
