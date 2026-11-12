@@ -12,13 +12,17 @@ test("schema probe reports JSON EIP-712 field names without exposing message val
       primaryType: "Order",
       types: {
         EIP712Domain: [{ name: "chainId", type: "uint256" }],
-        Order: [{ name: "maker", type: "address" }, { name: "amount", type: "uint256" }],
+        Order: [{ name: "maker", type: "address" }, { name: "amount", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "data", type: "bytes" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }, { name: "data", type: "bytes" }],
       },
-      message: { maker: secretLikeValue, amount: "123456789" },
+      message: { maker: secretLikeValue, amount: "123456789", nonce: "99", deadline: "1900000000", data: "0xdeadbeef" },
     }),
   });
   assert.equal(summary.primaryType, "Order");
-  assert.deepEqual(summary.messageFieldNames, ["amount", "maker"]);
+  assert.deepEqual(summary.messageFieldNames, ["amount", "data", "deadline", "maker", "nonce"]);
+  assert.deepEqual(summary.transactionLikeFields, ["data", "deadline", "nonce"]);
+  assert.equal(summary.hasCalldataField, true);
+  assert.equal(summary.hasNonceField, true);
+  assert.equal(summary.hasExpiryField, true);
   assert.deepEqual(summary.typeDefinitions.Order, [
     { name: "maker", type: "address" }, { name: "amount", type: "uint256" },
   ]);
