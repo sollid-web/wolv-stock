@@ -248,6 +248,15 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   if (dailyRealizedLoss !== null && maxDailyRealizedLoss !== null && dailyRealizedLoss >= maxDailyRealizedLoss) {
     return { allowed: false, code: "DAILY_REALIZED_LOSS_LIMIT_REACHED", reason: "Daily realized-loss stop has been reached" };
   }
+  if (policy.maxOpenOrders !== undefined) {
+    if (!Number.isSafeInteger(policy.maxOpenOrders) || policy.maxOpenOrders < 1 ||
+        !Number.isSafeInteger(candidate.currentOpenOrders) || (candidate.currentOpenOrders as number) < 0) {
+      return { allowed: false, code: "INVALID_OPEN_ORDER_COUNT", reason: "Outstanding-order policy evidence is missing or invalid" };
+    }
+    if ((candidate.currentOpenOrders as number) >= policy.maxOpenOrders) {
+      return { allowed: false, code: "MAX_OPEN_ORDERS_REACHED", reason: "Maximum concurrent outstanding orders reached" };
+    }
+  }
   if (gasCostUsd > maxGasCostUsd) return { allowed: false, code: "GAS_LIMIT_EXCEEDED", reason: "Estimated gas USD cost exceeds the configured maximum" };
 
   const quoteAge = validTimestamp(candidate.now, "candidate.now") - validTimestamp(candidate.quoteObservedAt, "candidate.quoteObservedAt");
