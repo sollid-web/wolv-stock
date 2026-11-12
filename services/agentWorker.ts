@@ -1,4 +1,5 @@
 import type { Address, Client, Hex } from "viem"
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
 import { readContract } from "viem/actions"
 import {
     calculateDynamicQuote,
@@ -46,6 +47,7 @@ export type AgentCycleReason =
     | "SESSION_REVOKED"
     | "SESSION_NOT_INSTALLED"
     | "POLICY_NOT_CONFIGURED"
+    | "POLICY_HASH_MISMATCH"
     | "POLICY_EXPIRED"
     | "SLIPPAGE_HIGH"
     | "VALIDATOR_PASS"
@@ -364,6 +366,29 @@ export class AgentWorker {
                 || /^0x0{40}$/i.test(validator.intentSigner)
         ) {
             this.rejectCycle(strategy, telemetry("POLICY_NOT_CONFIGURED"))
+            return
+        }
+        let expectedPolicyHash: Hex
+        try {
+            expectedPolicyHash = hashAgentPolicy({
+                strategyId: strategy.id,
+                targetToken: strategy.targetToken,
+                maxTradeValue: validator.maxTradeValue,
+                expiresAt: validator.policyExpiresAt,
+                intentSigner: validator.intentSigner
+            })
+        } catch (error) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                error instanceof Error ? error.message : "Strategy policy identity is invalid."
+            ))
+            return
+        }
+        if (expectedPolicyHash.toLowerCase() !== validator.policyHash.toLowerCase()) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                "Configured strategy identity does not match the owner-authorized on-chain policy hash."
+            ))
             return
         }
         if (validator.policyExpiresAt * BigInt(1000) <= BigInt(this.now())) {
