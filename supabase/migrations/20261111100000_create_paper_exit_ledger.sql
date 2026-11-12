@@ -88,7 +88,7 @@ begin
      or p_net_proceeds_input_units <> trunc(p_net_proceeds_input_units)
      or p_net_proceeds_input_units <> greatest(0, p_gross_proceeds_input_units - p_fee_input_units)
      or p_quote_id is null or p_quote_id = ''
-     or p_exit_reason not in ('TAKE_PROFIT','STOP_LOSS','MAX_HOLDING_TIME')
+     or p_exit_reason is null or p_exit_reason not in ('TAKE_PROFIT','STOP_LOSS','MAX_HOLDING_TIME')
      or p_quote_observed_at is null then return false; end if;
 
   select * into prior_exit from public.wolv_autonomy_paper_exits
