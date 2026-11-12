@@ -21,7 +21,7 @@ function requiredEnv(env: Record<string, string | undefined>, key: string): stri
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "boolean") {
-    return JSON.stringify(value);
+    return JSON.stringify(value) ?? "null";
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new Error("Privy authorization payload contains a non-finite number");
@@ -161,13 +161,14 @@ export function createPrivyHttpEip712SigningClient(input: {
       } catch {
         throw new Error("Privy returned a non-JSON signing response");
       }
+      const data = parsed.data;
       if (parsed.method !== "eth_signTypedData_v4" ||
-          parsed.data?.encoding !== "hex" ||
-          typeof parsed.data.signature !== "string" ||
-          !/^0x[0-9a-f]{130}$/i.test(parsed.data.signature)) {
+          !data || data.encoding !== "hex" ||
+          typeof data.signature !== "string" ||
+          !/^0x[0-9a-f]{130}$/i.test(data.signature)) {
         throw new Error("Privy returned an invalid EIP-712 RPC response");
       }
-      return { signature: parsed.data.signature };
+      return { signature: data.signature };
     },
   };
 }
