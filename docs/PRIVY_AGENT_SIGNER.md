@@ -54,6 +54,20 @@ Never use NEXT_PUBLIC_ prefixes for these values. Never commit them or send them
 
 The SDK dependency should be added with a lockfile update in the same change. The repository currently does not include @privy-io/node; no dependency or lockfile was changed in this research step.
 
+## Implemented signer safety layer
+
+WOLV now includes services/autonomy/privy-eip712-signer.ts as a fail-closed signer adapter around an injected Privy signing client. Before the client is called, it requires:
+- JSON EIP-712 data (opaque hex payloads are rejected).
+- BSC chain ID 56 and an explicitly allowlisted verifying contract.
+- Exact approved primary type and exact type schema.
+- Exact declared message shape, with no undeclared message fields.
+- Explicit role bindings for all configured critical fields (wallet, tokens, amounts, expiry, nonce/quote identifiers as required by the captured schema).
+- The signed payload to recover to the wallet address bound to the execution quote.
+
+The adapter passes the persisted signer-operation ID as the Privy idempotency key, validates the 65-byte signature format, and independently recovers the signer address before returning the signature. The signature remains in memory only.
+
+This is the policy/verification layer, not a connected Privy transport. The repository does not yet install @privy-io/node, configure an authorization context, or connect a Privy wallet. The tests have been authored but have not been executed in a local checkout.
+
 ## Implementation sequence
 
 1. Capture and fixture-test a real Binance RFQ EIP-712 payload on BSC without signing or broadcasting.
