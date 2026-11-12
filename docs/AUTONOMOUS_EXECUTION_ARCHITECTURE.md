@@ -411,7 +411,7 @@ Official Binance references:
 
 ## Live-mode risk gaps
 
-The paper portfolio currently enforces per-order and per-token position caps, daily entry spend, allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Before live mode, add deterministic daily realized-loss stops, max concurrent positions/orders, portfolio-wide concentration limits, a native-gas reserve floor and an operator-wide global kill switch. Paper exit P&L is recorded, but a daily loss stop is not yet computed from that ledger. These controls are release blockers for unattended live execution.
+The paper portfolio now enforces per-order and per-token position caps, daily entry spend, maximum concurrent open token positions, a daily realized-paper-loss stop, allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds the database-atomic caps and a database-computed risk snapshot. Remaining release blockers include a maximum concurrent order count, portfolio-wide concentration limits, a native-gas reserve floor, an operator-wide global kill switch, and a separate live realized-loss ledger based on independently settled transactions.
 
 ## Normalized provider and BSC preflight update (2026-11-12)
 
@@ -420,3 +420,7 @@ The common provider contract is now implemented by both Binance RFQ and 1inch Cl
 A read-only BSC JSON-RPC client and EVM simulator now support chain-56 verification, gas/native/ERC-20 balance reads, exact unsigned transaction simulation through `eth_call` and `eth_estimateGas`, and mined receipt parsing. The adapter does not sign or broadcast. It is not yet wired into worker state transitions and does not independently value gas in USD. See [BSC_RPC_PREFLIGHT.md](./BSC_RPC_PREFLIGHT.md).
 
 Tests added for normalized provider selection, request binding, BSC RPC response validation, and unsigned EVM simulation. These tests have not yet been run in the user's environment; no test pass is claimed.
+
+## Supabase migration addition
+
+Apply `20261112100000_add_autonomy_portfolio_hard_stops.sql` after `20261111100000_create_paper_exit_ledger.sql`. It adds `max_open_positions` and `max_daily_realized_loss`, enforces both inside the locked budget-reservation RPC, and exposes `wolv_get_autonomy_risk_snapshot` for exact database-side open-position and daily-loss aggregates. The paper configuration command defaults to one concurrent open token position and a daily realized-loss limit equal to the configured daily spend cap.
