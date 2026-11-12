@@ -36,6 +36,11 @@ export function schemaSummary(order) {
       type: typeof field?.type === "string" ? field.type : null,
     })) : [],
   ]));
+  const message = typed.message ?? {};
+  const messageFieldNames = Object.keys(message).sort();
+  const transactionLikeFields = messageFieldNames.filter((name) =>
+    /^(to|target|recipient|data|calldata|input|value|gas|gasLimit|gasPrice|nonce|deadline|expiry|spender)$/i.test(name),
+  );
   return {
     ...base,
     opaqueHex: false,
@@ -48,7 +53,11 @@ export function schemaSummary(order) {
     },
     primaryType: typed.primaryType,
     typeDefinitions: fields,
-    messageFieldNames: Object.keys(typed.message ?? {}).sort(),
+    messageFieldNames,
+    transactionLikeFields,
+    hasCalldataField: transactionLikeFields.some((name) => /^(data|calldata|input)$/i.test(name)),
+    hasNonceField: transactionLikeFields.some((name) => /^nonce$/i.test(name)),
+    hasExpiryField: transactionLikeFields.some((name) => /^(deadline|expiry)$/i.test(name)),
     signingAllowedByCurrentWolvPolicy: false,
   };
 }
