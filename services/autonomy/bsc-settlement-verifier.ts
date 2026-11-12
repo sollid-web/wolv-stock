@@ -43,7 +43,11 @@ export function createBscSettlementVerifier(
       if (input.chainId !== "56") throw new Error("BSC settlement verifier supports chain 56 only");
       if (!HASH.test(input.transactionHash)) throw new Error("Invalid transaction hash");
       const wallet = normalizedAddress(input.walletAddress, "wallet");
-      const target = normalizedAddress(input.expectedTarget, "expected transaction target");\n      if (typeof input.expectedData !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(input.expectedData) ||\n          !/^(0|[1-9][0-9]*)$/.test(input.expectedValue)) {\n        throw new Error("Invalid expected transaction calldata or native value");\n      }
+      const target = normalizedAddress(input.expectedTarget, "expected transaction target");
+      if (typeof input.expectedData !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(input.expectedData) ||
+          !/^(0|[1-9][0-9]*)$/.test(input.expectedValue)) {
+        throw new Error("Invalid expected transaction calldata or native value");
+      }
       const inputToken = normalizedAddress(input.inputTokenAddress, "input token");
       const outputToken = normalizedAddress(input.outputTokenAddress, "output token");
       if (inputToken === outputToken) throw new Error("Settlement token addresses must differ");
@@ -59,7 +63,8 @@ export function createBscSettlementVerifier(
       if (receipt.status === "FAILED") return { status: "FAILED", reasonCode: "TRANSACTION_REVERTED" };
       const transaction = await client.getTransaction(input.transactionHash);
       if (!transaction) return { status: "PENDING", reason: "TRANSACTION_LOOKUP_PENDING" };
-      if (transaction.chainId !== "56" || transaction.from !== wallet || transaction.to !== target ||\n          transaction.data !== input.expectedData.toLowerCase() || transaction.value !== input.expectedValue) {
+      if (transaction.chainId !== "56" || transaction.from !== wallet || transaction.to !== target ||
+          transaction.data !== input.expectedData.toLowerCase() || transaction.value !== input.expectedValue) {
         return { status: "FAILED", reasonCode: "TRANSACTION_SENDER_TARGET_OR_CHAIN_MISMATCH" };
       }
 
