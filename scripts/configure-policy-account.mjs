@@ -34,7 +34,7 @@ function parseArguments(argv) {
       confirmed = true;
       continue;
     }
-    if (!["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"].includes(argument)) {
+    if (!["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"].includes(argument)) {
       throw new Error(`Unknown argument: ${argument}`);
     }
     if (values.has(argument)) throw new Error(`Duplicate argument: ${argument}`);
@@ -44,7 +44,7 @@ function parseArguments(argv) {
     index += 1;
   }
   if (!confirmed) throw new Error("Refusing to prepare policy calldata without --confirm-testnet.");
-  for (const required of ["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"]) {
+  for (const required of ["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"]) {
     if (!values.has(required)) throw new Error(`Required argument missing: ${required}`);
   }
   return values;
@@ -65,6 +65,10 @@ async function main() {
     throw new Error("--max-trade-wei must be between 1 and 0.5 BNB in wei.");
   }
   const expiresAt = BigInt(args.get("--expires-at"));
+  const amountBnb = BigInt(args.get("--amount-bnb-wei"));
+  const entryPriceMicros = BigInt(args.get("--entry-price-micros"));
+  const slippageBps = Number(args.get("--slippage-bps"));
+  const maxPriceImpactBps = Number(args.get("--max-price-impact-bps"));
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
   if (expiresAt <= nowSeconds || expiresAt > (1n << 64n) - 1n) {
     throw new Error("--expires-at must be a future Unix timestamp that fits uint64.");
@@ -102,6 +106,10 @@ async function main() {
     maxTradeValue,
     expiresAt,
     intentSigner,
+    amountBnb,
+    entryPriceMicros,
+    slippageBps,
+    maxPriceImpactBps,
   });
 
   const policyCall = encodeFunctionData({
@@ -129,6 +137,10 @@ async function main() {
   console.log(`Intent signer: ${intentSigner}`);
   console.log(`Policy hash: ${policyHash}`);
   console.log(`Maximum trade: ${maxTradeValue} wei`);
+  console.log(`Strategy amount: ${amountBnb} wei`);
+  console.log(`Entry price threshold: ${entryPriceMicros} micro-USD`);
+  console.log(`Maximum slippage: ${slippageBps} BPS`);
+  console.log(`Maximum price impact: ${maxPriceImpactBps} BPS`);
   console.log(`Policy expires: ${expiresAt}`);
   console.log("Submit this Kernel call through the smart account with its owner validator:");
   console.log(kernelCallData);
