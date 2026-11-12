@@ -217,5 +217,7 @@ export function createBscRpcClient(input: {
     getTokenBalance,
     simulateTransaction,
     getReceipt,
+    getTransaction,
+    getBlockNumber,
   };
 }
