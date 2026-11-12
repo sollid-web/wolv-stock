@@ -1,0 +1,237 @@
+export interface Eip712Field {
+  name: string;
+  type: string;
+}
+
+export interface Eip712TypedData {
+  domain: Record<string, unknown>;
+  types: Record<string, Eip712Field[]>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}
+
+export type Eip712FieldKind = "address" | "uint" | "string" | "bytes32";
+
+export interface ExpectedEip712Field {
+  path: string;
+  value: string;
+  kind: Eip712FieldKind;
+}
+
+export interface PrivyEip712Policy {
+  chainId: 56;
+  verifyingContracts: string[];
+  primaryType: string;
+  expectedTypes: Record<string, Eip712Field[]>;
+  expectedDomain?: Record<string, string>;
+  expectedFields: ExpectedEip712Field[];
+}
+
+export interface PrivyEip712SignRequest {
+  walletId: string;
+  walletAddress: string;
+  signerOperationId: string;
+  typedData: unknown;
+  policy: PrivyEip712Policy;
+}
+
+export interface PrivyEip712SigningClient {
+  signTypedData(input: {
+    walletId: string;
+    walletAddress: string;
+    typedData: Eip712TypedData;
+    idempotencyKey: string;
+  }): Promise<{ signature: string }>;
+}
+
+const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/i;
+const SIGNATURE_PATTERN = /^0x[0-9a-f]{130}$/i;
+const BYTES32_PATTERN = /^0x[0-9a-f]{64}$/i;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function canonicalize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function parseTypedData(value: unknown): Eip712TypedData {
+  let parsed = value;
+  if (typeof value === "string") {
+    if (value.startsWith("0x")) {
+      throw new Error("Opaque hex typed-data payloads are not eligible for unattended signing");
+    }
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      throw new Error("Typed-data payload is not valid JSON");
+    }
+  }
+
+  if (!isPlainObject(parsed) ||
+      !isPlainObject(parsed.domain) ||
+      !isPlainObject(parsed.types) ||
+      !isPlainObject(parsed.message) ||
+      typeof parsed.primaryType !== "string" ||
+      !parsed.primaryType) {
+    throw new Error("Malformed EIP-712 typed-data payload");
+  }
+
+  for (const [typeName, fields] of Object.entries(parsed.types)) {
+    if (!Array.isArray(fields) || !fields.every((field) =>
+      isPlainObject(field) &&
+      typeof field.name === "string" &&
+      typeof field.type === "string"
+    )) {
+      throw new Error(`Malformed EIP-712 type definition: ${typeName}`);
+    }
+  }
+
+  return parsed as unknown as Eip712TypedData;
+}
+
+function readPath(root: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  if (!path || parts.some((part) => !part || part === "__proto__" || part === "constructor" || part === "prototype")) {
+    throw new Error("Invalid EIP-712 message field path");
+  }
+
+  let value: unknown = root;
+  for (const part of parts) {
+    if (!isPlainObject(value) || !(part in value)) {
+      throw new Error(`Required EIP-712 message field is missing: ${path}`);
+    }
+    value = value[part];
+  }
+  return value;
+}
+
+function normalizeExpected(kind: Eip712FieldKind, value: unknown): string {
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") {
+    throw new Error("EIP-712 policy values must be scalar strings or integers");
+  }
+  const raw = String(value);
+
+  if (kind === "address") {
+    if (!ADDRESS_PATTERN.test(raw)) throw new Error("Invalid expected EIP-712 address");
+    return raw.toLowerCase();
+  }
+  if (kind === "uint") {
+    if (!/^(0|[1-9][0-9]*)$/.test(raw)) throw new Error("Invalid expected EIP-712 uint");
+    return BigInt(raw).toString();
+  }
+  if (kind === "bytes32") {
+    if (!BYTES32_PATTERN.test(raw)) throw new Error("Invalid expected EIP-712 bytes32");
+    return raw.toLowerCase();
+  }
+  return raw;
+}
+
+function normalizeActual(kind: Eip712FieldKind, value: unknown): string {
+  if (kind === "address") {
+    if (typeof value !== "string" || !ADDRESS_PATTERN.test(value)) {
+      throw new Error("EIP-712 message address field is malformed");
+    }
+    return value.toLowerCase();
+  }
+  if (kind === "uint") {
+    if ((typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") ||
+        (typeof value === "number" && !Number.isSafeInteger(value))) {
+      throw new Error("EIP-712 message uint field is malformed");
+    }
+    const raw = String(value);
+    if (!/^(0|[1-9][0-9]*)$/.test(raw)) throw new Error("EIP-712 message uint field is malformed");
+    return BigInt(raw).toString();
+  }
+  if (kind === "bytes32") {
+    if (typeof value !== "string" || !BYTES32_PATTERN.test(value)) {
+      throw new Error("EIP-712 message bytes32 field is malformed");
+    }
+    return value.toLowerCase();
+  }
+  if (typeof value !== "string") throw new Error("EIP-712 message string field is malformed");
+  return value;
+}
+
+export function validatePrivyEip712Request(request: PrivyEip712SignRequest): Eip712TypedData {
+  if (!request.walletId || request.walletId.length > 256) throw new Error("Privy wallet ID is required");
+  if (!ADDRESS_PATTERN.test(request.walletAddress)) throw new Error("Invalid wallet address");
+  if (!request.signerOperationId || request.signerOperationId.length < 8 || request.signerOperationId.length > 128) {
+    throw new Error("A durable signer operation ID is required");
+  }
+
+  const typedData = parseTypedData(request.typedData);
+  const chainId = typedData.domain.chainId;
+  if ((typeof chainId !== "string" && typeof chainId !== "number") ||
+      String(chainId) !== String(request.policy.chainId)) {
+    throw new Error("EIP-712 signing domain is not BNB Smart Chain (chain ID 56)");
+  }
+
+  const verifyingContract = typedData.domain.verifyingContract;
+  if (typeof verifyingContract !== "string" ||
+      !ADDRESS_PATTERN.test(verifyingContract) ||
+      !request.policy.verifyingContracts.some((address) =>
+        ADDRESS_PATTERN.test(address) && address.toLowerCase() === verifyingContract.toLowerCase()
+      )) {
+    throw new Error("EIP-712 verifying contract is not allowlisted");
+  }
+
+  if (typedData.primaryType !== request.policy.primaryType ||
+      !Object.prototype.hasOwnProperty.call(typedData.types, typedData.primaryType)) {
+    throw new Error("EIP-712 primary type is not allowlisted");
+  }
+
+  if (canonicalize(typedData.types) !== canonicalize(request.policy.expectedTypes)) {
+    throw new Error("EIP-712 type schema differs from the approved RFQ schema");
+  }
+
+  for (const [key, expectedValue] of Object.entries(request.policy.expectedDomain ?? {})) {
+    if (String(typedData.domain[key]) !== expectedValue) {
+      throw new Error(`EIP-712 domain field does not match policy: ${key}`);
+    }
+  }
+
+  if (!request.policy.expectedFields.length) {
+    throw new Error("At least one explicit EIP-712 message field binding is required");
+  }
+
+  const seenPaths = new Set<string>();
+  for (const field of request.policy.expectedFields) {
+    if (seenPaths.has(field.path)) throw new Error(`Duplicate EIP-712 policy field: ${field.path}`);
+    seenPaths.add(field.path);
+    const actual = readPath(typedData.message, field.path);
+    const expected = normalizeExpected(field.kind, field.value);
+    if (normalizeActual(field.kind, actual) !== expected) {
+      throw new Error(`EIP-712 message field does not match the execution intent: ${field.path}`);
+    }
+  }
+
+  return typedData;
+}
+
+export function createPrivyEip712Signer(client: PrivyEip712SigningClient) {
+  return {
+    async sign(request: PrivyEip712SignRequest): Promise<string> {
+      const typedData = validatePrivyEip712Request(request);
+      const result = await client.signTypedData({
+        walletId: request.walletId,
+        walletAddress: request.walletAddress,
+        typedData,
+        idempotencyKey: request.signerOperationId,
+      });
+
+      if (!result || typeof result.signature !== "string" || !SIGNATURE_PATTERN.test(result.signature)) {
+        throw new Error("Privy returned a malformed EIP-712 signature");
+      }
+      return result.signature;
+    },
+  };
+}
