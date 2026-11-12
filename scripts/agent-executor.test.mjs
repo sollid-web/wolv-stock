@@ -34,6 +34,10 @@ const POLICY_HASH = hashAgentPolicy({
   maxTradeValue: parseEther("0.5"),
   expiresAt: POLICY_EXPIRY,
   intentSigner: INTENT_SIGNER,
+  amountBnb: parseEther("0.1"),
+  entryPriceMicros: 100_000_000n,
+  slippageBps: 100,
+  maxPriceImpactBps: 300,
 });
 const ROUTER_BUY_ABI = [{
   type: "function",
@@ -167,6 +171,7 @@ function createHarness(overrides = {}) {
     slippageBps: 100,
     maxPriceImpactBps: 300,
     sourcePriceMicros: 90_000_000n,
+    entryPriceMicros: 100_000_000n,
     createdAt: new Date(now).toISOString(),
     policyHash: POLICY_HASH,
   };
