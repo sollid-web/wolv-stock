@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -33,8 +34,21 @@ export async function setGlobalKillSwitch(env = process.env, args = [], fetchImp
   return { killSwitch: payload.p_kill_switch, reason: payload.p_reason };
 }
 
+function loadLocalEnv() {
+  for (const file of [".env.local", ".env"]) {
+    if (!fs.existsSync(file)) continue;
+    for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (match && process.env[match[1]] === undefined) {
+        process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, "").trim();
+      }
+    }
+  }
+}
+
 const direct = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (direct) {
+  loadLocalEnv();
   try {
     const result = await setGlobalKillSwitch(process.env, process.argv.slice(2));
     console.log("[autonomy-global-control] killSwitch=" + result.killSwitch + " reason=" + result.reason);
