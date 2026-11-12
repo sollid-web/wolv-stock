@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   assertLiveExecutionSettlementEvidence,
+  assertLiveExecutionSignerEvidence,
+  assertProviderFillEvidence,
   assertSafeLiveExecutionDetail,
   canRetryUnknownSubmission,
   isAllowedLiveExecutionTransition,
@@ -227,13 +229,21 @@ export async function transitionLiveExecutionAttempt(input: {
   const evidence = input.evidence ?? {};
   assertSafeLiveExecutionDetail(detail);
 
+  if (["SIGNING_REQUESTED", "SIGNED", "SUBMITTING"].includes(input.nextStatus)) {
+    assertLiveExecutionSignerEvidence({
+      walletAddress: current.wallet_address,
+      signerAddress: evidence.signer_address ?? current.signer_address,
+      signerOperationId: evidence.signer_operation_id ?? current.signer_operation_id,
+      preparedPayloadHash: evidence.prepared_payload_hash ?? current.prepared_payload_hash,
+    });
+  }
   if (input.nextStatus === "PROVIDER_FILLED") {
-    if (!(evidence.provider_order_id ?? current.provider_order_id) ||
-        !(evidence.transaction_hash ?? current.transaction_hash) ||
-        !(evidence.amount_in ?? current.amount_in) ||
-        !(evidence.amount_out ?? current.amount_out)) {
-      throw new Error("Provider-filled status requires provider order, transaction and actual amount evidence.");
-    }
+    assertProviderFillEvidence({
+      providerOrderId: evidence.provider_order_id ?? current.provider_order_id,
+      transactionHash: evidence.transaction_hash ?? current.transaction_hash,
+      amountIn: evidence.amount_in ?? current.amount_in,
+      amountOut: evidence.amount_out ?? current.amount_out,
+    });
   }
   if (input.nextStatus === "SETTLED") {
     assertLiveExecutionSettlementEvidence({
