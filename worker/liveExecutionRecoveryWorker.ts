@@ -8,6 +8,7 @@ import {
   releaseLiveExecutionBudget,
 } from "../services/autonomy/supabase-live-execution-repository.ts";
 import { createLiveRfqSettlementAdapter } from "../services/autonomy/live-rfq-settlement-adapter.ts";
+import { loadLiveExecutionPolicy } from "../services/autonomy/supabase-live-portfolio-policy.ts";
 import { createLiveExecutionRecovery } from "../services/autonomy/live-execution-recovery.ts";
 import type { LiveExecutionEvidence } from "../services/autonomy/live-execution-domain.ts";
 
@@ -46,6 +47,14 @@ const recovery = createLiveExecutionRecovery({
   },
   provider: binanceRfqExecutionProvider,
   settlement,
+  async isNewEntryAllowed(owner) {
+    try {
+      const policy = await loadLiveExecutionPolicy(owner);
+      return !!policy && policy.enabled && !policy.emergencyStop && !policy.globalKillSwitch;
+    } catch {
+      return false;
+    }
+  },
 });
 
 async function main() {
