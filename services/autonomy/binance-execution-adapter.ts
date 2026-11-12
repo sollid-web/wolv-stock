@@ -1,5 +1,6 @@
 import { getValidatedBinanceRwaQuote } from "./binance-quote-provider";
 import { buildValidatedBinanceRfqOrder } from "./binance-rfq-order-provider";
+import { applySlippageFloor } from "./binance-roundtrip";
 import type { ValidatedBinanceQuote } from "./binance-quote";
 import type {
   AutonomousExecutionAdapter,
@@ -133,7 +134,7 @@ export const binanceExecutionAdapter: AutonomousExecutionAdapter = {
       inputTokenAddress: order.inputTokenAddress,
       outputTokenAddress: order.outputTokenAddress,
       amountIn: order.amountIn,
-      minimumAmountOut: quote.expectedAmountOut,
+      minimumAmountOut: applySlippageFloor(quote.expectedAmountOut, input.slippageBps),
       typedDataHash: order.typedDataHash,
       typedDataFormat: order.typedDataFormat,
       typedDataToSign: order.typedDataToSign,
