@@ -643,7 +643,11 @@ export class AgentExecutor {
                     targetToken: intent.targetToken,
                     maxTradeValue: validator.maxTradeValue,
                     expiresAt: validator.expiresAt,
-                    intentSigner: validator.intentSigner
+                    intentSigner: validator.intentSigner,
+                    amountBnb: intent.amountBnb,
+                    entryPriceMicros: intent.entryPriceMicros,
+                    slippageBps: intent.slippageBps,
+                    maxPriceImpactBps: intent.maxPriceImpactBps
                 })
             } catch {
                 expectedPolicyHash = null
