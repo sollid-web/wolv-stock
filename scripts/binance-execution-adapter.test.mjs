@@ -89,3 +89,23 @@ test("Binance adapter rejects expired or cross-provider normalized quote evidenc
     slippageBps: 50, maxPriceImpactBps: 100,
   }), /expired/);
 });
+
+
+test("Binance adapter rejects forged normalized fee, tax and token metadata before provider build", async () => {
+  const adapter = createBinanceExecutionAdapter({
+    getQuote: async () => quote,
+    buildOrder: async () => { throw new Error("must not build"); },
+  });
+  const normalized = await adapter.getQuote({
+    chainId: "56", walletAddress: wallet, inputTokenAddress: inputToken,
+    outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
+  });
+  await assert.rejects(adapter.prepareExecution({
+    quote: { ...normalized, providerEvidence: { ...normalized.providerEvidence, outputTokenTaxRate: "2" } },
+    slippageBps: 50, maxPriceImpactBps: 100,
+  }), /unsafe fee, tax, price or impact evidence/);
+  await assert.rejects(adapter.prepareExecution({
+    quote: { ...normalized, tokenMetadata: { inputDecimals: 6, outputDecimals: 99 } },
+    slippageBps: 50, maxPriceImpactBps: 100,
+  }), /invalid token decimals/);
+});
