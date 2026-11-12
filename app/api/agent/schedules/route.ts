@@ -63,7 +63,7 @@ export async function POST(request: Request) {
   let policyHash: string;
   let normalizedStrategyConfig: Record<string, unknown> = strategyConfig;
   if (strategyType === "BSC_AGENT_TRADE") {
-    if (executionMode !== "AUTONOMOUS" || value.policyVersion !== "WOLV_AGENT_POLICY_V2" ||
+    if (executionMode !== "AUTONOMOUS" || value.policyVersion !== "WOLV_AGENT_POLICY_V3" ||
       value.name !== strategyConfig.id ||
       typeof strategyConfig.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyConfig.id) ||
       typeof strategyConfig.account !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(strategyConfig.account) ||
