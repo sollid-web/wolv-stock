@@ -30,6 +30,8 @@ const attempt = {
   input_token_address: tokenIn,
   expected_amount_in: "1000",
   minimum_amount_out: "940",
+  settlement_allowed_senders: [relayer],
+  settlement_allowed_targets: [router],
   status: "SETTLEMENT_PENDING",
   version: 5,
   execution_side: "BUY",
@@ -57,43 +59,6 @@ const attempt = {
   updated_at: new Date().toISOString(),
 };
 
-function policy(overrides = {}) {
-  return {
-    ownerId,
-    walletAddress: wallet,
-    chainId: "56",
-    inputTokenAddress: tokenIn,
-    policyVersion: "live-policy-1",
-    enabled: false,
-    emergencyStop: true,
-    globalKillSwitch: true,
-    allowedChainIds: ["56"],
-    allowedTokenAddresses: [tokenOut],
-    allowedInputTokenAddresses: [tokenIn],
-    allowedTransactionSenders: [relayer],
-    allowedTransactionTargets: [router],
-    budgetAmount: "0",
-    reservedAmount: "0",
-    committedAmount: "0",
-    dailySpendAmount: "0",
-    dailySpendDate: "2026-11-12",
-    maxOrderAmount: "0",
-    maxPositionAmount: "0",
-    maxDailySpend: "0",
-    maxOpenPositions: 1,
-    maxOpenOrders: 1,
-    maxDailyRealizedLoss: "0",
-    minNativeGasBalanceWei: "0",
-    maxSlippageBps: 0,
-    maxPriceImpactBps: 0,
-    maxQuoteAgeMs: 0,
-    maxGasCostUsd: "0",
-    minExpectedEdgeBps: 0,
-    networkFeeBufferBps: 10000,
-    ...overrides,
-  };
-}
-
 test("continues settlement recovery with new-entry kill switch engaged", async () => {
   const client = {
     async getReceipt() {
@@ -108,10 +73,7 @@ test("continues settlement recovery with new-entry kill switch engaged", async (
     },
     async getBlockNumber() { return "120"; },
   };
-  const adapter = createLiveRfqSettlementAdapter({
-    client,
-    loadPolicy: async () => policy(),
-  });
+  const adapter = createLiveRfqSettlementAdapter({ client });
   const result = await adapter.verify(attempt);
   assert.equal(result.status, "SETTLED");
   if (result.status === "SETTLED") {
@@ -121,16 +83,17 @@ test("continues settlement recovery with new-entry kill switch engaged", async (
   }
 });
 
-test("refuses settlement if the current wallet or policy version differs", async () => {
+test("fails closed when an attempt has no snapshotted vendor allowlists", async () => {
   const client = {
     async getReceipt() { throw new Error("should not query chain"); },
     async getTransaction() { throw new Error("should not query chain"); },
     async getBlockNumber() { throw new Error("should not query chain"); },
   };
-  const adapter = createLiveRfqSettlementAdapter({
-    client,
-    loadPolicy: async () => policy({ policyVersion: "rotated-policy" }),
+  const adapter = createLiveRfqSettlementAdapter({ client });
+  const result = await adapter.verify({
+    ...attempt,
+    settlement_allowed_senders: [],
+    settlement_allowed_targets: [],
   });
-  const result = await adapter.verify(attempt);
   assert.equal(result.status, "UNKNOWN");
 });
