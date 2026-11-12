@@ -362,3 +362,23 @@ The existing Reown/Wagmi wallet connection is not automatically a server signer.
 
 See [RFQ Signer Acceptance Plan](./RFQ_SIGNER_ACCEPTANCE_PLAN.md) for the required payload, wallet-policy, signature-recovery, revocation and settlement gates. Until those gates are met, WOLV remains paper-only and does not claim unattended live execution.
 
+## Paper position exits and realized P&L (2026-11-11)
+
+WOLV now includes an opt-in paper exit lifecycle:
+- Deterministic take-profit, stop-loss and maximum-holding-time decisions use integer base-unit arithmetic and basis points.
+- Exit thresholds are portfolio policy fields and remain disabled by default. At least one explicit threshold is required before paper exits can be enabled.
+- The worker reads open paper positions, obtains a fresh reverse-direction Binance RFQ quote, applies a conservative slippage haircut, output-token tax and buffered estimated network fee, then evaluates the configured exit policy.
+- A new owner-scoped Supabase RPC locks the portfolio and position, prevents overselling, writes an idempotent paper-exit record, releases the proportional cost basis and updates paper committed capital atomically.
+- A new-entry emergency stop does not block an explicitly configured risk-reducing paper exit. It still blocks new entry reservations.
+- Partial-close accounting is supported by the ledger RPC; the current worker closes the full remaining paper position when an exit trigger fires.
+
+This is still a **quote-based paper exit**, not an actual sale. The exit price is an RFQ observation and can change before a real order is submitted. Realized paper P&L is stored in the paper-exit ledger and is not a statement of wallet profit or loss. The new migration `20261111100000_create_paper_exit_ledger.sql` must be applied before the updated worker can run against Supabase. Existing portfolios remain exit-disabled until explicitly configured.
+
+The paper config script accepts:
+- `WOLV_AUTONOMY_PAPER_TAKE_PROFIT_BPS`
+- `WOLV_AUTONOMY_PAPER_STOP_LOSS_BPS`
+- `WOLV_AUTONOMY_PAPER_MAX_HOLDING_MS`
+- `--enable-paper-exits` to explicitly enable the exit policy
+
+The three thresholds are independently optional, but at least one must be supplied to enable exits. Exit policy configuration is separate from enabling new paper entries.
+
