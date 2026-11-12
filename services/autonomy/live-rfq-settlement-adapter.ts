@@ -1,7 +1,7 @@
 import { createBscRfqSettlementVerifier } from "./bsc-rfq-settlement-verifier";
 import { createBscRpcClient } from "./bsc-rpc";
 import type { LiveExecutionAttempt } from "./live-execution-domain";
-import type { LiveChainSettlementVerifier } from "./execution-contracts";
+import type { LiveChainSettlementVerifier } from "./live-execution-recovery";
 import type { LiveExecutionPolicy } from "./supabase-live-portfolio-policy";
 
 export function createLiveRfqSettlementAdapter(input: {
