@@ -38,6 +38,7 @@ function makeRequest(overrides = {}) {
     },
   };
   const policy = {
+    vendor: "vendor-test",
     chainId: 56,
     verifyingContracts: [verifyingContract],
     primaryType: "RFQOrder",
