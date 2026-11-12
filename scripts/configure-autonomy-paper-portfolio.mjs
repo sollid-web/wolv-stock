@@ -60,6 +60,10 @@ export function buildPortfolioConfig(env, enablePaper = false, enablePaperExits 
   if (!/^[1-9][0-9]*$/.test(maxDailyRealizedLoss) || BigInt(maxDailyRealizedLoss) > BigInt(paperBudget)) {
     throw new Error("WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS must be a positive integer within the paper budget.");
   }
+  const minNativeGasBalanceWei = env.WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI?.trim() || "0";
+  if (!/^(0|[1-9][0-9]*)$/.test(minNativeGasBalanceWei)) {
+    throw new Error("WOLV_AUTONOMY_MIN_NATIVE_GAS_BALANCE_WEI must be a non-negative integer in wei.");
+  }
   if (BigInt(maxOrder) > BigInt(paperBudget) || BigInt(maxPosition) > BigInt(paperBudget) ||
       BigInt(maxDailySpend) > BigInt(paperBudget) || BigInt(maxOrder) > BigInt(maxDailySpend)) {
     throw new Error("Order, position and daily limits must fit inside the configured paper budget.");
@@ -107,6 +111,7 @@ export function buildPortfolioConfig(env, enablePaper = false, enablePaperExits 
     max_open_positions: Number(maxOpenPositionsRaw),
     max_open_orders: Number(maxOpenOrdersRaw),
     max_daily_realized_loss: maxDailyRealizedLoss,
+    min_native_gas_balance_wei: minNativeGasBalanceWei,
     max_slippage_bps: integer("WOLV_AUTONOMY_MAX_SLIPPAGE_BPS", 0, 5000),
     max_price_impact_bps: integer("WOLV_AUTONOMY_MAX_PRICE_IMPACT_BPS", 0, 10000),
     max_quote_age_ms: integer("WOLV_AUTONOMY_MAX_QUOTE_AGE_MS", 1000, 3600000),
