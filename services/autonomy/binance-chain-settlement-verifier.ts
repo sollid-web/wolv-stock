@@ -15,7 +15,7 @@ function decimal(value: unknown): string | null {
 }
 
 export function parseBinanceBscSettlement(input: {
-  response: unknown; expectedTxHash: string; walletAddress: string;
+  response: unknown; chainId: string; expectedTxHash: string; walletAddress: string;
   inputTokenAddress: string; outputTokenAddress: string;
   expectedAmountIn: string; expectedAmountOut: string; now?: number;
 }) {
@@ -27,7 +27,7 @@ export function parseBinanceBscSettlement(input: {
   if (!Number.isSafeInteger(responseTime) || responseTime <= 0 || responseTime > now + 5_000 || now - responseTime > 30_000) {
     return unknown("Transaction detail response timestamp is invalid or stale");
   }
-  if (!/^0x[0-9a-fA-F]{64}$/.test(input.expectedTxHash) ||
+  if (input.chainId !== "56" || !/^0x[0-9a-fA-F]{64}$/.test(input.expectedTxHash) ||
       !/^0x[0-9a-fA-F]{40}$/.test(input.walletAddress) ||
       !/^0x[0-9a-fA-F]{40}$/.test(input.inputTokenAddress) ||
       !/^0x[0-9a-fA-F]{40}$/.test(input.outputTokenAddress) ||
@@ -39,6 +39,7 @@ export function parseBinanceBscSettlement(input: {
     candidate.txhash.toLowerCase() === input.expectedTxHash.toLowerCase(),
   );
   if (!record(tx)) return { status: "PENDING" as const };
+  if (String(tx.chainIndex ?? tx.binanceChainId) !== input.chainId) return unknown("Transaction chain does not match the requested chain");
   if (tx.txStatus === "pending" || tx.txStatus === "confirming") return { status: "PENDING" as const };
   if (tx.txStatus !== "success") {
     if (tx.txStatus === "failed" || tx.txStatus === "fail") return { status: "FAILED" as const, reasonCode: "BSC_TRANSACTION_FAILED" };
@@ -63,11 +64,12 @@ export function parseBinanceBscSettlement(input: {
     return unknown("On-chain token transfer amounts do not match the RFQ provider settlement amounts");
   }
   const feeAmount = decimal(tx.txFee);
-  if (feeAmount === null) return unknown("Successful transaction is missing a valid network fee amount");
+  const blockNumber = positiveInteger(tx.height);
+  if (feeAmount === null || blockNumber === null) return unknown("Successful transaction is missing valid fee or block evidence");
   return {
     status: "SETTLED" as const,
     amountIn: actualIn.toString(), amountOut: actualOut.toString(),
-    feeAmount, blockNumber: String(tx.height ?? ""),
+    feeAmount, blockNumber,
   };
 }
 
@@ -76,13 +78,10 @@ export const binanceBscSettlementVerifier: ChainSettlementVerifier = {
     try {
       const response = await getTransactionDetailByTxHash(input.chainId, input.transactionHash);
       const result = parseBinanceBscSettlement({
-        response, expectedTxHash: input.transactionHash, walletAddress: input.walletAddress,
+        response, chainId: input.chainId, expectedTxHash: input.transactionHash, walletAddress: input.walletAddress,
         inputTokenAddress: input.inputTokenAddress, outputTokenAddress: input.outputTokenAddress,
         expectedAmountIn: input.expectedAmountIn, expectedAmountOut: input.expectedAmountOut,
       });
-      if (result.status === "SETTLED") {
-        return { ...result, blockNumber: result.blockNumber || "0" };
-      }
       return result;
     } catch (error) {
       return { status: "UNKNOWN", reason: error instanceof Error ? error.message.slice(0, 200) : "Transaction verification failed" };
