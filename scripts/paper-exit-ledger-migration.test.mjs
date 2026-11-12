@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const migration = fs.readFileSync(new URL("../supabase/migrations/20261111100000_create_paper_exit_ledger.sql", import.meta.url), "utf8");
+const migration = fs.readFileSync(new URL("../supabase/migrations/20261112193114_create_paper_exit_ledger.sql", import.meta.url), "utf8");
 
 test("paper exit policy defaults disabled and requires at least one configured threshold", () => {
   assert.match(migration, /paper_exit_enabled boolean not null default false/);
