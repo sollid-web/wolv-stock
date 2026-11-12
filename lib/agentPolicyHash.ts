@@ -31,7 +31,8 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
     const targetToken = getAddress(input.targetToken)
     const intentSigner = getAddress(input.intentSigner)
     if (
-        targetToken === "0x0000000000000000000000000000000000000000"
+        account === "0x0000000000000000000000000000000000000000"
+        || targetToken === "0x0000000000000000000000000000000000000000"
         || intentSigner === "0x0000000000000000000000000000000000000000"
     ) {
         throw new TypeError("Policy token and intent signer must be nonzero addresses.")
