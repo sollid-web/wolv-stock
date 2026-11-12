@@ -14,8 +14,8 @@ const quote = {
   inputTokenUsdPrice: "1", outputTokenUsdPrice: "1",
   approvalTarget: null, inputTokenDecimals: 6, outputTokenDecimals: 18,
   inputTokenTaxRate: "0", outputTokenTaxRate: "0", route: "rfq-route",
-  routeFingerprint: "route-fingerprint", observedAt: new Date().toISOString(),
-  expiresAt: new Date(Date.now() + 15_000).toISOString(), rawEvidenceRef: "evidence-fingerprint",
+  routeFingerprint: "a".repeat(64), observedAt: new Date().toISOString(),
+  expiresAt: new Date(Date.now() + 15_000).toISOString(), rawEvidenceRef: "b".repeat(64),
 };
 const typedData = JSON.stringify({
   domain: { name: "Test", version: "1", chainId: 56, verifyingContract: inputToken },
@@ -51,7 +51,7 @@ test("Binance adapter restores only its own quote and prepares unsigned typed da
         amountIn: "1000", expectedAmountOut: "10000",
         typedDataHash: "typed-hash", typedDataToSign: typedData,
         typedDataFormat: "JSON_TYPED_DATA", approvalTarget: null,
-        routeFingerprint: "route-fingerprint", rawEvidenceRef: "rfq-evidence",
+        routeFingerprint: "a".repeat(64), rawEvidenceRef: "b".repeat(64),
         approvalRequired: false, preparedAt: new Date().toISOString(),
         quoteExpiresAt: quote.expiresAt,
       };
