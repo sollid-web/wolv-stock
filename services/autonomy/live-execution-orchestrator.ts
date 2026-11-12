@@ -3,7 +3,7 @@ import type { ValidatedBinanceQuote } from "./binance-quote";
 import type { ValidatedBinanceRfqOrder } from "./binance-rfq-order";
 import type { ValidatedRoundTripQuote } from "./binance-roundtrip";
 import type { SubmissionResult } from "./execution-contracts";
-import type { LiveExecutionAttempt, LiveExecutionStatus } from "./live-execution-domain";
+import type { LiveExecutionAttempt, LiveExecutionEvidence, LiveExecutionStatus } from "./live-execution-domain";
 import type { LiveExecutionPolicy } from "./supabase-live-portfolio-policy";
 import {
   bindPrivyEip712PolicyToOrder,
@@ -46,7 +46,7 @@ export interface LiveExecutionAttemptRepository {
     eventType: string;
     actor: string;
     detail?: Record<string, unknown>;
-    evidence?: Record<string, string>;
+    evidence?: LiveExecutionEvidence;
   }): Promise<LiveExecutionAttempt | null>;
   reserve(input: {
     ownerId: string;
