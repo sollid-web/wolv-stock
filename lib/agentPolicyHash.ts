@@ -1,5 +1,5 @@
 import {
-    encodePacked,
+    encodeAbiParameters,
     getAddress,
     keccak256,
     type Address,
@@ -7,6 +7,7 @@ import {
 } from "viem"
 
 export type AgentPolicyHashInput = {
+    strategyId: string
     targetToken: Address
     maxTradeValue: bigint
     expiresAt: bigint
@@ -18,6 +19,9 @@ const MAX_UINT64 = (BigInt(1) << BigInt(64)) - BigInt(1)
 const MAX_UINT192 = (BigInt(1) << BigInt(192)) - BigInt(1)
 
 export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
+    if (typeof input.strategyId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(input.strategyId)) {
+        throw new TypeError("Policy strategy ID must be 1-64 safe identifier characters.")
+    }
     const targetToken = getAddress(input.targetToken)
     const intentSigner = getAddress(input.intentSigner)
     if (
@@ -33,8 +37,8 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
         throw new RangeError("Policy expiry must fit uint64 and be greater than zero.")
     }
 
-    return keccak256(encodePacked(
-        ["address", "uint192", "uint64", "address"],
-        [targetToken, input.maxTradeValue, input.expiresAt, intentSigner]
+    return keccak256(encodeAbiParameters(
+        [{ type: "string" }, { type: "string" }, { type: "address" }, { type: "uint192" }, { type: "uint64" }, { type: "address" }],
+        ["WOLV_AGENT_POLICY_V2", input.strategyId, targetToken, input.maxTradeValue, input.expiresAt, intentSigner]
     ))
 }
