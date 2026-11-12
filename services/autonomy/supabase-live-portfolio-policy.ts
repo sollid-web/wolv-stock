@@ -1,6 +1,7 @@
 export interface LiveExecutionPolicy {
   ownerId: string;
   walletAddress: string;
+  privyWalletId: string;
   chainId: string;
   inputTokenAddress: string;
   policyVersion: string;
@@ -105,7 +106,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
 
   const query = new URLSearchParams({
     select: [
-      "owner_id", "wallet_address", "chain_id", "input_token_address", "policy_version",
+      "owner_id", "wallet_address", "live_privy_wallet_id", "chain_id", "input_token_address", "policy_version",
       "live_enabled", "live_emergency_stop", "emergency_stop",
       "allowed_chain_ids", "allowed_token_addresses", "allowed_input_token_addresses",
       "live_allowed_transaction_senders", "live_allowed_transaction_targets",
@@ -149,6 +150,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
   const policy: LiveExecutionPolicy = {
     ownerId,
     walletAddress: address(row.wallet_address, "wallet_address"),
+    privyWalletId: text(row.live_privy_wallet_id, "live_privy_wallet_id"),
     chainId: text(row.chain_id, "chain_id"),
     inputTokenAddress: address(row.input_token_address, "input_token_address"),
     policyVersion: text(row.policy_version, "policy_version"),
@@ -181,6 +183,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
   };
 
   if (policy.enabled && (
+    !policy.privyWalletId ||
     policy.chainId !== "56" ||
     !policy.allowedChainIds.includes("56") ||
     policy.budgetAmount === "0" || policy.maxOrderAmount === "0" ||
