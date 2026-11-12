@@ -165,7 +165,7 @@ create or replace function public.wolv_get_autonomy_risk_snapshot(
   p_owner_id uuid
 ) returns table (
   open_positions bigint,
-  daily_realized_loss numeric
+  daily_realized_loss text
 )
 language sql stable security definer set search_path = public
 as $$
@@ -187,7 +187,7 @@ as $$
     where e.owner_id = p_owner_id and e.realized_pnl_input_units < 0
       and e.created_at >= w.day_start and e.created_at < w.day_start + interval '1 day'
   )
-  select (select count(*) from active_positions), realized_losses.loss
+  select (select count(*) from active_positions), realized_losses.loss::text
   from realized_losses;
 $$;
 
