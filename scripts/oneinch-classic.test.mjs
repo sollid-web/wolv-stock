@@ -56,7 +56,7 @@ test("validates unsigned transaction fields and rejects malformed calldata", () 
 
 test("rejects transaction construction after local quote safety expiry", () => {
   const quote = parseOneInchClassicQuote(quoteResponse, request);
-  assert.throws(() => parseOneInchClassicTransaction({ tx: {} }, quote, request.now + 10_001), /expired/);
+  assert.throws(() => parseOneInchClassicTransaction({ tx: {} }, quote, 50, request.now + 10_001), /expired/);
 });
 
 test("client sends authenticated quote and swap requests and builds no signature", async () => {
@@ -68,6 +68,7 @@ test("client sends authenticated quote and swap requests and builds no signature
       calls.push({ url: String(url), init });
       const isSwap = String(url).includes("/swap?");
       return new Response(JSON.stringify(isSwap ? {
+        srcAmount: "1000000", dstAmount: "950000000000000000",
         tx: { to: "0x4444444444444444444444444444444444444444", data: "0x12345678",
           value: "0", gas: "300000", gasPrice: "3000000000" },
       } : quoteResponse), { status: 200, headers: { "content-type": "application/json" } });
