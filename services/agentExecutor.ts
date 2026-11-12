@@ -180,6 +180,7 @@ export function isLiveUserOperationSubmissionEnabled(
     env: NodeJS.ProcessEnv = process.env
 ) {
     return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
+        && env.WOLV_AUTONOMOUS_TRADING_ENABLED === "true"
 }
 
 export function resolveAgentExecutionNetwork(
@@ -188,6 +189,9 @@ export function resolveAgentExecutionNetwork(
 ):
     | { allowed: true; chainId: 97 | 56 }
     | { allowed: false; reason: string } {
+    if (env.WOLV_AUTONOMOUS_TRADING_ENABLED !== "true") {
+        return { allowed: false, reason: "Autonomous trading is disabled by the master safety gate." };
+    }
     if (configuredChainId === 97) {
         return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
             ? { allowed: true, chainId: 97 }
