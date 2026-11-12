@@ -88,7 +88,7 @@ function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
         if (!isRecord(value)) throw new Error(`Strategy ${index} must be an object.`)
         const { id, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
         if (
-            typeof id !== "string" || !id.trim()
+            typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
             || typeof account !== "string" || !isAddress(account)
             || typeof targetToken !== "string" || !isAddress(targetToken)
             || typeof amountBnb !== "string"
