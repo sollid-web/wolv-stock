@@ -8,6 +8,7 @@ import {
 
 export type AgentPolicyHashInput = {
     strategyId: string
+    account: Address
     targetToken: Address
     maxTradeValue: bigint
     expiresAt: bigint
@@ -26,6 +27,7 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
     if (typeof input.strategyId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(input.strategyId)) {
         throw new TypeError("Policy strategy ID must be 1-64 safe identifier characters.")
     }
+    const account = getAddress(input.account)
     const targetToken = getAddress(input.targetToken)
     const intentSigner = getAddress(input.intentSigner)
     if (
@@ -55,12 +57,12 @@ export function hashAgentPolicy(input: AgentPolicyHashInput): Hex {
 
     return keccak256(encodeAbiParameters(
         [
-            { type: "string" }, { type: "string" }, { type: "address" },
+            { type: "string" }, { type: "string" }, { type: "address" }, { type: "address" },
             { type: "uint192" }, { type: "uint64" }, { type: "address" },
             { type: "uint256" }, { type: "uint256" }, { type: "uint16" }, { type: "uint16" }
         ],
         [
-            "WOLV_AGENT_POLICY_V2", input.strategyId, targetToken,
+            "WOLV_AGENT_POLICY_V3", input.strategyId, account, targetToken,
             input.maxTradeValue, input.expiresAt, intentSigner,
             input.amountBnb, input.entryPriceMicros, input.slippageBps, input.maxPriceImpactBps
         ]
