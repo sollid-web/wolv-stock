@@ -28,7 +28,8 @@ import {
     getAddress,
     isAddress,
     parseEther,
-    type Address
+    type Address,
+    type Hex
 } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import type { PublicClient } from "viem"
@@ -493,7 +494,17 @@ async function createPersistentWorkerRuntime() {
             claimId, scheduleId, ownerAddress, runKey, policyHash, createdAt: Date.now(),
         })
         if (!claim.claimId) return
-        const runtime = createScheduleRuntime(schedule, strategy)
+        let runtime: PersistentScheduleRuntime
+        try {
+            runtime = createScheduleRuntime(schedule, strategy)
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : "Autonomous schedule runtime could not be created."
+            await store.updateExecutionClaim(claimId, ownerAddress, {
+                status: "FAILED", failureCode: "WORKER_RUNTIME_INIT_FAILED", failureDetail: detail, at: Date.now(),
+            })
+            await store.recordAlert({ ownerAddress, claimId, severity: "CRITICAL", kind: "WORKER_RUNTIME_INIT_FAILED", message: detail, createdAt: Date.now() })
+            return
+        }
         const active: ActiveScheduleClaim = { claimId, scheduleId, ownerAddress, status: "CLAIMED" }
         runtime.context.activeClaim = active
         runtime.context.lastTelemetry = null
