@@ -18,7 +18,7 @@ test("take-profit uses exact integer basis-point arithmetic", () => {
     { exit: true, reason: "TAKE_PROFIT", returnBps: 500 });
 });
 test("stop-loss takes precedence over time and profit rules", () => {
-  assert.deepEqual(evaluatePaperExit(base, { ...candidate, netProceedsInputUnits: "9700000".slice(0, 6), now: "2026-11-11T00:00:00.000Z" }),
+  assert.deepEqual(evaluatePaperExit(base, { ...candidate, netProceedsInputUnits: "970000", now: "2026-11-11T00:00:00.000Z" }),
     { exit: true, reason: "STOP_LOSS", returnBps: -300 });
 });
 test("max holding time exits when no price threshold fired", () => {
