@@ -131,7 +131,7 @@ Running these commands is not required to review the source. Do not run them aga
 
 ## Review vehicle
 
-A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9. It is not mergeable yet because the implementation branch is 32 commits behind the current `main`; reconcile and review that divergence before merge.
+A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9. GitHub currently reports it as not mergeable. The implementation branch is 32 commits behind the current `main`; inspect and reconcile that divergence before merge.
 
 ## Additional risk controls still required before live mode
 
