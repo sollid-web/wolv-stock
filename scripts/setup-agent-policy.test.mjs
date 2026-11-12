@@ -17,6 +17,13 @@ const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const HOOK = "0x0000000000000000000000000000000000000321";
 const TOKEN = "0x0000000000000000000000000000000000000456";
 const SIGNER = "0x0000000000000000000000000000000000000788";
+const POLICY_STRATEGY = {
+  strategyId: "aapl-entry",
+  amountBnb: parseEther("0.1"),
+  entryPriceMicros: 100_000_000n,
+  slippageBps: 100,
+  maxPriceImpactBps: 300,
+};
 const INSTALL_HASH = `0x${"a".repeat(64)}`;
 const POLICY_USEROP_HASH = `0x${"c".repeat(64)}`;
 
@@ -155,6 +162,7 @@ test("installs hook then signs policy in separate single-call owner UserOperatio
     ownerKernelClient: harness.kernelClient,
     publicClient: harness.publicClient,
     validatorAddress: HOOK,
+    ...POLICY_STRATEGY,
     targetToken: TOKEN,
     intentSigner: SIGNER,
     maxTradeValue: parseEther("0.5"),
