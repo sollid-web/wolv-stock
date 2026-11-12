@@ -391,7 +391,7 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     const scheduleBase = {
       ownerAddress: ownerA,
       intervalSeconds: 60,
-      policyVersion: "WOLV_AGENT_POLICY_V2",
+      policyVersion: "WOLV_AGENT_POLICY_V3",
       policyHash: schedulePolicyHash,
       nextRunAt: now - 1_000,
       enabled: true,
