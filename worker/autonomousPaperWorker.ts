@@ -59,7 +59,7 @@ async function persistTransition(intent: ExecutionIntent, expectedVersion: numbe
 }
 
 function roundTripEvidence(intent: ExecutionIntent): Record<string, unknown> {
-  const event = [...intent.events].reverse().find((item) => item.type === "PROVIDER_ROUNDTRIP_QUOTES_VALIDATED");
+  const event = [...intent.events].reverse().find((item) => item.type === "PROVIDER_ROUNDTRIP_QUOTES_VALIDATED" || item.type === "BINANCE_ROUNDTRIP_QUOTES_VALIDATED");
   if (!event || !event.detail || typeof event.detail !== "object") {
     throw new Error("Execution intent is missing its immutable round-trip quote evidence.");
   }
