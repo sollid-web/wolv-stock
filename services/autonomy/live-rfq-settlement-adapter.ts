@@ -18,7 +18,9 @@ export function createLiveRfqSettlementAdapter(input: {
         return { status: "UNKNOWN", reason: "Provider fill transaction or actual amount evidence is missing" };
       }
       const policy = await input.loadPolicy(attempt.owner_id);
-      if (!policy || !policy.enabled || policy.emergencyStop || policy.globalKillSwitch ||
+      // Global stop and entry disable must not block reconciliation of a trade
+      // that may already have been submitted. Settlement is risk-reducing recovery.
+      if (!policy ||
           policy.walletAddress.toLowerCase() !== attempt.wallet_address.toLowerCase() ||
           policy.policyVersion !== attempt.policy_version) {
         return { status: "UNKNOWN", reason: "Live policy is disabled, stopped or no longer matches the attempt" };
