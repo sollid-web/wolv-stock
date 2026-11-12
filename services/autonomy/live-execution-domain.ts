@@ -29,6 +29,9 @@ export interface LiveExecutionAttempt {
   wallet_address: string;
   status: LiveExecutionStatus;
   version: number;
+  provider_idempotency_window_seconds: number;
+  submission_started_at: string | null;
+  retry_not_after: string | null;
   provider_quote_id: string | null;
   provider_order_id: string | null;
   prepared_payload_hash: string | null;
@@ -118,4 +121,14 @@ export function assertLiveExecutionSettlementEvidence(evidence: LiveExecutionEvi
       throw new Error(`Independent settlement requires a valid positive ${label}.`);
     }
   }
+}
+
+export function canRetryUnknownSubmission(
+  status: LiveExecutionStatus,
+  retryNotAfter: string | null,
+  nowMs = Date.now(),
+): boolean {
+  if (status !== "SUBMISSION_UNKNOWN" || !retryNotAfter) return false;
+  const deadline = Date.parse(retryNotAfter);
+  return Number.isFinite(deadline) && deadline > nowMs;
 }
