@@ -450,7 +450,6 @@ export interface PrivyNodeEthereumWalletService {
   signTypedData(
     walletId: string,
     input: {
-      address: string;
       caip2: "eip155:56";
       params: {
         typed_data: {
@@ -502,7 +501,6 @@ export function createPrivyNodeEip712SigningClient(input: {
   return {
     async signTypedData(request) {
       const response = await input.client.wallets().ethereum().signTypedData(request.walletId, {
-        address: request.walletAddress,
         caip2: "eip155:56",
         params: {
           typed_data: {
@@ -518,7 +516,7 @@ export function createPrivyNodeEip712SigningClient(input: {
         idempotency_key: request.idempotencyKey,
       });
 
-      if (!response || response.encoding !== "hex" ||
+      if (!response ||
           typeof response.signature !== "string" || !SIGNATURE_PATTERN.test(response.signature)) {
         throw new Error("Privy Node SDK returned a malformed EIP-712 signature response");
       }
