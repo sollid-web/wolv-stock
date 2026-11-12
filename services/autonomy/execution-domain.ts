@@ -75,6 +75,7 @@ export type RiskPolicy = {
   maxOpenPositions?: number;
   maxOpenOrders?: number;
   maxDailyRealizedLoss?: string;
+  minNativeGasBalanceWei?: string;
 };
 
 export type RiskCandidate = {
@@ -93,6 +94,7 @@ export type RiskCandidate = {
   currentOpenPositions?: number;
   currentOpenOrders?: number;
   dailyRealizedLoss?: string;
+  nativeGasBalanceWei?: string;
 };
 
 export type RiskDecision =
@@ -214,6 +216,8 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   let maxGasCostUsd: bigint;
   let dailyRealizedLoss: bigint | null = null;
   let maxDailyRealizedLoss: bigint | null = null;
+  let nativeGasBalance: bigint | null = null;
+  let minNativeGasBalance: bigint | null = null;
 
   try {
     amount = parsePositiveDecimal(candidate.amountIn, "candidate.amountIn");
@@ -227,6 +231,10 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
     if (policy.maxDailyRealizedLoss !== undefined) {
       dailyRealizedLoss = parseNonNegativeDecimal(candidate.dailyRealizedLoss ?? "", "candidate.dailyRealizedLoss");
       maxDailyRealizedLoss = parsePositiveDecimal(policy.maxDailyRealizedLoss, "policy.maxDailyRealizedLoss");
+    }
+    if (policy.minNativeGasBalanceWei !== undefined) {
+      nativeGasBalance = parseNonNegativeDecimal(candidate.nativeGasBalanceWei ?? "", "candidate.nativeGasBalanceWei");
+      minNativeGasBalance = parseNonNegativeDecimal(policy.minNativeGasBalanceWei, "policy.minNativeGasBalanceWei");
     }
   } catch (error) {
     return { allowed: false, code: "INVALID_NUMERIC_INPUT", reason: error instanceof Error ? error.message : "Invalid numeric input" };
@@ -249,6 +257,9 @@ export function evaluateRiskPolicy(policy: RiskPolicy, candidate: RiskCandidate)
   }
   if (dailyRealizedLoss !== null && maxDailyRealizedLoss !== null && dailyRealizedLoss >= maxDailyRealizedLoss) {
     return { allowed: false, code: "DAILY_REALIZED_LOSS_LIMIT_REACHED", reason: "Daily realized-loss stop has been reached" };
+  }
+  if (nativeGasBalance !== null && minNativeGasBalance !== null && nativeGasBalance < minNativeGasBalance) {
+    return { allowed: false, code: "NATIVE_GAS_RESERVE_LOW", reason: "Wallet native BNB balance is below the configured gas reserve floor" };
   }
   if (policy.maxOpenOrders !== undefined) {
     if (!Number.isSafeInteger(policy.maxOpenOrders) || policy.maxOpenOrders < 1 ||
