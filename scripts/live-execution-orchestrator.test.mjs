@@ -258,7 +258,7 @@ function harness(options = {}) {
     async simulate() {
       calls.simulation += 1;
       if (options.simulationError) throw new Error("RFQ simulation unavailable");
-      return { orderHash: payloadHash, fingerprint: "b".repeat(64), simulatedAt: new Date(now).toISOString() };
+      return { orderHash: options.simulationOrderHash ?? payloadHash, fingerprint: "b".repeat(64), simulatedAt: new Date(now).toISOString() };
     },
   };
   const orchestrator = createLiveExecutionOrchestrator({
@@ -383,4 +383,15 @@ test("returns the existing active attempt before reserving new capital", async (
   assert.equal(h.calls.reserve, 0);
   assert.equal(h.calls.sign, 0);
   assert.equal(h.calls.submit, 0);
+});
+
+test("rejects simulation evidence for a different prepared RFQ payload", async () => {
+  const h = harness({ simulationOrderHash: "9".repeat(64) });
+  const result = await h.orchestrator.execute({
+    ownerId, intentId, outputTokenAddress: outputToken, amountIn: "1000", slippageBps: 50,
+  });
+  assert.equal(result.status, "REJECTED");
+  assert.equal(h.getAttempt().status, "ABORTED");
+  assert.equal(h.calls.submit, 0);
+  assert.equal(h.calls.release, 1);
 });
