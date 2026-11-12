@@ -34,7 +34,7 @@ function parseArguments(argv) {
       confirmed = true;
       continue;
     }
-    if (!["--hook", "--account", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"].includes(argument)) {
+    if (!["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"].includes(argument)) {
       throw new Error(`Unknown argument: ${argument}`);
     }
     if (values.has(argument)) throw new Error(`Duplicate argument: ${argument}`);
@@ -44,7 +44,7 @@ function parseArguments(argv) {
     index += 1;
   }
   if (!confirmed) throw new Error("Refusing to prepare policy calldata without --confirm-testnet.");
-  for (const required of ["--hook", "--account", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"]) {
+  for (const required of ["--hook", "--account", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"]) {
     if (!values.has(required)) throw new Error(`Required argument missing: ${required}`);
   }
   return values;
@@ -54,6 +54,10 @@ async function main() {
   const args = parseArguments(process.argv.slice(2));
   const hookAddress = getAddress(args.get("--hook"));
   const accountAddress = getAddress(args.get("--account"));
+  const strategyId = args.get("--strategy-id");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyId)) {
+    throw new Error("--strategy-id must be 1-64 safe identifier characters.");
+  }
   const targetToken = getAddress(args.get("--target-token"));
   const intentSigner = getAddress(args.get("--intent-signer"));
   const maxTradeValue = BigInt(args.get("--max-trade-wei"));
@@ -93,6 +97,7 @@ async function main() {
     throw new Error(`Installed policy hook target ${installedTargetToken} does not match --target-token ${targetToken}.`);
   }
   const policyHash = hashAgentPolicy({
+    strategyId,
     targetToken,
     maxTradeValue,
     expiresAt,
@@ -119,6 +124,7 @@ async function main() {
   console.log(`Chain: BSC Testnet 97`);
   console.log(`Hook: ${hookAddress}`);
   console.log(`Smart account: ${accountAddress}`);
+  console.log(`Strategy ID: ${strategyId}`);
   console.log(`Target token: ${targetToken}`);
   console.log(`Intent signer: ${intentSigner}`);
   console.log(`Policy hash: ${policyHash}`);
