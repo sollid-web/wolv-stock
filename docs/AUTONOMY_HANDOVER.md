@@ -52,7 +52,7 @@ The branch adds these migrations:
 3. `20261110120000_create_autonomous_execution_queue.sql`
 4. `20261110150000_create_autonomy_portfolio_ledger.sql`
 5. `20261110170000_extend_paper_fill_exit_evidence.sql`
-6. `20261111100000_create_paper_exit_ledger.sql`
+6. `20261111100000_create_paper_exit_ledger.sql`\n7. `20261112100000_add_autonomy_portfolio_hard_stops.sql`
 
 Apply them only after verifying the linked Supabase project is the intended project:
 
@@ -90,7 +90,7 @@ The worker requires server-side environment variables, including:
 - `WOLV_AUTONOMY_ORDER_AMOUNT_BASE_UNITS`
 - `WOLV_BSC_RPC_URL` (optional until the BSC RPC preflight/simulator is wired; remote endpoints must use HTTPS)
 
-The paper portfolio configuration script also requires the budget, allowlists, max order/position/daily spend, slippage, price-impact, quote-age, gas-cost, network-fee-buffer and minimum-edge variables described in `docs/AUTONOMOUS_EXECUTION_ARCHITECTURE.md`.
+The paper portfolio configuration script also requires the budget, allowlists, max order/position/daily spend, slippage, price-impact, quote-age, gas-cost, network-fee-buffer and minimum-edge variables. It accepts `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` (default 1) and `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS` (default equal to max daily spend).
 
 By default, configuration writes a disabled policy with the emergency stop active. `--enable-paper` enables paper entries only. Paper exits are separately opt-in with `--enable-paper-exits` and at least one configured threshold:
 - `WOLV_AUTONOMY_PAPER_TAKE_PROFIT_BPS`
@@ -153,3 +153,11 @@ The branch now contains:
 - `services/autonomy/bsc-rpc.ts` and `services/autonomy/bsc-evm-simulator.ts`: read-only BSC chain checks, balance/gas reads, exact unsigned EVM simulation and receipt validation.
 
 Tests added: `scripts/normalized-provider-registry.test.mjs`, `scripts/bsc-rpc.test.mjs`, and `scripts/bsc-evm-simulator.test.mjs`. They have **not** been executed in this environment. The BSC RPC layer has no signing or broadcast method. The worker remains paper-only; no signer, live queue, or live transaction path has been activated.
+
+## Portfolio hard-stop update (2026-11-12)
+
+Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds an atomic maximum-open-position cap and a daily realized-loss stop to the Supabase reservation RPC. The RPC locks the owner portfolio, counts distinct open/reserved token positions, sums negative paper-exit P&L for the UTC day, and rejects new reservations when either cap is reached. It also accepts both the legacy Binance round-trip audit event and the normalized provider event name; this prevents a quote-event naming mismatch from silently blocking reservation.
+
+The portfolio service loads open-position count and daily realized loss into the deterministic risk candidate. `evaluateRiskPolicy` rejects missing loss evidence when the cap is configured, rejects new assets at the concurrent-position limit, and permits adding to an already-open position subject to its per-token cap. The database RPC independently repeats the hard-stop checks at reservation time.
+
+Configuration: `WOLV_AUTONOMY_MAX_OPEN_POSITIONS` defaults to 1; `WOLV_AUTONOMY_MAX_DAILY_REALIZED_LOSS_BASE_UNITS` defaults to the configured daily spend cap and must fit within the paper budget. These limits are denominated in the configured input token's smallest units. They are paper-policy controls until a separate live policy and live ledger exist.
