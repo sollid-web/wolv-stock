@@ -132,3 +132,5 @@ Running these commands is not required to review the source. Do not run them aga
 ## Review vehicle
 
 A draft pull request is open at https://github.com/sollid-web/wolv-stock/pull/9. It is not mergeable yet because the implementation branch is 32 commits behind the current `main`; reconcile and review that divergence before merge.
+
+**Latest branch comparison:** 250 commits ahead of the original hackathon baseline, 0 behind that baseline, 58 changed files. The count includes connector-generated file-update commits and is not a feature-commit count. Compared with current `main`, the branch has diverged: 250 ahead and 32 behind.
