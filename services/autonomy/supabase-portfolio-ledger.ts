@@ -40,6 +40,8 @@ export type PortfolioPolicySnapshot = {
   dailySpendAmount: string;
   currentPositionInputUnits: string;
   dailySpendIncludingReservations: string;
+  currentOpenPositions: number;
+  dailyRealizedLoss: string;
   networkFeeBufferBps: number;
   paperExitPolicy: { enabled: boolean; takeProfitBps: number | null; stopLossBps: number | null; maxHoldingMs: number | null };
   riskPolicy: RiskPolicy;
@@ -54,7 +56,8 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       "paper_budget_amount_text:paper_budget_amount::text", "reserved_amount_text:reserved_amount::text",
       "committed_amount_text:committed_amount::text", "daily_spend_amount_text:daily_spend_amount::text", "daily_spend_date",
       "max_order_amount_text:max_order_amount::text", "max_position_amount_text:max_position_amount::text",
-      "max_daily_spend_text:max_daily_spend::text", "max_slippage_bps", "max_price_impact_bps",
+      "max_daily_spend_text:max_daily_spend::text", "max_open_positions",
+      "max_daily_realized_loss_text:max_daily_realized_loss::text", "max_slippage_bps", "max_price_impact_bps",
       "max_quote_age_ms", "max_gas_cost_usd_text:max_gas_cost_usd::text",
       "network_fee_buffer_bps", "min_expected_edge_bps",
       "paper_exit_enabled", "paper_take_profit_bps", "paper_stop_loss_bps", "paper_max_holding_ms",
@@ -119,6 +122,22 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
   });
   const dailyReservations = await request("wolv_autonomy_reservations?" + dailyReservationQuery) as Array<Record<string, unknown>>;
   dailySpendIncludingReservations = (BigInt(persistedDailySpend) + BigInt(sumIntegerRows(dailyReservations, "amount_in_text"))).toString();
+  const openPositionsQuery = new URLSearchParams({
+    select: "chain_id,token_address", owner_id: "eq." + ownerId,
+    amount_units: "gt.0", limit: "1001",
+  });
+  const openPositions = await request("wolv_autonomy_positions?" + openPositionsQuery) as Array<Record<string, unknown>>;
+  if (openPositions.length > 1000) throw new Error("Open-position count exceeds supported safety bound");
+  const dailyLossQuery = new URLSearchParams({
+    select: "realized_pnl_text:realized_pnl_input_units::text", owner_id: "eq." + ownerId,
+    realized_pnl_input_units: "lt.0", created_at: "gte." + midnightUtc.toISOString(),
+  });
+  const dailyLossRows = await request("wolv_autonomy_paper_exits?" + dailyLossQuery) as Array<Record<string, unknown>>;
+  const dailyRealizedLoss = dailyLossRows.reduce((sum, item) => {
+    const value = String(item.realized_pnl_text);
+    if (!/^-[1-9][0-9]*$/.test(value)) throw new Error("Paper exit ledger has invalid realized loss");
+    return sum + BigInt(value.slice(1));
+  }, BigInt(0)).toString();
   const snapshot: PortfolioPolicySnapshot = {
     ownerId: String(row.owner_id),
     walletAddress: String(row.wallet_address).toLowerCase(),
@@ -146,7 +165,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       allowedInputTokenAddresses: strings(row.allowed_input_token_addresses, "allowed_input_token_addresses"),
       maxOrderAmount: decimalString(row.max_order_amount_text, "max_order_amount"),
       maxPositionAmount: decimalString(row.max_position_amount_text, "max_position_amount"),
-      maxDailySpend: decimalString(row.max_daily_spend_text, "max_daily_spend"),
+      maxDailySpend: decimalString(row.max_daily_spend_text, "max_daily_spend"),\n      maxOpenPositions: numeric(row.max_open_positions, "max_open_positions"),\n      maxDailyRealizedLoss: decimalString(row.max_daily_realized_loss_text, "max_daily_realized_loss"),
       maxSlippageBps: numeric(row.max_slippage_bps, "max_slippage_bps"),
       maxPriceImpactBps: numeric(row.max_price_impact_bps, "max_price_impact_bps"),
       maxQuoteAgeMs: numeric(row.max_quote_age_ms, "max_quote_age_ms"),
