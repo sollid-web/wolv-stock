@@ -10,6 +10,8 @@ const migration = fs.readFileSync(
 test("portfolio hard-stop migration adds bounded concurrent-position and daily-loss policy", () => {
   assert.match(migration, /max_open_positions integer not null default 1/);
   assert.match(migration, /max_open_positions between 1 and 100/);
+  assert.match(migration, /max_open_orders integer not null default 1/);
+  assert.match(migration, /max_open_orders between 1 and 100/);
   assert.match(migration, /max_daily_realized_loss numeric\(78,0\) not null default 1/);
   assert.match(migration, /max_daily_realized_loss > 0/);
 });
@@ -19,6 +21,7 @@ test("atomic budget reservation checks open positions and realized losses", () =
   assert.match(migration, /open_position_count >= account\.max_open_positions/);
   assert.match(migration, /wolv_autonomy_paper_exits[\s\S]*?realized_pnl_input_units < 0/);
   assert.match(migration, /daily_realized_loss >= account\.max_daily_realized_loss/);
+  assert.match(migration, /open_order_count >= account\.max_open_orders/);
 });
 
 test("reservation accepts both legacy and normalized quote audit event names", () => {
@@ -34,6 +37,7 @@ test("reservation remains serialized and fail-closed", () => {
 
 test("aggregate risk snapshot is database-computed and preserves exact loss values", () => {
   assert.match(migration, /wolv_get_autonomy_risk_snapshot/);
+  assert.match(migration, /open_orders bigint/);
   assert.match(migration, /daily_realized_loss text/);
   assert.match(migration, /realized_losses\.loss::text/);
   assert.match(migration, /revoke all on function public\.wolv_get_autonomy_risk_snapshot/);
