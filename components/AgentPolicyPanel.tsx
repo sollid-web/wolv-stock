@@ -583,6 +583,7 @@ export default function AgentPolicyPanel() {
                 !pendingStrategy && validatorAddress && (
                 <AgentSetupForm
                     ownerKernelClient={activeKernelClient}
+                    ownerAddress={getAddress(address as Address)}
                     publicClient={activePublicClient}
                     validatorAddress={validatorAddress}
                     installedTargetToken={currentSnapshot.installed ? currentSnapshot.targetToken : undefined}
