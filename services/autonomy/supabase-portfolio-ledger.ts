@@ -42,6 +42,7 @@ export type PortfolioPolicySnapshot = {
   currentPositionInputUnits: string;
   dailySpendIncludingReservations: string;
   currentOpenPositions: number;
+  currentOpenOrders: number;
   dailyRealizedLoss: string;
   networkFeeBufferBps: number;
   paperExitPolicy: { enabled: boolean; takeProfitBps: number | null; stopLossBps: number | null; maxHoldingMs: number | null };
@@ -57,7 +58,7 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       "paper_budget_amount_text:paper_budget_amount::text", "reserved_amount_text:reserved_amount::text",
       "committed_amount_text:committed_amount::text", "daily_spend_amount_text:daily_spend_amount::text", "daily_spend_date",
       "max_order_amount_text:max_order_amount::text", "max_position_amount_text:max_position_amount::text",
-      "max_daily_spend_text:max_daily_spend::text", "max_open_positions",
+      "max_daily_spend_text:max_daily_spend::text", "max_open_positions", "max_open_orders",
       "max_daily_realized_loss_text:max_daily_realized_loss::text", "max_slippage_bps", "max_price_impact_bps",
       "max_quote_age_ms", "max_gas_cost_usd_text:max_gas_cost_usd::text",
       "network_fee_buffer_bps", "min_expected_edge_bps",
@@ -138,6 +139,10 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
   if (!Number.isSafeInteger(currentOpenPositions) || currentOpenPositions < 0) {
     throw new Error("Portfolio risk snapshot has an invalid open-position count");
   }
+  const currentOpenOrders = Number(riskRows[0].open_orders);
+  if (!Number.isSafeInteger(currentOpenOrders) || currentOpenOrders < 0) {
+    throw new Error("Portfolio risk snapshot has an invalid outstanding-order count");
+  }
   const dailyRealizedLoss = String(riskRows[0].daily_realized_loss);
   if (!/^(0|[1-9][0-9]*)$/.test(dailyRealizedLoss)) {
     throw new Error("Portfolio risk snapshot has an invalid daily realized-loss total");
@@ -170,7 +175,8 @@ export async function loadPortfolioPolicy(ownerId: string, exposure?: { chainId:
       allowedInputTokenAddresses: strings(row.allowed_input_token_addresses, "allowed_input_token_addresses"),
       maxOrderAmount: decimalString(row.max_order_amount_text, "max_order_amount"),
       maxPositionAmount: decimalString(row.max_position_amount_text, "max_position_amount"),
-      maxDailySpend: decimalString(row.max_daily_spend_text, "max_daily_spend"),\n      maxOpenPositions: numeric(row.max_open_positions, "max_open_positions"),\n      maxDailyRealizedLoss: decimalString(row.max_daily_realized_loss_text, "max_daily_realized_loss"),
+      maxDailySpend: decimalString(row.max_daily_spend_text, "max_daily_spend"),\n      maxOpenPositions: numeric(row.max_open_positions, "max_open_positions"),
+      maxOpenOrders: numeric(row.max_open_orders, "max_open_orders"),\n      maxDailyRealizedLoss: decimalString(row.max_daily_realized_loss_text, "max_daily_realized_loss"),
       maxSlippageBps: numeric(row.max_slippage_bps, "max_slippage_bps"),
       maxPriceImpactBps: numeric(row.max_price_impact_bps, "max_price_impact_bps"),
       maxQuoteAgeMs: numeric(row.max_quote_age_ms, "max_quote_age_ms"),
