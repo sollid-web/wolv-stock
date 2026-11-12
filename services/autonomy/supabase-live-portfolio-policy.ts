@@ -150,7 +150,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
   const policy: LiveExecutionPolicy = {
     ownerId,
     walletAddress: address(row.wallet_address, "wallet_address"),
-    privyWalletId: text(row.live_privy_wallet_id, "live_privy_wallet_id"),
+    privyWalletId: typeof row.live_privy_wallet_id === "string" ? row.live_privy_wallet_id.trim() : "",
     chainId: text(row.chain_id, "chain_id"),
     inputTokenAddress: address(row.input_token_address, "input_token_address"),
     policyVersion: text(row.policy_version, "policy_version"),
