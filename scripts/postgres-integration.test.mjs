@@ -387,6 +387,48 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
       correlationId: randomUUID(),
     });
 
+    const schedulePolicyHash = "d".repeat(64);
+    const scheduleBase = {
+      ownerAddress: ownerA,
+      intervalSeconds: 60,
+      policyVersion: "WOLV_AGENT_POLICY_V2",
+      policyHash: schedulePolicyHash,
+      nextRunAt: now - 1_000,
+      enabled: true,
+      createdAt: now - 10_000,
+      updatedAt: now - 10_000,
+    };
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: "77777777-7777-4777-8777-777777777777",
+      name: "bsc-autonomous-entry",
+      strategyType: "BSC_AGENT_TRADE",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: { id: "aapl-entry" },
+    });
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: "88888888-8888-4888-8888-888888888888",
+      name: "bsc-manual-entry",
+      strategyType: "BSC_AGENT_TRADE",
+      executionMode: "MANUAL",
+      strategyConfig: { id: "manual-entry" },
+    });
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: "99999999-9999-4999-8999-999999999999",
+      name: "dca-autonomous-entry",
+      strategyType: "DCA",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: { ticker: "AAPL" },
+    });
+    const claimedAutonomous = await store.claimDueAutonomousAgentSchedules(now, 20);
+    assert.equal(claimedAutonomous.length, 1);
+    assert.equal(claimedAutonomous[0].scheduleId, "77777777-7777-4777-8777-777777777777");
+    assert.equal(claimedAutonomous[0].ownerAddress, ownerA);
+    assert.equal(claimedAutonomous[0].executionMode, "AUTONOMOUS");
+    assert.equal((await store.claimDueAutonomousAgentSchedules(now, 20)).length, 0);
+
     const sessionPlan = createAgentSessionPlan({ ownerAddress: ownerA });
     const sessionId = randomUUID();
     const prepared = await store.prepareAgentSessionPlan({
