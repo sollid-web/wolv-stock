@@ -10,6 +10,8 @@ export interface LiveExecutionPolicy {
   allowedChainIds: string[];
   allowedTokenAddresses: string[];
   allowedInputTokenAddresses: string[];
+  allowedTransactionSenders: string[];
+  allowedTransactionTargets: string[];
   budgetAmount: string;
   reservedAmount: string;
   committedAmount: string;
@@ -106,6 +108,7 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
       "owner_id", "wallet_address", "chain_id", "input_token_address", "policy_version",
       "live_enabled", "live_emergency_stop", "emergency_stop",
       "allowed_chain_ids", "allowed_token_addresses", "allowed_input_token_addresses",
+      "live_allowed_transaction_senders", "live_allowed_transaction_targets",
       "live_budget_amount_text:live_budget_amount::text",
       "live_reserved_amount_text:live_reserved_amount::text",
       "live_committed_amount_text:live_committed_amount::text",
@@ -155,6 +158,8 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
     allowedChainIds: stringList(row.allowed_chain_ids, "allowed_chain_ids"),
     allowedTokenAddresses: addressList(row.allowed_token_addresses, "allowed_token_addresses"),
     allowedInputTokenAddresses: addressList(row.allowed_input_token_addresses, "allowed_input_token_addresses"),
+    allowedTransactionSenders: addressList(row.live_allowed_transaction_senders, "live_allowed_transaction_senders"),
+    allowedTransactionTargets: addressList(row.live_allowed_transaction_targets, "live_allowed_transaction_targets"),
     budgetAmount: decimal(row.live_budget_amount_text, "live_budget_amount"),
     reservedAmount: decimal(row.live_reserved_amount_text, "live_reserved_amount"),
     committedAmount: decimal(row.live_committed_amount_text, "live_committed_amount"),
@@ -182,7 +187,8 @@ export async function loadLiveExecutionPolicy(ownerId: string): Promise<LiveExec
     policy.maxPositionAmount === "0" || policy.maxDailySpend === "0" ||
     policy.maxDailyRealizedLoss === "0" || policy.maxQuoteAgeMs === 0 ||
     policy.maxGasCostUsd === "0" || !policy.allowedTokenAddresses.length ||
-    !policy.allowedInputTokenAddresses.length
+    !policy.allowedInputTokenAddresses.length || !policy.allowedTransactionSenders.length ||
+    !policy.allowedTransactionTargets.length
   )) {
     throw new Error("Live portfolio is enabled with incomplete, stopped or zero-limit risk policy");
   }
