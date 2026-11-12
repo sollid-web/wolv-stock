@@ -14,6 +14,20 @@ import { hashAgentPolicy } from "@/lib/agentPolicyHash"
 import { configureAgentPolicy } from "@/lib/setupAgentPolicy"
 import type { AgentKernelClient } from "@/lib/kernelClient"
 
+export type AgentConfiguredStrategy = {
+    strategyId: string
+    account: Address
+    targetToken: Address
+    amountBnb: string
+    entryPriceMicros: string
+    slippageBps: number
+    maxPriceImpactBps: number
+    maxTradeValueWei: string
+    expiresAt: string
+    intentSigner: Address
+    policyHash: Hex
+}
+
 type AgentSetupFormProps = {
     ownerKernelClient: AgentKernelClient | null
     publicClient: PublicClient | null
@@ -21,7 +35,7 @@ type AgentSetupFormProps = {
     installedTargetToken?: Address
     canSubmit: boolean
     disabledReason?: string
-    onConfigured: () => Promise<void>
+    onConfigured: (strategy: AgentConfiguredStrategy) => Promise<void>
 }
 
 const DAY_SECONDS = 24 * 60 * 60
@@ -188,7 +202,19 @@ export default function AgentSetupForm({
             }
             setPolicyHash(result.policyHash)
             setSuccess("Policy configured and verified on-chain.")
-            await onConfigured()
+            await onConfigured({
+                strategyId,
+                account: getAddress(ownerKernelClient.account.address),
+                targetToken: normalizedTarget,
+                amountBnb: strategyAmountBnb,
+                entryPriceMicros: entryPriceMicros.toString(),
+                slippageBps: strategySlippageBps,
+                maxPriceImpactBps: strategyMaxPriceImpactBps,
+                maxTradeValueWei: maxTradeValueWei.toString(),
+                expiresAt: expirySeconds.toString(),
+                intentSigner: normalizedSigner,
+                policyHash: requestedPolicyHash
+            })
         } catch (cause) {
             setError(getFriendlySetupError(cause))
         } finally {
