@@ -38,18 +38,20 @@ test("rejects wrong chain, token direction, amount and malformed gas", () => {
 test("validates unsigned transaction fields and rejects malformed calldata", () => {
   const quote = parseOneInchClassicQuote(quoteResponse, request);
   const tx = parseOneInchClassicTransaction({
+    srcAmount: "1000000", dstAmount: "950000000000000000",
     tx: {
       to: "0x4444444444444444444444444444444444444444",
       data: "0x12345678", value: "0", gas: "300000", gasPrice: "3000000000",
     },
-  }, quote, request.now + 1);
+  }, quote, 50, request.now + 1);
   assert.equal(tx.provider, "1inch-classic");
   assert.equal(tx.value, "0");
   assert.equal(tx.gas, "300000");
   assert.match(tx.transactionFingerprint, /^[a-f0-9]{64}$/);
   assert.throws(() => parseOneInchClassicTransaction({
+    srcAmount: "1000000", dstAmount: "950000000000000000",
     tx: { to: wallet, data: "0x123", value: "0", gas: "1", gasPrice: "1" },
-  }, quote, request.now + 1));
+  }, quote, 50, request.now + 1));
 });
 
 test("rejects transaction construction after local quote safety expiry", () => {
