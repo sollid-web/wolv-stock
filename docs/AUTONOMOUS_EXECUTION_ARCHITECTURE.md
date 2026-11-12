@@ -411,7 +411,7 @@ Official Binance references:
 
 ## Live-mode risk gaps
 
-The paper portfolio now enforces per-order and per-token position caps, daily entry spend, maximum concurrent open token positions, a daily realized-paper-loss stop, allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds the database-atomic caps and a database-computed risk snapshot. Remaining release blockers include a maximum concurrent order count, portfolio-wide concentration limits, a native-gas reserve floor, an operator-wide global kill switch, and a separate live realized-loss ledger based on independently settled transactions.
+The paper portfolio now enforces per-order and per-token position caps, daily entry spend, maximum concurrent open token positions, a daily realized-paper-loss stop, allowlists, quote age, slippage, price impact, estimated network fee and minimum edge. Migration `20261112100000_add_autonomy_portfolio_hard_stops.sql` adds the database-atomic caps and a database-computed risk snapshot. Remaining release blockers include a maximum concurrent order count, portfolio-wide concentration limits, a native-gas reserve floor and a separate live realized-loss ledger based on independently settled transactions.
 
 ## Normalized provider and BSC preflight update (2026-11-12)
 
