@@ -46,7 +46,7 @@ export function createBscSettlementVerifier(
       if (!HASH.test(input.transactionHash)) throw new Error("Invalid transaction hash");
       const wallet = normalizedAddress(input.walletAddress, "wallet");
       const target = normalizedAddress(input.expectedTarget, "expected transaction target");
-      if (typeof input.expectedData !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(input.expectedData) ||
+      if (typeof input.expectedData !== "string" || input.expectedData === "0x" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(input.expectedData) ||
           !/^(0|[1-9][0-9]*)$/.test(input.expectedValue)) {
         throw new Error("Invalid expected transaction calldata or native value");
       }
