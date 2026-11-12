@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const sql = readFileSync(
-  new URL("../supabase/migrations/20261110150000_create_autonomy_portfolio_ledger.sql", import.meta.url),
+  new URL("../supabase/migrations/20261112193058_create_autonomy_portfolio_ledger.sql", import.meta.url),
   "utf8",
 );
 
