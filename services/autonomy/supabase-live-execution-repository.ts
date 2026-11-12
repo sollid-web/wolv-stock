@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   assertLiveExecutionSettlementEvidence,
   assertSafeLiveExecutionDetail,
+  canRetryUnknownSubmission,
   isAllowedLiveExecutionTransition,
   type LiveExecutionAttempt,
   type LiveExecutionEvidence,
@@ -59,6 +60,7 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
     "provider_quote_id", "provider_order_id", "prepared_payload_hash",
     "signer_operation_id", "signer_address", "transaction_hash",
     "amount_in", "amount_out", "fee_amount", "settlement_block", "last_error_code",
+    "submission_started_at", "retry_not_after",
   ] as const;
   for (const key of nullableStrings) {
     if (row[key] !== null && typeof row[key] !== "string") {
@@ -66,7 +68,9 @@ function parseAttempt(value: unknown): LiveExecutionAttempt {
     }
   }
   if (!Number.isSafeInteger(row.attempt_number) || Number(row.attempt_number) < 1 ||
-      !Number.isSafeInteger(row.version) || Number(row.version) < 0) {
+      !Number.isSafeInteger(row.version) || Number(row.version) < 0 ||
+      !Number.isSafeInteger(row.provider_idempotency_window_seconds) ||
+      Number(row.provider_idempotency_window_seconds) < 0 || Number(row.provider_idempotency_window_seconds) > 86400) {
     throw new Error("Live execution attempt has invalid version or attempt number.");
   }
   return row as unknown as LiveExecutionAttempt;
@@ -91,12 +95,15 @@ export async function createLiveExecutionAttempt(input: {
   provider: string;
   chainId: "56";
   walletAddress: string;
+  providerIdempotencyWindowSeconds?: number;
 }): Promise<LiveExecutionAttempt> {
   if (!UUID.test(input.ownerId) || !UUID.test(input.intentId)) {
     throw new Error("Live execution requires valid owner and intent UUIDs.");
   }
+  const idempotencyWindow = input.providerIdempotencyWindowSeconds ?? 0;
   if (input.chainId !== "56" || !ADDRESS.test(input.walletAddress) ||
-      !/^[a-z0-9-]{2,64}$/i.test(input.provider)) {
+      !/^[a-z0-9-]{2,64}$/i.test(input.provider) ||
+      !Number.isSafeInteger(idempotencyWindow) || idempotencyWindow < 0 || idempotencyWindow > 86400) {
     throw new Error("Live execution provider, BSC chain or wallet binding is invalid.");
   }
 
@@ -105,7 +112,8 @@ export async function createLiveExecutionAttempt(input: {
   if (active) {
     if (active.provider !== input.provider ||
         active.chain_id !== input.chainId ||
-        active.wallet_address.toLowerCase() !== input.walletAddress.toLowerCase()) {
+        active.wallet_address.toLowerCase() !== input.walletAddress.toLowerCase() ||
+        active.provider_idempotency_window_seconds !== idempotencyWindow) {
       throw new Error("An active live attempt exists with a different provider or wallet binding.");
     }
     return active;
@@ -143,6 +151,7 @@ export async function createLiveExecutionAttempt(input: {
     provider: input.provider,
     chain_id: input.chainId,
     wallet_address: input.walletAddress.toLowerCase(),
+    provider_idempotency_window_seconds: idempotencyWindow,
     status: "PREPARED",
   };
   try {
@@ -159,7 +168,8 @@ export async function createLiveExecutionAttempt(input: {
     // A concurrent creator may have won the partial unique index. Recover its stable request ID.
     const raced = await findActiveAttempt(input.ownerId, input.intentId);
     if (raced && raced.provider === input.provider &&
-        raced.wallet_address.toLowerCase() === input.walletAddress.toLowerCase()) return raced;
+        raced.wallet_address.toLowerCase() === input.walletAddress.toLowerCase() &&
+    raced.provider_idempotency_window_seconds === idempotencyWindow) return raced;
     throw error;
   }
 }
@@ -208,6 +218,10 @@ export async function transitionLiveExecutionAttempt(input: {
   if (current.version !== input.expectedVersion) return null;
   if (!isAllowedLiveExecutionTransition(current.status, input.nextStatus)) {
     throw new Error(`Invalid live execution transition ${current.status} -> ${input.nextStatus}.`);
+  }
+  if (current.status === "SUBMISSION_UNKNOWN" && input.nextStatus === "SUBMITTING" &&
+      !canRetryUnknownSubmission(current.status, current.retry_not_after)) {
+    throw new Error("The provider idempotency window has expired. Reconcile or place the attempt on security hold; do not resubmit.");
   }
   const detail = input.detail ?? {};
   const evidence = input.evidence ?? {};
