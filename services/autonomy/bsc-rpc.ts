@@ -166,13 +166,47 @@ export function createBscRpcClient(input: {
     if (BigInt(blockNumber) <= BigInt(0) || BigInt(gasUsed) <= BigInt(0) || BigInt(effectiveGasPrice) <= BigInt(0)) {
       throw new Error("BSC RPC receipt is missing mined block or fee evidence");
     }
+    if (!Array.isArray(receipt.logs)) throw new Error("BSC RPC receipt is missing transfer-log evidence");
+    const logs = receipt.logs.map((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) throw new Error("BSC RPC receipt contains malformed log");
+      const log = item as Record<string, unknown>;
+      if (typeof log.address !== "string" || !ADDRESS.test(log.address) ||
+          !Array.isArray(log.topics) || log.topics.some((topic) => typeof topic !== "string" || !HASH.test(topic)) ||
+          typeof log.data !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(log.data)) {
+        throw new Error("BSC RPC receipt contains malformed log fields");
+      }
+      return { address: log.address.toLowerCase(), topics: log.topics as string[], data: log.data };
+    });
     return {
       transactionHash: transactionHash.toLowerCase(),
       status: status === "0x1" ? "SUCCESS" : "FAILED",
       blockNumber: BigInt(blockNumber).toString(),
       gasUsed: BigInt(gasUsed).toString(),
       effectiveGasPrice: BigInt(effectiveGasPrice).toString(),
+      logs,
     };
+  }
+
+  async function getTransaction(transactionHash: string): Promise<{
+    hash: string; from: string; to: string; chainId: string;
+  } | null> {
+    await assertBsc();
+    if (!HASH.test(transactionHash)) throw new Error("Invalid transaction hash");
+    const value = await rpc<unknown>("eth_getTransactionByHash", [transactionHash]);
+    if (value === null) return null;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("BSC RPC returned malformed transaction");
+    const tx = value as Record<string, unknown>;
+    if (typeof tx.hash !== "string" || tx.hash.toLowerCase() !== transactionHash.toLowerCase()) throw new Error("BSC RPC transaction hash does not match request");
+    if (typeof tx.from !== "string" || !ADDRESS.test(tx.from) || typeof tx.to !== "string" || !ADDRESS.test(tx.to)) throw new Error("BSC RPC transaction has invalid sender or target");
+    const chainId = hexQuantity(tx.chainId, "transaction chain ID");
+    if (BigInt(chainId).toString() !== "56") throw new Error("Transaction is not bound to BSC chain 56");
+    return { hash: transactionHash.toLowerCase(), from: tx.from.toLowerCase(), to: tx.to.toLowerCase(), chainId: "56" };
+  }
+
+  async function getBlockNumber(): Promise<string> {
+    await assertBsc();
+    const value = hexQuantity(await rpc("eth_blockNumber", []), "latest block number");
+    return BigInt(value).toString();
   }
 
   return {
