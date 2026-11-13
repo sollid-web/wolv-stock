@@ -601,6 +601,14 @@ async function mainPersistent() {
     const runtime = await createPersistentWorkerRuntime()
     let shuttingDown = false
     let activePoll: Promise<void> | undefined
+    let activeHeartbeat: Promise<void> | undefined
+    const pulseHeartbeat = async () => {
+        if (shuttingDown || activeHeartbeat) return
+        activeHeartbeat = runtime.heartbeat().catch(error => {
+            console.error("Autonomous worker heartbeat failed:", error instanceof Error ? error.message : String(error))
+        }).finally(() => { activeHeartbeat = undefined })
+        await activeHeartbeat
+    }
     const pollSchedules = async () => {
         if (shuttingDown || activePoll) return
         activePoll = runtime.poll().catch(error => {
@@ -609,13 +617,17 @@ async function mainPersistent() {
         await activePoll
     }
     const timer = setInterval(() => { void pollSchedules() }, POLL_INTERVAL_MS)
+    const heartbeatTimer = setInterval(() => { void pulseHeartbeat() }, POLL_INTERVAL_MS)
+    void pulseHeartbeat()
     void pollSchedules()
     const gracefulShutdown = async (signal: NodeJS.Signals) => {
         if (shuttingDown) return
         shuttingDown = true
         console.info("Received " + signal + "; stopping persistent autonomous worker.")
         clearInterval(timer)
+        clearInterval(heartbeatTimer)
         await activePoll
+        await activeHeartbeat
         await runtime.close()
         await closeIntentNonceTracker()
         console.info("Persistent autonomous worker stopped.")
