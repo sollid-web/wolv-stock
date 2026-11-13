@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getAddress, parseEther, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hashAgentPolicy } from "@/lib/agentPolicyHash";
