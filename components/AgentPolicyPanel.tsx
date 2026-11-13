@@ -36,6 +36,8 @@ type RuntimeWorkerReadiness = {
     workerConfigIssues: string[]
     executionGateEnabled: boolean
     executionGateReason: string | null
+    globallyPaused: boolean
+    pauseReason: string | null
 }
 
 type PolicySnapshot = {
@@ -268,6 +270,8 @@ export default function AgentPolicyPanel() {
                     workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
                     executionGateEnabled: data.executionGateEnabled,
                     executionGateReason: typeof data.executionGateReason === "string" ? data.executionGateReason : null,
+                    globallyPaused: (data.workerHeartbeat as Record<string, unknown> | null)?.metadata !== null && typeof (data.workerHeartbeat as Record<string, unknown> | null)?.metadata === "object" ? ((data.workerHeartbeat as Record<string, unknown>).metadata as Record<string, unknown>).globallyPaused === true : false,
+                    pauseReason: typeof ((data.workerHeartbeat as Record<string, unknown> | null)?.metadata as Record<string, unknown> | undefined)?.pauseReason === "string" ? String(((data.workerHeartbeat as Record<string, unknown>).metadata as Record<string, unknown>).pauseReason) : null,
                 })
             }
             const matching = data.schedules.filter((item: unknown) => {
@@ -478,7 +482,7 @@ export default function AgentPolicyPanel() {
         && !currentSnapshot.revoked
         && currentSnapshot.expiresAt > BigInt(nowSeconds)
     )
-    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled && !runtimeSchedule.hasActiveClaim && runtimeWorkerReadiness?.workerProcessRunning && runtimeWorkerReadiness.workerReady && runtimeWorkerReadiness.executionGateEnabled)
+    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled && !runtimeSchedule.hasActiveClaim && runtimeWorkerReadiness?.workerProcessRunning && runtimeWorkerReadiness.workerReady && runtimeWorkerReadiness.executionGateEnabled && !runtimeWorkerReadiness.globallyPaused)
     return (
         <section className="mx-auto w-full max-w-6xl px-4 py-8">
             <div className="mb-5">
@@ -571,6 +575,9 @@ export default function AgentPolicyPanel() {
                             )}
                             {runtimeWorkerReadiness && !runtimeWorkerReadiness.workerProcessRunning && (
                                 <p className="mt-2 text-xs text-amber-300">No worker heartbeat was detected in the last 20 seconds. Deploy the persistent worker process with <code>npm run agent:worker</code>.</p>
+                            )}
+                            {runtimeWorkerReadiness?.globallyPaused && (
+                                <p className="mt-2 text-xs text-amber-300">Global agent control is paused{runtimeWorkerReadiness.pauseReason ? ": " + runtimeWorkerReadiness.pauseReason : "."} No new autonomous trades will be claimed.</p>
                             )}
                             {runtimeWorkerReadiness && (!runtimeWorkerReadiness.workerReady || !runtimeWorkerReadiness.executionGateEnabled) && (
                                 <p className="mt-2 text-xs text-amber-300">
