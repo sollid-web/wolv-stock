@@ -441,6 +441,7 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     assert.equal(freshHeartbeat?.workerId, workerId);
     assert.equal(freshHeartbeat?.workerMode, "PERSISTENT_AUTONOMOUS");
     assert.equal(freshHeartbeat?.chainId, 97);
+    assert.equal((await store.getLatestWorkerHeartbeat(now + 5_000, 20_000, 56)), null);
     assert.equal((await store.getLatestWorkerHeartbeat(now + 60_000, 20_000)), null);
 
     const sessionPlan = createAgentSessionPlan({ ownerAddress: ownerA });
