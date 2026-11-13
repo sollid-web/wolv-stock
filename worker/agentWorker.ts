@@ -453,6 +453,8 @@ async function createPersistentWorkerRuntime() {
                     const code = isRecord(error) && typeof error.code === "string" ? error.code : "AGENT_EXECUTION_FAILED"
                     const detail = error instanceof Error ? error.message : "Unknown autonomous execution error."
                     const submissionUncertain = Boolean(active.userOperationHash)
+                    const fatalPolicyFailure = ["POLICY_HASH_MISMATCH", "POLICY_EXPIRED", "POLICY_REVOKED", "POLICY_NOT_CONFIGURED", "SESSION_REVOKED", "SESSION_NOT_INSTALLED"].includes(code)
+                    const disableSchedule = submissionUncertain || fatalPolicyFailure
                     const status = submissionUncertain ? "STOPPED" : "FAILED"
                     await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
                         status, failureCode: code, failureDetail: detail,
@@ -460,14 +462,14 @@ async function createPersistentWorkerRuntime() {
                         at: Date.now(),
                     })
                     active.status = status
-                    if (submissionUncertain) {
+                    if (disableSchedule) {
                         await store.setScheduleEnabled(active.ownerAddress, active.scheduleId, false, Date.now()).catch(disableError => {
                             console.error("Could not disable schedule after uncertain UserOperation submission:", disableError instanceof Error ? disableError.message : String(disableError))
                         })
                     }
                     await store.recordAlert({
                         ownerAddress: active.ownerAddress, claimId: active.claimId,
-                        severity: "CRITICAL",
+                        severity: disableSchedule ? "CRITICAL" : "WARNING",
                         kind: submissionUncertain ? "USEROP_RECEIPT_UNCERTAIN" : code,
                         message: detail, createdAt: Date.now(),
                     }).catch(alertError => {
