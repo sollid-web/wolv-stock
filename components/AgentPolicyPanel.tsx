@@ -30,6 +30,18 @@ type RuntimeSchedule = {
     hasActiveClaim: boolean
 }
 
+function getWorkerPauseState(data: Record<string, unknown>): { globallyPaused: boolean; pauseReason: string | null } {
+    const heartbeat = data.workerHeartbeat
+    if (!heartbeat || typeof heartbeat !== "object") return { globallyPaused: false, pauseReason: null }
+    const metadata = (heartbeat as Record<string, unknown>).metadata
+    if (!metadata || typeof metadata !== "object") return { globallyPaused: false, pauseReason: null }
+    const values = metadata as Record<string, unknown>
+    return {
+        globallyPaused: values.globallyPaused === true,
+        pauseReason: typeof values.pauseReason === "string" ? values.pauseReason : null,
+    }
+}
+
 type RuntimeWorkerReadiness = {
     workerProcessRunning: boolean
     workerReady: boolean
@@ -270,8 +282,7 @@ export default function AgentPolicyPanel() {
                     workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
                     executionGateEnabled: data.executionGateEnabled,
                     executionGateReason: typeof data.executionGateReason === "string" ? data.executionGateReason : null,
-                    globallyPaused: (data.workerHeartbeat as Record<string, unknown> | null)?.metadata !== null && typeof (data.workerHeartbeat as Record<string, unknown> | null)?.metadata === "object" ? ((data.workerHeartbeat as Record<string, unknown>).metadata as Record<string, unknown>).globallyPaused === true : false,
-                    pauseReason: typeof ((data.workerHeartbeat as Record<string, unknown> | null)?.metadata as Record<string, unknown> | undefined)?.pauseReason === "string" ? String(((data.workerHeartbeat as Record<string, unknown>).metadata as Record<string, unknown>).pauseReason) : null,
+                    ...getWorkerPauseState(data),
                 })
             }
             const matching = data.schedules.filter((item: unknown) => {
@@ -399,6 +410,7 @@ export default function AgentPolicyPanel() {
                     workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
                     executionGateEnabled: data.executionGateEnabled,
                     executionGateReason: typeof data.executionGateReason === "string" ? data.executionGateReason : null,
+                    ...getWorkerPauseState(data),
                 })
             }
             setPendingStrategy(null)
