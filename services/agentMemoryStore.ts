@@ -2373,7 +2373,13 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     const rows = await this.sql`
       SELECT schedule_id, name, enabled, interval_seconds, policy_version, policy_hash,
              strategy_type, execution_mode, strategy_config,
-             next_run_at, last_run_at, created_at, updated_at
+             next_run_at, last_run_at, created_at, updated_at,
+             EXISTS (
+               SELECT 1 FROM wolv_agent_execution_claims active_claim
+               WHERE active_claim.schedule_id = wolv_agent_schedules.schedule_id
+                 AND active_claim.owner_address = wolv_agent_schedules.owner_address
+                 AND active_claim.status IN ('CLAIMED', 'SUBMITTED')
+             ) AS has_active_execution_claim
       FROM wolv_agent_schedules WHERE owner_address = ${owner}
       ORDER BY updated_at DESC LIMIT ${safeLimit}
     `;
@@ -2384,6 +2390,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       strategyType: String(row.strategy_type), executionMode: String(row.execution_mode),
       strategyConfig: parseJson<AgentStrategyConfig>(row.strategy_config),
       lastRunAt: row.last_run_at ? Number(row.last_run_at) : null,
+      hasActiveExecutionClaim: row.has_active_execution_claim === true,
       createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
     }));
   }
