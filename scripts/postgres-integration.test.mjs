@@ -429,6 +429,29 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     assert.equal(claimedAutonomous[0].executionMode, "AUTONOMOUS");
     assert.equal((await store.claimDueAutonomousAgentSchedules(now, 20)).length, 0);
 
+    const autonomousScheduleId = "77777777-7777-4777-8777-777777777777";
+    await store.rescheduleAutonomousAgentSchedule(ownerA, autonomousScheduleId, now + 1_000);
+    const rescheduled = (await store.listSchedules(ownerA, 50)).find(row => row.scheduleId === autonomousScheduleId);
+    assert.ok(Number(rescheduled?.nextRunAt) >= now + 61_000);
+
+    const activeClaimId = randomUUID();
+    await store.claimExecution({
+      claimId: activeClaimId,
+      scheduleId: autonomousScheduleId,
+      ownerAddress: ownerA,
+      runKey: "integration-active-run-" + randomUUID(),
+      policyHash: schedulePolicyHash,
+      createdAt: now + 1_000,
+    });
+    const activeSchedule = (await store.listSchedules(ownerA, 50)).find(row => row.scheduleId === autonomousScheduleId);
+    assert.equal(activeSchedule?.hasActiveExecutionClaim, true);
+    assert.equal((await store.claimDueAutonomousAgentSchedules(now + 70_000, 20)).length, 0);
+
+    await store.updateExecutionClaim(activeClaimId, ownerA, { status: "CONFIRMED", at: now + 70_000 });
+    const claimedAfterSettlement = await store.claimDueAutonomousAgentSchedules(now + 70_000, 20);
+    assert.equal(claimedAfterSettlement.length, 1);
+    assert.equal(claimedAfterSettlement[0].scheduleId, autonomousScheduleId);
+
     const workerId = "integration-" + randomUUID();
     await store.recordWorkerHeartbeat({
       workerId,
