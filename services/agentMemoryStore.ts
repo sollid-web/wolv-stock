@@ -794,6 +794,7 @@ export interface AgentMemoryStorePort {
   claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   recordWorkerHeartbeat?(input: { workerId: string; workerMode: string; chainId: number; lastSeenAt: number; metadata?: Record<string, unknown> }): Promise<void>;
   getLatestWorkerHeartbeat?(now: number, maxAgeMs?: number, chainId?: number): Promise<Record<string, unknown> | null>;
+  rescheduleAutonomousAgentSchedule?(ownerAddress: string, scheduleId: string, nextRunAt: number, updatedAt: number): Promise<void>;
   claimExecution(input: {
     claimId: string;
     scheduleId: string;
@@ -2460,6 +2461,22 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       lastRunAt: Number(row.last_run_at),
     }));
   }
+  async rescheduleAutonomousAgentSchedule(ownerAddress: string, scheduleId: string, nextRunAt: number, updatedAt: number): Promise<void> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    if (!/^[0-9a-f-]{36}$/i.test(scheduleId) ||
+      !Number.isSafeInteger(nextRunAt) || nextRunAt <= 0 ||
+      !Number.isSafeInteger(updatedAt) || updatedAt <= 0) {
+      throw new TypeError("Autonomous schedule reschedule fields are invalid.");
+    }
+    await this.sql`
+      UPDATE wolv_agent_schedules
+      SET next_run_at = ${new Date(nextRunAt)}, updated_at = ${new Date(updatedAt)}
+      WHERE owner_address = ${owner} AND schedule_id = ${scheduleId}
+        AND enabled = true AND strategy_type = 'BSC_AGENT_TRADE' AND execution_mode = 'AUTONOMOUS'
+    `;
+  }
+
   async recordWorkerHeartbeat(input: {
     workerId: string;
     workerMode: string;
