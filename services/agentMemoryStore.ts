@@ -793,7 +793,7 @@ export interface AgentMemoryStorePort {
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   recordWorkerHeartbeat?(input: { workerId: string; workerMode: string; chainId: number; lastSeenAt: number; metadata?: Record<string, unknown> }): Promise<void>;
-  getLatestWorkerHeartbeat?(now: number, maxAgeMs?: number): Promise<Record<string, unknown> | null>;
+  getLatestWorkerHeartbeat?(now: number, maxAgeMs?: number, chainId?: number): Promise<Record<string, unknown> | null>;
   claimExecution(input: {
     claimId: string;
     scheduleId: string;
@@ -2488,19 +2488,28 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     `;
   }
 
-  async getLatestWorkerHeartbeat(now: number, maxAgeMs = 20_000): Promise<Record<string, unknown> | null> {
+  async getLatestWorkerHeartbeat(now: number, maxAgeMs = 20_000, chainId?: number): Promise<Record<string, unknown> | null> {
     await this.ready;
     if (!Number.isSafeInteger(now) || now <= 0 ||
-      !Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0 || maxAgeMs > 300_000) {
+      !Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0 || maxAgeMs > 300_000 ||
+      (chainId !== undefined && (!Number.isSafeInteger(chainId) || chainId <= 0))) {
       throw new TypeError("Worker heartbeat freshness window is invalid.");
     }
-    const rows = await this.sql`
-      SELECT worker_id, worker_mode, chain_id, last_seen_at, metadata
-      FROM wolv_agent_worker_heartbeats
-      WHERE last_seen_at >= ${new Date(now - maxAgeMs)}
-      ORDER BY last_seen_at DESC
-      LIMIT 1
-    `;
+    const rows = chainId === undefined
+      ? await this.sql`
+          SELECT worker_id, worker_mode, chain_id, last_seen_at, metadata
+          FROM wolv_agent_worker_heartbeats
+          WHERE last_seen_at >= ${new Date(now - maxAgeMs)}
+          ORDER BY last_seen_at DESC
+          LIMIT 1
+        `
+      : await this.sql`
+          SELECT worker_id, worker_mode, chain_id, last_seen_at, metadata
+          FROM wolv_agent_worker_heartbeats
+          WHERE last_seen_at >= ${new Date(now - maxAgeMs)} AND chain_id = ${chainId}
+          ORDER BY last_seen_at DESC
+          LIMIT 1
+        `;
     const row = rows[0];
     if (!row) return null;
     return {
