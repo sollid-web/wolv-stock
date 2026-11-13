@@ -527,7 +527,7 @@ async function createPersistentWorkerRuntime() {
                 active.status = "STOPPED"
                 if (reason !== "TRIGGER_NOT_MET" && reason !== "SLIPPAGE_HIGH") {
                     const disableSchedule = ["WORKER_PANIC_STOP", "POLICY_HASH_MISMATCH", "POLICY_EXPIRED", "SESSION_REVOKED",
-                        "SESSION_NOT_INSTALLED", "POLICY_NOT_CONFIGURED", "CIRCUIT_BREAKER_PAUSED", "TRADE_CAP_EXCEEDED"].includes(reason)
+                        "SESSION_NOT_INSTALLED", "POLICY_NOT_CONFIGURED", "TRADE_CAP_EXCEEDED"].includes(reason)
                     if (disableSchedule) await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now())
                     await store.recordAlert({
                         ownerAddress, claimId, severity: disableSchedule ? "CRITICAL" : "WARNING",
