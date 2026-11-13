@@ -52,7 +52,9 @@ export async function GET(request: Request) {
     await store.initialize();
     const schedules = await store.listSchedules(session.address);
     const readiness = getWorkerReadiness();
-    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId ?? undefined);
+    const workerHeartbeat = readiness.configuredChainId === null
+      ? null
+      : await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId);
     return Response.json({
       schedules,
       ...readiness,
@@ -227,7 +229,9 @@ export async function POST(request: Request) {
       updatedAt: now,
     });
     const readiness = getWorkerReadiness();
-    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId ?? undefined);
+    const workerHeartbeat = readiness.configuredChainId === null
+      ? null
+      : await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId);
     return Response.json({
       scheduleId: result.scheduleId,
       strategyType,
@@ -261,7 +265,9 @@ export async function PATCH(request: Request) {
     await store.initialize();
     await store.setScheduleEnabled(session.address, body.scheduleId, body.enabled, Date.now());
     const readiness = getWorkerReadiness();
-    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId ?? undefined);
+    const workerHeartbeat = readiness.configuredChainId === null
+      ? null
+      : await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId);
     return Response.json({
       scheduleId: body.scheduleId,
       enabled: body.enabled,
