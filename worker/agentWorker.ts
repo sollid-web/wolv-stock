@@ -348,6 +348,7 @@ async function createPersistentWorkerRuntime() {
     )
     const store = new AgentMemoryStore()
     await store.initialize()
+    const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || "persistent-bsc-agent-worker"
     const runtimes = new Map<string, PersistentScheduleRuntime>()
 
     function createScheduleRuntime(schedule: Record<string, unknown>, strategy: AgentStrategy): PersistentScheduleRuntime {
@@ -551,17 +552,31 @@ async function createPersistentWorkerRuntime() {
     }
 
     async function poll() {
+        const now = Date.now()
         const network = resolveAgentExecutionNetwork(config.chain.id)
+        const control = await store.getControlState()
+        const globallyPaused = control.emergency_stop === true || control.stop_monitoring === true || control.reject_new_opportunities === true
+        await store.recordWorkerHeartbeat({
+            workerId,
+            workerMode: "PERSISTENT_AUTONOMOUS",
+            chainId: config.chain.id,
+            lastSeenAt: now,
+            metadata: {
+                executionGateEnabled: network.allowed,
+                executionGateReason: network.allowed ? null : network.reason,
+                globallyPaused,
+                pauseReason: globallyPaused ? control.stop_reason ?? "Global agent control is paused." : null,
+            },
+        })
         if (!network.allowed) {
             console.warn(JSON.stringify({ event: "autonomous_worker_gated", reason: network.reason, chainId: config.chain.id }))
             return
         }
-        const control = await store.getControlState()
-        if (control.emergency_stop === true || control.stop_monitoring === true || control.reject_new_opportunities === true) {
+        if (globallyPaused) {
             console.warn(JSON.stringify({ event: "autonomous_worker_paused", reason: control.stop_reason ?? "Global agent control is paused." }))
             return
         }
-        const schedules = await store.claimDueAutonomousAgentSchedules(Date.now(), 20)
+        const schedules = await store.claimDueAutonomousAgentSchedules(now, 20)
         for (const schedule of schedules) await processSchedule(schedule)
     }
 
