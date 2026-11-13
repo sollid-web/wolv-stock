@@ -298,6 +298,10 @@ type PersistentScheduleRuntime = {
     context: PersistentScheduleContext
 }
 
+function getLastTelemetry(context: PersistentScheduleContext): AgentCycleTelemetry | null {
+    return context.lastTelemetry
+}
+
 function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, expectedOwnerAddress: string): AgentStrategy {
     if (!isRecord(value)) throw new Error("Persisted strategy configuration must be an object.")
     const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
@@ -532,8 +536,9 @@ async function createPersistentWorkerRuntime() {
         try {
             await runtime.worker.evaluateOnce()
             if (active.status === "CLAIMED") {
-                const reason = runtime.context.panicStopped ? "WORKER_PANIC_STOP" : runtime.context.lastTelemetry?.reasonCode ?? "NO_EXECUTION"
-                const detail = runtime.context.lastTelemetry?.detail ?? "No trade intent was submitted during this schedule evaluation."
+                const lastTelemetry = getLastTelemetry(runtime.context)
+                const reason = runtime.context.panicStopped ? "WORKER_PANIC_STOP" : lastTelemetry?.reasonCode ?? "NO_EXECUTION"
+                const detail = lastTelemetry?.detail ?? "No trade intent was submitted during this schedule evaluation."
                 await store.updateExecutionClaim(claimId, ownerAddress, {
                     status: "STOPPED", failureCode: reason, failureDetail: detail, at: Date.now(),
                 })
@@ -620,7 +625,7 @@ async function mainPersistent() {
     let activeHeartbeat: Promise<void> | undefined
     const pulseHeartbeat = async () => {
         if (shuttingDown || activeHeartbeat) return
-        activeHeartbeat = runtime.heartbeat().catch(error => {
+        activeHeartbeat = runtime.heartbeat().then(() => undefined).catch(error => {
             console.error("Autonomous worker heartbeat failed:", error instanceof Error ? error.message : String(error))
         }).finally(() => { activeHeartbeat = undefined })
         await activeHeartbeat

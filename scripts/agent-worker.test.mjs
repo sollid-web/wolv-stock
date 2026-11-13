@@ -39,6 +39,7 @@ function validPolicyState(overrides = {}) {
     paused: false,
     installed: true,
     revoked: false,
+    targetToken: strategy.targetToken,
     rollingVolume: parseEther("0.2"),
     policyConfigured: true,
     policyHash: POLICY_HASH,
@@ -126,6 +127,18 @@ test("anchors intent age to local market-data receipt time", async () => {
 test("rejects a strategy label that is not bound into the on-chain policy hash", async () => {
   const { worker, telemetry, intents } = createHarness({
     strategies: [{ ...strategy, id: "unregistered-entry" }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
+});
+
+test("rejects a strategy token that differs from the installed policy hook", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    readValidator: async () => validPolicyState({
+      targetToken: "0x0000000000000000000000000000000000000788",
+    }),
   });
   await worker.evaluateOnce();
 

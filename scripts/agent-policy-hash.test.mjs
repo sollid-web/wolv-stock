@@ -56,8 +56,8 @@ test("hashes the complete strategy policy using versioned ABI encoding", () => {
 });
 
 test("rejects strategy limits outside the validator's hard bounds", () => {
-  assert.throws(() => hashAgentPolicy({ ...POLICY, amountBnb: 0n }), /strategy amount/);
-  assert.throws(() => hashAgentPolicy({ ...POLICY, amountBnb: POLICY.maxTradeValue + 1n }), /strategy amount/);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, amountBnb: 0n }), /strategy amount/i);
+  assert.throws(() => hashAgentPolicy({ ...POLICY, amountBnb: POLICY.maxTradeValue + 1n }), /strategy amount/i);
   assert.throws(() => hashAgentPolicy({ ...POLICY, entryPriceMicros: 0n }), /entry-price/);
   assert.throws(() => hashAgentPolicy({ ...POLICY, slippageBps: 501 }), /slippage/);
   assert.throws(() => hashAgentPolicy({ ...POLICY, maxPriceImpactBps: 301 }), /price impact/);

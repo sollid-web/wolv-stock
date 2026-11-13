@@ -289,11 +289,13 @@ export default function AgentPolicyPanel() {
                 if (typeof item !== "object" || item === null || Array.isArray(item)) return false
                 const schedule = item as Record<string, unknown>
                 const config = schedule.strategyConfig
+                const account = typeof config === "object" && config !== null && !Array.isArray(config)
+                    ? (config as Record<string, unknown>).account
+                    : undefined
                 return schedule.strategyType === "BSC_AGENT_TRADE" &&
                     schedule.executionMode === "AUTONOMOUS" &&
-                    typeof config === "object" && config !== null && !Array.isArray(config) &&
-                    typeof (config as Record<string, unknown>).account === "string" &&
-                    (config as Record<string, unknown>).account.toLowerCase() === currentDerivedAccount.toLowerCase()
+                    typeof account === "string" &&
+                    account.toLowerCase() === currentDerivedAccount.toLowerCase()
             }) as Array<Record<string, unknown>>
             const selected = matching.find(item => item.enabled === true) ?? matching[0]
             setRuntimeSchedule(selected && typeof selected.scheduleId === "string" && typeof selected.name === "string"
@@ -314,7 +316,7 @@ export default function AgentPolicyPanel() {
     }, [address, isConnected, currentDerivedAccount])
 
     useEffect(() => {
-        void refreshRuntimeSchedule()
+        void Promise.resolve().then(refreshRuntimeSchedule)
     }, [refreshRuntimeSchedule])
 
     useEffect(() => {

@@ -31,6 +31,7 @@ export type ValidatorSnapshot = {
     paused: boolean
     installed: boolean
     revoked: boolean
+    targetToken: Address
     rollingVolume: bigint
     policyConfigured: boolean
     policyHash: Hex
@@ -142,6 +143,13 @@ const validatorAbi = [
     },
     {
         type: "function",
+        name: "getTargetToken",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [{ type: "address" }],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
         name: "getEffectiveRollingVolume",
         inputs: [{ name: "account", type: "address" }],
         outputs: [{ type: "uint256" }],
@@ -167,7 +175,7 @@ export function createViemValidatorReader(
     validatorAddress: Address
 ) {
     return async (strategy: AgentStrategy): Promise<ValidatorSnapshot> => {
-        const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
+        const [paused, installed, revoked, targetToken, rollingVolume, accountPolicy] = await Promise.all([
             readContract(client, {
                 address: validatorAddress,
                 abi: validatorAbi,
@@ -183,6 +191,12 @@ export function createViemValidatorReader(
                 address: validatorAddress,
                 abi: validatorAbi,
                 functionName: "isRevoked",
+                args: [strategy.account]
+            }),
+            readContract(client, {
+                address: validatorAddress,
+                abi: validatorAbi,
+                functionName: "getTargetToken",
                 args: [strategy.account]
             }),
             readContract(client, {
@@ -204,6 +218,7 @@ export function createViemValidatorReader(
             paused,
             installed,
             revoked,
+            targetToken,
             rollingVolume,
             policyConfigured,
             policyHash,
@@ -371,6 +386,21 @@ export class AgentWorker {
             this.rejectCycle(strategy, telemetry("POLICY_NOT_CONFIGURED"))
             return
         }
+        if (validator.targetToken.toLowerCase() !== strategy.targetToken.toLowerCase()) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                "Configured strategy token does not match the installed policy hook token."
+            ))
+            return
+        }
+        if (strategy.amountBnb <= BigInt(0) || strategy.amountBnb > MAX_TRADE_BNB) {
+            this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
+            return
+        }
+        if (strategy.amountBnb > validator.maxTradeValue) {
+            this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
+            return
+        }
         let expectedPolicyHash: Hex
         try {
             expectedPolicyHash = hashAgentPolicy({
@@ -402,14 +432,6 @@ export class AgentWorker {
         }
         if (validator.policyExpiresAt * BigInt(1000) <= BigInt(this.now())) {
             this.rejectCycle(strategy, telemetry("POLICY_EXPIRED"))
-            return
-        }
-        if (strategy.amountBnb <= BigInt(0) || strategy.amountBnb > MAX_TRADE_BNB) {
-            this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
-            return
-        }
-        if (strategy.amountBnb > validator.maxTradeValue) {
-            this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
             return
         }
         if (

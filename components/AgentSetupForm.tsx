@@ -261,7 +261,7 @@ export default function AgentSetupForm({
             <label className="block space-y-1.5 text-sm text-slate-300">
                 <span>Entry Price Threshold (USD)</span>
                 <input className={inputClass} type="number" inputMode="decimal" min="0" step="0.000001" value={entryPriceUsd} onChange={(event) => setEntryPriceUsd(event.target.value)} placeholder="e.g. 100.00" required />
-                <span className="block text-xs text-slate-500">The worker's price trigger is included in the policy hash. Enter the same threshold used by the strategy.</span>
+                <span className="block text-xs text-slate-500">The worker&apos;s price trigger is included in the policy hash. Enter the same threshold used by the strategy.</span>
             </label>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -1,19 +1,17 @@
 #!/usr/bin/env node
 "use strict";
 
-const { createHash, randomUUID } = require("node:crypto");
-
 const OWNER_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 const TARGET_CONTRACT = "0xa9ee28c80f960b889dfbd1902055218cba016f75";
 const SCHEDULE_NAME = "diagnostic-option-b-nvda";
 
 async function main() {
-  const { loadEnvConfig } = await import("@next/env");
+  const { loadEnvConfig } = (await import("@next/env")).default;
   loadEnvConfig(process.cwd());
 
   if (!process.argv.includes("--apply")) {
     console.log("Dry run only. Re-run with --apply and WOLV_ALLOW_DIAGNOSTIC_STRATEGY_INSERT=true to write the test schedule.");
-    console.log(JSON.stringify(createScheduleInput(Date.now()), null, 2));
+    console.log(JSON.stringify(await createScheduleInput(Date.now()), null, 2));
     return;
   }
   if (process.env.WOLV_ALLOW_DIAGNOSTIC_STRATEGY_INSERT !== "true") {
@@ -32,7 +30,7 @@ async function main() {
     }
 
     const now = Date.now();
-    const input = createScheduleInput(now);
+    const input = await createScheduleInput(now);
     const { scheduleId } = await store.saveSchedule(input);
     console.log(JSON.stringify({
       scheduleId,
@@ -48,7 +46,8 @@ async function main() {
   }
 }
 
-function createScheduleInput(now) {
+async function createScheduleInput(now) {
+  const { createHash, randomUUID } = await import("node:crypto");
   const strategyConfig = {
     ticker: "NVDA",
     tokenAddress: TARGET_CONTRACT,
