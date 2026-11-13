@@ -2440,6 +2440,12 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
           AND execution_mode = 'AUTONOMOUS'
           AND strategy_type = 'BSC_AGENT_TRADE'
           AND next_run_at <= ${new Date(now)}
+          AND NOT EXISTS (
+            SELECT 1 FROM wolv_agent_execution_claims active_claim
+            WHERE active_claim.schedule_id = wolv_agent_schedules.schedule_id
+              AND active_claim.owner_address = wolv_agent_schedules.owner_address
+              AND active_claim.status IN ('CLAIMED', 'SUBMITTED')
+          )
         ORDER BY next_run_at ASC
         LIMIT ${safeLimit}
         FOR UPDATE SKIP LOCKED
