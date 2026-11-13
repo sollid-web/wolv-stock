@@ -296,6 +296,12 @@ export default function AgentPolicyPanel() {
         void refreshRuntimeSchedule()
     }, [refreshRuntimeSchedule])
 
+    useEffect(() => {
+        if (!runtimeSessionAuthenticated) return
+        const timer = setInterval(() => { void refreshRuntimeSchedule() }, 15_000)
+        return () => clearInterval(timer)
+    }, [runtimeSessionAuthenticated, refreshRuntimeSchedule])
+
     async function authenticateRuntimeSession(): Promise<boolean> {
         if (!isConnected || !address) {
             setRuntimeError("Connect the owner wallet before enabling autonomous execution.")
