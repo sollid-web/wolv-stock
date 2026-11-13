@@ -2460,6 +2460,58 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       lastRunAt: Number(row.last_run_at),
     }));
   }
+  async recordWorkerHeartbeat(input: {
+    workerId: string;
+    workerMode: string;
+    chainId: number;
+    lastSeenAt: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.ready;
+    const workerId = input.workerId.trim();
+    const workerMode = input.workerMode.trim();
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(workerId) ||
+      !/^[A-Za-z0-9._:-]{1,64}$/.test(workerMode) ||
+      !Number.isSafeInteger(input.chainId) || input.chainId <= 0 ||
+      !Number.isSafeInteger(input.lastSeenAt) || input.lastSeenAt <= 0) {
+      throw new TypeError("Worker heartbeat fields are invalid.");
+    }
+    const metadata = input.metadata ?? {};
+    await this.sql`
+      INSERT INTO wolv_agent_worker_heartbeats (worker_id, worker_mode, chain_id, last_seen_at, metadata)
+      VALUES (${workerId}, ${workerMode}, ${input.chainId}, ${new Date(input.lastSeenAt)}, ${JSON.stringify(metadata)}::jsonb)
+      ON CONFLICT (worker_id) DO UPDATE SET
+        worker_mode = EXCLUDED.worker_mode,
+        chain_id = EXCLUDED.chain_id,
+        last_seen_at = EXCLUDED.last_seen_at,
+        metadata = EXCLUDED.metadata
+    `;
+  }
+
+  async getLatestWorkerHeartbeat(now: number, maxAgeMs = 20_000): Promise<Record<string, unknown> | null> {
+    await this.ready;
+    if (!Number.isSafeInteger(now) || now <= 0 ||
+      !Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0 || maxAgeMs > 300_000) {
+      throw new TypeError("Worker heartbeat freshness window is invalid.");
+    }
+    const rows = await this.sql`
+      SELECT worker_id, worker_mode, chain_id, last_seen_at, metadata
+      FROM wolv_agent_worker_heartbeats
+      WHERE last_seen_at >= ${new Date(now - maxAgeMs)}
+      ORDER BY last_seen_at DESC
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      workerId: String(row.worker_id),
+      workerMode: String(row.worker_mode),
+      chainId: Number(row.chain_id),
+      lastSeenAt: Number(row.last_seen_at),
+      metadata: parseJson<Record<string, unknown>>(row.metadata),
+    };
+  }
+
   async claimExecution(input: Parameters<AgentMemoryStorePort["claimExecution"]>[0]): Promise<{ claimId: string | null }> {
     await this.ready;
     const owner = requireOwnerAddress(input.ownerAddress);
