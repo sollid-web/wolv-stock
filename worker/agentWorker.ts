@@ -551,7 +551,7 @@ async function createPersistentWorkerRuntime() {
         }
     }
 
-    async function poll() {
+    async function heartbeat() {
         const now = Date.now()
         const network = resolveAgentExecutionNetwork(config.chain.id)
         const control = await store.getControlState()
@@ -566,14 +566,21 @@ async function createPersistentWorkerRuntime() {
                 executionGateReason: network.allowed ? null : network.reason,
                 globallyPaused,
                 pauseReason: globallyPaused ? control.stop_reason ?? "Global agent control is paused." : null,
+                processId: process.pid,
             },
         })
-        if (!network.allowed) {
-            console.warn(JSON.stringify({ event: "autonomous_worker_gated", reason: network.reason, chainId: config.chain.id }))
+        return { network, globallyPaused, pauseReason: control.stop_reason ?? "Global agent control is paused." }
+    }
+
+    async function poll() {
+        const now = Date.now()
+        const state = await heartbeat()
+        if (!state.network.allowed) {
+            console.warn(JSON.stringify({ event: "autonomous_worker_gated", reason: state.network.reason, chainId: config.chain.id }))
             return
         }
-        if (globallyPaused) {
-            console.warn(JSON.stringify({ event: "autonomous_worker_paused", reason: control.stop_reason ?? "Global agent control is paused." }))
+        if (state.globallyPaused) {
+            console.warn(JSON.stringify({ event: "autonomous_worker_paused", reason: state.pauseReason }))
             return
         }
         const schedules = await store.claimDueAutonomousAgentSchedules(now, 20)
@@ -582,6 +589,7 @@ async function createPersistentWorkerRuntime() {
 
     return {
         poll,
+        heartbeat,
         close: async () => {
             for (const runtime of runtimes.values()) runtime.worker.stop()
             await store.close()
