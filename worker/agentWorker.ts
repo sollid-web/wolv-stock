@@ -417,6 +417,8 @@ async function createPersistentWorkerRuntime() {
                     kind: event.reasonCode,
                     message: event.message,
                     createdAt: Date.now(),
+                }).catch(error => {
+                    console.error("Could not persist autonomous worker panic alert:", error instanceof Error ? error.message : String(error))
                 })
             },
             onIntent: async intent => {
@@ -528,8 +530,8 @@ async function createPersistentWorkerRuntime() {
                 if (reason !== "TRIGGER_NOT_MET" && reason !== "SLIPPAGE_HIGH") {
                     const disableSchedule = ["WORKER_PANIC_STOP", "POLICY_HASH_MISMATCH", "POLICY_EXPIRED", "SESSION_REVOKED",
                         "SESSION_NOT_INSTALLED", "POLICY_NOT_CONFIGURED", "TRADE_CAP_EXCEEDED"].includes(reason)
-                    if (disableSchedule) await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now())
-                    await store.recordAlert({
+                    if (disableSchedule && !runtime.context.panicStopped) await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now())
+                    if (!runtime.context.panicStopped) await store.recordAlert({
                         ownerAddress, claimId, severity: disableSchedule ? "CRITICAL" : "WARNING",
                         kind: reason, message: detail, createdAt: Date.now(),
                     })
