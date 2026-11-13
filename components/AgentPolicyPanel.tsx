@@ -559,7 +559,7 @@ export default function AgentPolicyPanel() {
                     <h2 className="text-lg font-bold text-white">Autonomous execution</h2>
                     {runtimeSchedule?.enabled ? (
                         <>
-                            <p className="mt-2 text-sm text-emerald-300">Strategy {runtimeSchedule.name} is saved for unattended evaluation every 60 seconds. Trades execute automatically when the worker process is running, execution gates are enabled, and on-chain policy and market checks pass.</p>
+                            <p className="mt-2 text-sm text-emerald-300">Strategy {runtimeSchedule.name} is saved for unattended evaluation every 60 seconds. Trades execute automatically when the worker process is running, execution gates are enabled, and on-chain policy and market checks pass. Pausing stops future cycles but cannot reverse a confirmed trade or cancel a submitted UserOperation.</p>
                             <p className="mt-1 break-all text-xs text-slate-500">Schedule ID: {runtimeSchedule.scheduleId}</p>
                             {runtimeSchedule.hasActiveClaim && (
                                 <p className="mt-2 text-xs text-amber-300">A previous execution is still marked CLAIMED or SUBMITTED. The worker will not start another trade until that execution is reconciled and its claim is closed. Check the execution ledger before resuming.</p>
@@ -577,7 +577,7 @@ export default function AgentPolicyPanel() {
                         </>
                     ) : runtimeSchedule && !runtimeSchedule.enabled ? (
                         <>
-                            <p className="mt-2 text-sm text-amber-300">The autonomous schedule is paused. The on-chain policy remains installed but the worker will not claim this schedule.</p>
+                            <p className="mt-2 text-sm text-amber-300">The autonomous schedule is paused. The on-chain policy remains installed, and the worker will not claim future cycles. Pausing cannot cancel a UserOperation already submitted; use the on-chain pause or revocation control for emergency protection.</p>
                             <button type="button" disabled={runtimeBusy} onClick={() => void setAutonomousScheduleEnabled(true)} className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Resume autonomous worker"}</button>
                         </>
                     ) : pendingStrategy ? (
