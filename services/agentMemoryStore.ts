@@ -586,6 +586,19 @@ const MIGRATIONS = [{
       ON wolv_agent_execution_claims (owner_address, created_at)
       WHERE notional_value IS NOT NULL`,
   ],
+}, {
+  version: 10,
+  statements: [
+    `CREATE TABLE wolv_agent_worker_heartbeats (
+      worker_id varchar(128) PRIMARY KEY,
+      worker_mode varchar(64) NOT NULL,
+      chain_id integer NOT NULL CHECK (chain_id > 0),
+      last_seen_at timestamptz NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    )`,
+    `CREATE INDEX wolv_agent_worker_heartbeats_last_seen
+      ON wolv_agent_worker_heartbeats (last_seen_at DESC)`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -779,6 +792,8 @@ export interface AgentMemoryStorePort {
   setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
+  recordWorkerHeartbeat?(input: { workerId: string; workerMode: string; chainId: number; lastSeenAt: number; metadata?: Record<string, unknown> }): Promise<void>;
+  getLatestWorkerHeartbeat?(now: number, maxAgeMs?: number): Promise<Record<string, unknown> | null>;
   claimExecution(input: {
     claimId: string;
     scheduleId: string;
