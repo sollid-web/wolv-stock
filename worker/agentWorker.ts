@@ -452,17 +452,26 @@ async function createPersistentWorkerRuntime() {
                     await active.submissionUpdate?.catch(() => undefined)
                     const code = isRecord(error) && typeof error.code === "string" ? error.code : "AGENT_EXECUTION_FAILED"
                     const detail = error instanceof Error ? error.message : "Unknown autonomous execution error."
-                    const status = active.userOperationHash ? "STOPPED" : "FAILED"
+                    const submissionUncertain = Boolean(active.userOperationHash)
+                    const status = submissionUncertain ? "STOPPED" : "FAILED"
                     await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
                         status, failureCode: code, failureDetail: detail,
                         ...(active.userOperationHash ? { providerReference: active.userOperationHash } : {}),
                         at: Date.now(),
                     })
                     active.status = status
+                    if (submissionUncertain) {
+                        await store.setScheduleEnabled(active.ownerAddress, active.scheduleId, false, Date.now()).catch(disableError => {
+                            console.error("Could not disable schedule after uncertain UserOperation submission:", disableError instanceof Error ? disableError.message : String(disableError))
+                        })
+                    }
                     await store.recordAlert({
                         ownerAddress: active.ownerAddress, claimId: active.claimId,
-                        severity: status === "FAILED" ? "CRITICAL" : "WARNING",
-                        kind: code, message: detail, createdAt: Date.now(),
+                        severity: "CRITICAL",
+                        kind: submissionUncertain ? "USEROP_RECEIPT_UNCERTAIN" : code,
+                        message: detail, createdAt: Date.now(),
+                    }).catch(alertError => {
+                        console.error("Could not persist autonomous execution failure alert:", alertError instanceof Error ? alertError.message : String(alertError))
                     })
                     throw error
                 } finally {
@@ -549,6 +558,9 @@ async function createPersistentWorkerRuntime() {
                 message: error instanceof Error ? error.message : "Unknown worker cycle failure.", createdAt: Date.now(),
             })
         } finally {
+            await store.rescheduleAutonomousAgentSchedule(ownerAddress, scheduleId, Date.now()).catch(error => {
+                console.error("Could not reschedule autonomous strategy after worker cycle:", error instanceof Error ? error.message : String(error))
+            })
             runtime.context.activeClaim = null
         }
     }
