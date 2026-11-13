@@ -52,11 +52,11 @@ export async function GET(request: Request) {
     await store.initialize();
     const schedules = await store.listSchedules(session.address);
     const readiness = getWorkerReadiness();
-    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000);
+    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId ?? undefined);
     return Response.json({
       schedules,
       ...readiness,
-      workerProcessRunning: Boolean(workerHeartbeat && workerHeartbeat.chainId === readiness.configuredChainId),
+      workerProcessRunning: Boolean(workerHeartbeat),
       workerHeartbeat,
     }, { headers: HEADERS });
   } catch {
@@ -227,7 +227,7 @@ export async function POST(request: Request) {
       updatedAt: now,
     });
     const readiness = getWorkerReadiness();
-    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000);
+    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId ?? undefined);
     return Response.json({
       scheduleId: result.scheduleId,
       strategyType,
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
       execution: strategyType === "BSC_AGENT_TRADE" ? "AUTONOMOUS_SCHEDULED" : "BLOCKED",
       policyHash,
       ...readiness,
-      workerProcessRunning: Boolean(workerHeartbeat && workerHeartbeat.chainId === readiness.configuredChainId),
+      workerProcessRunning: Boolean(workerHeartbeat),
       workerHeartbeat,
     }, { status: 201, headers: HEADERS });
   } catch {
@@ -261,12 +261,12 @@ export async function PATCH(request: Request) {
     await store.initialize();
     await store.setScheduleEnabled(session.address, body.scheduleId, body.enabled, Date.now());
     const readiness = getWorkerReadiness();
-    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000);
+    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId ?? undefined);
     return Response.json({
       scheduleId: body.scheduleId,
       enabled: body.enabled,
       ...readiness,
-      workerProcessRunning: Boolean(workerHeartbeat && workerHeartbeat.chainId === readiness.configuredChainId),
+      workerProcessRunning: Boolean(workerHeartbeat),
       workerHeartbeat,
     }, { headers: HEADERS });
   } catch {
