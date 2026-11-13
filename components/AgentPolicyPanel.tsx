@@ -282,7 +282,12 @@ export default function AgentPolicyPanel() {
             }) as Array<Record<string, unknown>>
             const selected = matching.find(item => item.enabled === true) ?? matching[0]
             setRuntimeSchedule(selected && typeof selected.scheduleId === "string" && typeof selected.name === "string"
-                ? { scheduleId: selected.scheduleId, name: selected.name, enabled: selected.enabled === true }
+                ? {
+                    scheduleId: selected.scheduleId,
+                    name: selected.name,
+                    enabled: selected.enabled === true,
+                    hasActiveClaim: selected.hasActiveExecutionClaim === true,
+                }
                 : null)
             setRuntimeError("")
         } catch (cause) {
