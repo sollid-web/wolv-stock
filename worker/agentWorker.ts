@@ -348,7 +348,7 @@ async function createPersistentWorkerRuntime() {
     )
     const store = new AgentMemoryStore()
     await store.initialize()
-    const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || "persistent-bsc-agent-worker"
+    const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || `persistent-bsc-agent-worker-${config.chain.id}`
     const runtimes = new Map<string, PersistentScheduleRuntime>()
 
     function createScheduleRuntime(schedule: Record<string, unknown>, strategy: AgentStrategy): PersistentScheduleRuntime {
