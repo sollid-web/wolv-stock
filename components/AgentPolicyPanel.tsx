@@ -402,7 +402,7 @@ export default function AgentPolicyPanel() {
                 typeof data.policyHash !== "string" || data.policyHash.toLowerCase() !== expectedPolicyHash) {
                 throw new Error(typeof data.error === "string" ? data.error : "The persisted schedule hash does not match the owner-approved on-chain policy.")
             }
-            setRuntimeSchedule({ scheduleId: data.scheduleId, name: strategy.strategyId, enabled: true, hasActiveClaim: false })
+            setRuntimeSchedule({ scheduleId: data.scheduleId, name: strategy.strategyId, enabled: true, hasActiveClaim: data.hasActiveExecutionClaim === true })
             if (typeof data.workerReady === "boolean" && typeof data.executionGateEnabled === "boolean") {
                 setRuntimeWorkerReadiness({
                     workerProcessRunning: data.workerProcessRunning === true,
