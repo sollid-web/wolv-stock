@@ -50,7 +50,15 @@ export async function GET(request: Request) {
   const store = new AgentMemoryStore();
   try {
     await store.initialize();
-    return Response.json({ schedules: await store.listSchedules(session.address) }, { headers: HEADERS });
+    const schedules = await store.listSchedules(session.address);
+    const readiness = getWorkerReadiness();
+    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000);
+    return Response.json({
+      schedules,
+      ...readiness,
+      workerProcessRunning: Boolean(workerHeartbeat && workerHeartbeat.chainId === readiness.configuredChainId),
+      workerHeartbeat,
+    }, { headers: HEADERS });
   } catch {
     return Response.json({ error: "Schedule storage is unavailable." }, { status: 503, headers: HEADERS });
   } finally { await store.close(); }
