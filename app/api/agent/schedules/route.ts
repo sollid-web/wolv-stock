@@ -156,7 +156,8 @@ export async function POST(request: Request) {
       if (!validator.installed || validator.revoked || validator.paused || !validator.policyConfigured) {
         throw new Error("The smart account must have an installed, active, unpaused on-chain policy.");
       }
-      if (validator.policyExpiresAt * BigInt(1000) <= BigInt(now) ||
+      if (getAddress(validator.targetToken) !== targetToken ||
+        validator.policyExpiresAt * BigInt(1000) <= BigInt(now) ||
         validator.maxTradeValue !== maxTradeValue || validator.policyExpiresAt !== expiresAt ||
         getAddress(validator.intentSigner) !== intentSigner ||
         validator.policyHash.toLowerCase() !== expectedPolicyHash.toLowerCase()) {
@@ -215,6 +216,7 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
     });
+    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000);
     return Response.json({
       scheduleId: result.scheduleId,
       strategyType,
@@ -222,6 +224,8 @@ export async function POST(request: Request) {
       execution: strategyType === "BSC_AGENT_TRADE" ? "AUTONOMOUS_SCHEDULED" : "BLOCKED",
       policyHash,
       ...getWorkerReadiness(),
+      workerProcessRunning: Boolean(workerHeartbeat),
+      workerHeartbeat,
     }, { status: 201, headers: HEADERS });
   } catch {
     return Response.json({ error: "Schedule could not be persisted." }, { status: 503, headers: HEADERS });
@@ -245,7 +249,13 @@ export async function PATCH(request: Request) {
   try {
     await store.initialize();
     await store.setScheduleEnabled(session.address, body.scheduleId, body.enabled, Date.now());
-    return Response.json({ scheduleId: body.scheduleId, enabled: body.enabled }, { headers: HEADERS });
+    const workerHeartbeat = await store.getLatestWorkerHeartbeat(Date.now(), 20_000);
+    return Response.json({
+      scheduleId: body.scheduleId,
+      enabled: body.enabled,
+      workerProcessRunning: Boolean(workerHeartbeat),
+      workerHeartbeat,
+    }, { headers: HEADERS });
   } catch {
     return Response.json({ error: "Schedule could not be updated." }, { status: 503, headers: HEADERS });
   } finally { await store.close(); }
