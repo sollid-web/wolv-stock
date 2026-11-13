@@ -429,6 +429,20 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     assert.equal(claimedAutonomous[0].executionMode, "AUTONOMOUS");
     assert.equal((await store.claimDueAutonomousAgentSchedules(now, 20)).length, 0);
 
+    const workerId = "integration-" + randomUUID();
+    await store.recordWorkerHeartbeat({
+      workerId,
+      workerMode: "PERSISTENT_AUTONOMOUS",
+      chainId: 97,
+      lastSeenAt: now,
+      metadata: { executionGateEnabled: true },
+    });
+    const freshHeartbeat = await store.getLatestWorkerHeartbeat(now + 5_000, 20_000);
+    assert.equal(freshHeartbeat?.workerId, workerId);
+    assert.equal(freshHeartbeat?.workerMode, "PERSISTENT_AUTONOMOUS");
+    assert.equal(freshHeartbeat?.chainId, 97);
+    assert.equal((await store.getLatestWorkerHeartbeat(now + 60_000, 20_000)), null);
+
     const sessionPlan = createAgentSessionPlan({ ownerAddress: ownerA });
     const sessionId = randomUUID();
     const prepared = await store.prepareAgentSessionPlan({
