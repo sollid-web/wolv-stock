@@ -441,9 +441,9 @@ export default function AgentPolicyPanel() {
             }
             setRuntimeSchedule({ ...runtimeSchedule, enabled })
             if (runtimeWorkerReadiness && typeof data.workerProcessRunning === "boolean") {
-                setRuntimeWorkerReadiness({ ...runtimeWorkerReadiness, workerProcessRunning: data.workerProcessRunning })
+                setRuntimeWorkerReadiness({ ...runtimeWorkerReadiness, workerProcessRunning: data.workerProcessRunning, ...getWorkerPauseState(data) })
             }
-            setNotice(enabled ? "Autonomous schedule resumed." : "Autonomous schedule paused. On-chain policy remains installed.")
+            setNotice(enabled ? "Autonomous schedule resumed." : "Autonomous schedule paused. This prevents future cycles but does not cancel a UserOperation already submitted.")
         } catch (cause) {
             setRuntimeError(cause instanceof Error ? cause.message : "The autonomous schedule could not be updated.")
         } finally {
