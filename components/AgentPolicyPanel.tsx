@@ -412,6 +412,9 @@ export default function AgentPolicyPanel() {
                 throw new Error(typeof data.error === "string" ? data.error : "The autonomous schedule could not be updated.")
             }
             setRuntimeSchedule({ ...runtimeSchedule, enabled })
+            if (runtimeWorkerReadiness && typeof data.workerProcessRunning === "boolean") {
+                setRuntimeWorkerReadiness({ ...runtimeWorkerReadiness, workerProcessRunning: data.workerProcessRunning })
+            }
             setNotice(enabled ? "Autonomous schedule resumed." : "Autonomous schedule paused. On-chain policy remains installed.")
         } catch (cause) {
             setRuntimeError(cause instanceof Error ? cause.message : "The autonomous schedule could not be updated.")
