@@ -589,14 +589,14 @@ const MIGRATIONS = [{
 }, {
   version: 10,
   statements: [
-    `CREATE TABLE wolv_agent_worker_heartbeats (
+    `CREATE TABLE IF NOT EXISTS wolv_agent_worker_heartbeats (
       worker_id varchar(128) PRIMARY KEY,
       worker_mode varchar(64) NOT NULL,
       chain_id integer NOT NULL CHECK (chain_id > 0),
       last_seen_at timestamptz NOT NULL,
       metadata jsonb NOT NULL DEFAULT '{}'::jsonb
     )`,
-    `CREATE INDEX wolv_agent_worker_heartbeats_last_seen
+    `CREATE INDEX IF NOT EXISTS wolv_agent_worker_heartbeats_last_seen
       ON wolv_agent_worker_heartbeats (last_seen_at DESC)`,
   ],
 }];
