@@ -228,12 +228,14 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
     });
+    const savedSchedule = (await store.listSchedules(session.address, 50)).find(item => item.scheduleId === result.scheduleId);
     const readiness = getWorkerReadiness();
     const workerHeartbeat = readiness.configuredChainId === null
       ? null
       : await store.getLatestWorkerHeartbeat(Date.now(), 20_000, readiness.configuredChainId);
     return Response.json({
       scheduleId: result.scheduleId,
+      hasActiveExecutionClaim: savedSchedule?.hasActiveExecutionClaim === true,
       strategyType,
       executionMode,
       execution: strategyType === "BSC_AGENT_TRADE" ? "AUTONOMOUS_SCHEDULED" : "BLOCKED",
