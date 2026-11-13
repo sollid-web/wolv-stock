@@ -583,7 +583,10 @@ export default function AgentPolicyPanel() {
                     ) : runtimeSchedule && !runtimeSchedule.enabled ? (
                         <>
                             <p className="mt-2 text-sm text-amber-300">The autonomous schedule is paused. The on-chain policy remains installed, and the worker will not claim future cycles. Pausing cannot cancel a UserOperation already submitted; use the on-chain pause or revocation control for emergency protection.</p>
-                            <button type="button" disabled={runtimeBusy} onClick={() => void setAutonomousScheduleEnabled(true)} className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Resume autonomous worker"}</button>
+                            {runtimeSchedule.hasActiveClaim && (
+                                <p className="mt-2 text-xs text-amber-300">A previous execution is still marked CLAIMED or SUBMITTED. Reconcile it in the execution ledger before resuming; the worker will not claim another trade while it remains unresolved.</p>
+                            )}
+                            <button type="button" disabled={runtimeBusy || runtimeSchedule.hasActiveClaim} onClick={() => void setAutonomousScheduleEnabled(true)} className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : runtimeSchedule.hasActiveClaim ? "Resolve execution claim before resuming" : "Resume autonomous worker"}</button>
                         </>
                     ) : pendingStrategy ? (
                         <>
