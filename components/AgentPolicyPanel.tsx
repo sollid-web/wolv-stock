@@ -30,6 +30,7 @@ type RuntimeSchedule = {
 }
 
 type RuntimeWorkerReadiness = {
+    workerProcessRunning: boolean
     workerReady: boolean
     workerConfigIssues: string[]
     executionGateEnabled: boolean
@@ -261,6 +262,7 @@ export default function AgentPolicyPanel() {
             }
             if (typeof data.workerReady === "boolean" && typeof data.executionGateEnabled === "boolean") {
                 setRuntimeWorkerReadiness({
+                    workerProcessRunning: data.workerProcessRunning === true,
                     workerReady: data.workerReady,
                     workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
                     executionGateEnabled: data.executionGateEnabled,
@@ -376,6 +378,7 @@ export default function AgentPolicyPanel() {
             setRuntimeSchedule({ scheduleId: data.scheduleId, name: strategy.strategyId, enabled: true })
             if (typeof data.workerReady === "boolean" && typeof data.executionGateEnabled === "boolean") {
                 setRuntimeWorkerReadiness({
+                    workerProcessRunning: data.workerProcessRunning === true,
                     workerReady: data.workerReady,
                     workerConfigIssues: Array.isArray(data.workerConfigIssues) ? data.workerConfigIssues.filter((item: unknown): item is string => typeof item === "string") : [],
                     executionGateEnabled: data.executionGateEnabled,
@@ -460,7 +463,7 @@ export default function AgentPolicyPanel() {
         && !currentSnapshot.revoked
         && currentSnapshot.expiresAt > BigInt(nowSeconds)
     )
-    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled && runtimeWorkerReadiness?.workerReady && runtimeWorkerReadiness.executionGateEnabled)
+    const readyForExecution = Boolean(policyActive && currentSnapshot?.installed && !currentSnapshot.paused && runtimeSchedule?.enabled && runtimeWorkerReadiness?.workerProcessRunning && runtimeWorkerReadiness.workerReady && runtimeWorkerReadiness.executionGateEnabled)
     return (
         <section className="mx-auto w-full max-w-6xl px-4 py-8">
             <div className="mb-5">
@@ -548,6 +551,9 @@ export default function AgentPolicyPanel() {
                         <>
                             <p className="mt-2 text-sm text-emerald-300">Strategy {runtimeSchedule.name} is saved for unattended evaluation every 60 seconds. Trades execute automatically when the worker process is running, execution gates are enabled, and on-chain policy and market checks pass.</p>
                             <p className="mt-1 break-all text-xs text-slate-500">Schedule ID: {runtimeSchedule.scheduleId}</p>
+                            {runtimeWorkerReadiness && !runtimeWorkerReadiness.workerProcessRunning && (
+                                <p className="mt-2 text-xs text-amber-300">No worker heartbeat was detected in the last 20 seconds. Deploy the persistent worker process with <code>npm run agent:worker</code>.</p>
+                            )}
                             {runtimeWorkerReadiness && (!runtimeWorkerReadiness.workerReady || !runtimeWorkerReadiness.executionGateEnabled) && (
                                 <p className="mt-2 text-xs text-amber-300">
                                     {runtimeWorkerReadiness.workerConfigIssues.length > 0 ? "Missing worker configuration: " + runtimeWorkerReadiness.workerConfigIssues.join(", ") + ". " : ""}
