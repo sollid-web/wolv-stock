@@ -38,6 +38,9 @@ export type ValidatorSnapshot = {
     maxTradeValue: bigint
     policyExpiresAt: bigint
     intentSigner: Address
+    entryPriceMicros: bigint
+    maxSlippageBps: number
+    maxPriceImpactBps: number
 }
 
 export type AgentCycleReason =
@@ -157,6 +160,17 @@ const validatorAbi = [
     },
     {
         type: "function",
+        name: "getAccountRiskPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "entryPriceMicros", type: "uint64" },
+            { name: "maxSlippageBps", type: "uint16" },
+            { name: "maxPriceImpactBps", type: "uint16" }
+        ],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
         name: "getAccountPolicy",
         inputs: [{ name: "account", type: "address" }],
         outputs: [
@@ -175,7 +189,7 @@ export function createViemValidatorReader(
     validatorAddress: Address
 ) {
     return async (strategy: AgentStrategy): Promise<ValidatorSnapshot> => {
-        const [paused, installed, revoked, targetToken, rollingVolume, accountPolicy] = await Promise.all([
+        const [paused, installed, revoked, targetToken, rollingVolume, accountPolicy, riskPolicy] = await Promise.all([
             readContract(client, {
                 address: validatorAddress,
                 abi: validatorAbi,
@@ -210,10 +224,17 @@ export function createViemValidatorReader(
                 abi: validatorAbi,
                 functionName: "getAccountPolicy",
                 args: [strategy.account]
+            }),
+            readContract(client, {
+                address: validatorAddress,
+                abi: validatorAbi,
+                functionName: "getAccountRiskPolicy",
+                args: [strategy.account]
             })
         ])
         const [policyConfigured, policyHash, maxTradeValue, policyExpiresAt, intentSigner] =
             accountPolicy
+        const [entryPriceMicros, maxSlippageBps, maxPriceImpactBps] = riskPolicy
         return {
             paused,
             installed,
@@ -224,7 +245,10 @@ export function createViemValidatorReader(
             policyHash,
             maxTradeValue,
             policyExpiresAt,
-            intentSigner
+            intentSigner,
+            entryPriceMicros,
+            maxSlippageBps,
+            maxPriceImpactBps
         }
     }
 }
@@ -384,6 +408,17 @@ export class AgentWorker {
                 || /^0x0{40}$/i.test(validator.intentSigner)
         ) {
             this.rejectCycle(strategy, telemetry("POLICY_NOT_CONFIGURED"))
+            return
+        }
+        if (
+            validator.entryPriceMicros !== strategy.entryPriceMicros
+            || validator.maxSlippageBps !== strategy.slippageBps
+            || validator.maxPriceImpactBps !== strategy.maxPriceImpactBps
+        ) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                "On-chain V2 risk limits do not match the owner-authorized strategy configuration."
+            ))
             return
         }
         if (validator.targetToken.toLowerCase() !== strategy.targetToken.toLowerCase()) {
