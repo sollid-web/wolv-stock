@@ -19,8 +19,8 @@ const maxAge = Number(maxAgeArg);
 if (!Number.isSafeInteger(maxAge) || maxAge < 60 || maxAge > 86_400) {
   throw new Error("max-age-seconds must be an integer from 60 to 86400.");
 }
-const rawKey = process.env.PRIVATE_KEY?.trim().replace(/^['"]|['"]$/g, "");
-if (!rawKey) throw new Error("PRIVATE_KEY is not set in this terminal environment.");
+const rawKey = process.env.DEPLOYER_PRIVATE_KEY?.trim().replace(/^['"]|['"]$/g, "");
+if (!rawKey) throw new Error("DEPLOYER_PRIVATE_KEY is not set in this terminal environment.");
 const privateKey = /^0x/i.test(rawKey) ? rawKey : `0x${rawKey}`;
 if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) throw new Error("PRIVATE_KEY must be a 32-byte hex value.");
 const account = privateKeyToAccount(privateKey);
