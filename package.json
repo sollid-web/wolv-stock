@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
     "start": "next start",
     "agent:worker": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types worker/agentWorker.ts",
     "lint": "eslint",
@@ -14,7 +14,8 @@
     "test:logic": "bash -lc 'node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test $(printf \"%s\\n\" scripts/*.test.mjs | grep -v postgres-integration.test.mjs)'",
     "test:postgres": "node --conditions=react-server --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/postgres-integration.test.mjs",
     "test:provider": "node --disable-warning=ExperimentalWarning scripts/real-binance-provider.test.mjs",
-    "test:responsive": "node scripts/responsive-smoke.mjs"
+    "test:responsive": "node scripts/responsive-smoke.mjs",
+    "configure:testnet-token-feed": "node scripts/configure-chainlink-token-feed.mjs"
   },
   "dependencies": {
     "@bnbagent/sdk": "^0.6.1",

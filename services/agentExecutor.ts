@@ -4,6 +4,7 @@ import { toECDSASigner } from "@zerodev/permissions/signers"
 import type { Address, Client, Hex } from "viem"
 import { concatHex, encodeAbiParameters, getAddress } from "viem"
 import { readContract } from "viem/actions"
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
 import {
     buildAgentBuyCall,
     createAgentSmartAccountClient,
@@ -92,6 +93,9 @@ export type AgentExecutorDependencies = {
         maxTradeValue?: bigint
         expiresAt?: bigint
         intentSigner?: Address
+        entryPriceMicros?: bigint
+        maxSlippageBps?: number
+        maxPriceImpactBps?: number
     }>
     buildBuyCall?: typeof buildAgentBuyCall
     encodeBuyCall?: typeof encodeAgentBuyCall
@@ -139,6 +143,17 @@ const VALIDATOR_ABI = [
     },
     {
         type: "function",
+        name: "getAccountRiskPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "entryPriceMicros", type: "uint64" },
+            { name: "maxSlippageBps", type: "uint16" },
+            { name: "maxPriceImpactBps", type: "uint16" }
+        ],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
         name: "getAccountPolicy",
         inputs: [{ name: "account", type: "address" }],
         outputs: [
@@ -179,6 +194,7 @@ export function isLiveUserOperationSubmissionEnabled(
     env: NodeJS.ProcessEnv = process.env
 ) {
     return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
+        && env.WOLV_AUTONOMOUS_TRADING_ENABLED === "true"
 }
 
 export function resolveAgentExecutionNetwork(
@@ -187,6 +203,9 @@ export function resolveAgentExecutionNetwork(
 ):
     | { allowed: true; chainId: 97 | 56 }
     | { allowed: false; reason: string } {
+    if (env.WOLV_AUTONOMOUS_TRADING_ENABLED !== "true") {
+        return { allowed: false, reason: "Autonomous trading is disabled by the master safety gate." };
+    }
     if (configuredChainId === 97) {
         return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
             ? { allowed: true, chainId: 97 }
@@ -209,7 +228,7 @@ export function resolveAgentExecutionNetwork(
 
 export async function readAgentValidatorState(client: Client, account: Address) {
     const config = getAgentSmartAccountConfig()
-    const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
+    const [paused, installed, revoked, rollingVolume, accountPolicy, riskPolicy] = await Promise.all([
         readContract(client, {
             address: config.policyHookAddress,
             abi: VALIDATOR_ABI,
@@ -238,9 +257,16 @@ export async function readAgentValidatorState(client: Client, account: Address) 
             abi: VALIDATOR_ABI,
             functionName: "getAccountPolicy",
             args: [account]
+        }),
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: VALIDATOR_ABI,
+            functionName: "getAccountRiskPolicy",
+            args: [account]
         })
     ])
     const [policyConfigured, policyHash, maxTradeValue, expiresAt, intentSigner] = accountPolicy
+    const [entryPriceMicros, maxSlippageBps, maxPriceImpactBps] = riskPolicy
     return {
         paused,
         installed,
@@ -250,7 +276,10 @@ export async function readAgentValidatorState(client: Client, account: Address) 
         policyHash,
         maxTradeValue,
         expiresAt,
-        intentSigner
+        intentSigner,
+        entryPriceMicros,
+        maxSlippageBps,
+        maxPriceImpactBps
     }
 }
 
@@ -298,7 +327,7 @@ export class AgentExecutor {
             if (!(this.dependencies.isLiveEnabled ?? isLiveUserOperationSubmissionEnabled)()) {
                 throw new AgentExecutorError(
                     "LIVE_SUBMISSION_DISABLED",
-                    "Live UserOperation submission is disabled; set ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
+                    "Live UserOperation submission is disabled; set WOLV_AUTONOMOUS_TRADING_ENABLED=true and ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
                 )
             }
             const config = this.dependencies.getConfig?.() ?? getAgentSmartAccountConfig()
@@ -618,6 +647,9 @@ export class AgentExecutor {
             maxTradeValue?: bigint
             expiresAt?: bigint
             intentSigner?: Address
+            entryPriceMicros?: bigint
+            maxSlippageBps?: number
+            maxPriceImpactBps?: number
         },
         intent: AgentExecutionIntent,
         signer: Address
@@ -629,12 +661,42 @@ export class AgentExecutor {
                 || validator.expiresAt * BigInt(1000) <= BigInt(this.now()))
         const policyCapExceeded = validator.policyConfigured === true &&
             (validator.maxTradeValue === undefined || amountBnb > validator.maxTradeValue)
+        let expectedPolicyHash: Hex | null = null
+        if (
+            validator.policyConfigured === true
+            && validator.maxTradeValue !== undefined
+            && validator.expiresAt !== undefined
+            && validator.intentSigner !== undefined
+        ) {
+            try {
+                expectedPolicyHash = hashAgentPolicy({
+                    strategyId: intent.strategyId,
+                    ownerAddress: intent.ownerAddress,
+                    account: intent.account,
+                    targetToken: intent.targetToken,
+                    maxTradeValue: validator.maxTradeValue,
+                    expiresAt: validator.expiresAt,
+                    intentSigner: validator.intentSigner,
+                    amountBnb: intent.amountBnb,
+                    entryPriceMicros: intent.entryPriceMicros,
+                    slippageBps: intent.slippageBps,
+                    maxPriceImpactBps: intent.maxPriceImpactBps
+                })
+            } catch {
+                expectedPolicyHash = null
+            }
+        }
         const policyHashMismatch = validator.policyConfigured === true &&
-            (!intent.policyHash || !validator.policyHash ||
-                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase())
+            (!intent.policyHash || !validator.policyHash || !expectedPolicyHash ||
+                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase() ||
+                expectedPolicyHash.toLowerCase() !== validator.policyHash.toLowerCase())
         const intentSignerMismatch = !validator.intentSigner
             || !/^0x[0-9a-f]{40}$/i.test(validator.intentSigner)
             || getAddress(validator.intentSigner) !== getAddress(signer)
+        const riskPolicyMismatch =
+            validator.entryPriceMicros !== intent.entryPriceMicros
+            || validator.maxSlippageBps !== intent.slippageBps
+            || validator.maxPriceImpactBps !== intent.maxPriceImpactBps
         if (
             validator.paused
             || !validator.installed
@@ -646,6 +708,7 @@ export class AgentExecutor {
             || policyCapExceeded
             || policyHashMismatch
             || intentSignerMismatch
+            || riskPolicyMismatch
             || validator.policyConfigured !== true
         ) {
             throw new AgentExecutorError(

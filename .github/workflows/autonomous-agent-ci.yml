@@ -1,0 +1,67 @@
+name: Autonomous agent runtime CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [autonomy/onchain-agent-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Foundry contract build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Compile contracts
+        run: forge build
+      - name: Run contract tests
+        run: forge test -vv
+
+  slither:
+    name: Slither static security analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Slither
+        run: python -m pip install --disable-pip-version-check slither-analyzer
+      - name: Analyze Foundry project
+        run: slither . --fail-high
+
+  app:
+    name: TypeScript, runtime tests, lint and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: TypeScript validation
+        run: pnpm exec tsc --noEmit
+      - name: Agent runtime logic tests
+        run: pnpm run test:logic
+      - name: Lint
+        run: pnpm run lint
+      - name: Production build
+        run: pnpm run build

@@ -1,49 +1,44 @@
 import { pathToFileURL } from "node:url"
+import { createHash, randomUUID } from "node:crypto"
 import { resolve } from "node:path"
-import type { KernelValidator } from "@zerodev/sdk"
+import { addressToEmptyAccount, type KernelValidator } from "@zerodev/sdk"
+import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator"
+import { getEntryPoint, KERNEL_V3_1 } from "@zerodev/sdk/constants"
 import type { AgentSmartAccountConfig } from "../lib/smartAccount.ts"
 import {
+    buildAgentBuyCall,
     createAgentPublicClient,
-    getAgentSmartAccountConfig,
-    type PoolReserves
+    getAgentSmartAccountConfig
 } from "../lib/smartAccount.ts"
 import {
     AgentExecutor,
-    createWorkerFailureReporter
+    createWorkerFailureReporter,
+    resolveAgentExecutionNetwork
 } from "../services/agentExecutor.ts"
 import {
     AgentWorker,
     createViemValidatorReader,
     MAX_TRADE_BNB,
     type AgentStrategy,
+    type AgentCycleTelemetry,
     type MarketSnapshot
 } from "../services/agentWorker.ts"
 import { closeIntentNonceTracker } from "../services/agentIntentNonceTracker.ts"
+import { AgentMemoryStore } from "../services/agentMemoryStore.ts"
 import { loadWorkerEnvironment } from "./workerEnvironment.ts"
 import {
     getAddress,
     isAddress,
     parseEther,
-    type Address
+    type Address,
+    type Hex
 } from "viem"
+import { readContract } from "viem/actions"
 import { privateKeyToAccount } from "viem/accounts"
 import type { PublicClient } from "viem"
 
 const POLL_INTERVAL_MS = 5_000
 const QUOTE_SUBMISSION_BUDGET_MS = 15_000
-const MOCK_RESERVES: PoolReserves = {
-    reserveIn: parseEther("1000"),
-    reserveOut: parseEther("1000000")
-}
-
-type MockMarketQuote = {
-    tokenIn: Address
-    tokenOut: Address
-    amountIn: bigint
-    amountOutMin: bigint
-    timestamp: number
-}
-
 type MarketDataProvider = {
     fetchMarketData: (
         strategy: AgentStrategy,
@@ -54,9 +49,50 @@ type MarketDataProvider = {
 type OwnerValidatorProvider = {
     getOwnerValidator: (
         account: Address,
-        config: AgentSmartAccountConfig
+        config: AgentSmartAccountConfig,
+        ownerAddress: Address
     ) => Promise<KernelValidator>
 }
+
+const policyFeedAbi = [
+    {
+        type: "function",
+        name: "tokenUsdFeeds",
+        stateMutability: "view",
+        inputs: [{ name: "token", type: "address" }],
+        outputs: [{ type: "address" }]
+    },
+    {
+        type: "function",
+        name: "tokenFeedMaxAge",
+        stateMutability: "view",
+        inputs: [{ name: "token", type: "address" }],
+        outputs: [{ type: "uint32" }]
+    }
+] as const
+
+const chainlinkFeedAbi = [
+    {
+        type: "function",
+        name: "decimals",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "uint8" }]
+    },
+    {
+        type: "function",
+        name: "latestRoundData",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [
+            { type: "uint80" },
+            { type: "int256" },
+            { type: "uint256" },
+            { type: "uint256" },
+            { type: "uint80" }
+        ]
+    }
+] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -86,9 +122,10 @@ function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
 
     return parsed.map((value, index): AgentStrategy => {
         if (!isRecord(value)) throw new Error(`Strategy ${index} must be an object.`)
-        const { id, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
+        const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
         if (
-            typeof id !== "string" || !id.trim()
+            typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
+            || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
             || typeof account !== "string" || !isAddress(account)
             || typeof targetToken !== "string" || !isAddress(targetToken)
             || typeof amountBnb !== "string"
@@ -113,6 +150,7 @@ function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
         }
         return {
             id,
+            ownerAddress: getAddress(ownerAddress),
             account: getAddress(account),
             targetToken: normalizedTarget,
             amountBnb: parsedAmount,
@@ -143,36 +181,90 @@ export async function fetchMarketData(
     config: AgentSmartAccountConfig,
     client: PublicClient,
     marketProvider?: MarketDataProvider["fetchMarketData"]
-): Promise<MarketSnapshot & { quote?: MockMarketQuote }> {
-    if (marketProvider) {
-        const snapshot = await marketProvider(strategy, { config, client })
-        return { ...snapshot, receivedAt: Date.now() }
-    }
+): Promise<MarketSnapshot> {
+    const snapshot = marketProvider
+        ? await marketProvider(strategy, { config, client })
+        : await fetchChainlinkMarketData(strategy, config, client)
+    return { ...snapshot, receivedAt: Date.now() }
+}
 
-    const receivedAt = Date.now()
-    const quote: MockMarketQuote = {
-        tokenIn: config.wrappedNativeAddress,
-        tokenOut: strategy.targetToken,
-        amountIn: strategy.amountBnb,
-        amountOutMin: BigInt(1),
-        timestamp: receivedAt
+async function fetchChainlinkMarketData(
+    strategy: AgentStrategy,
+    config: AgentSmartAccountConfig,
+    client: PublicClient
+): Promise<MarketSnapshot> {
+    const [feed, maxAge] = await Promise.all([
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: policyFeedAbi,
+            functionName: "tokenUsdFeeds",
+            args: [strategy.targetToken]
+        }),
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: policyFeedAbi,
+            functionName: "tokenFeedMaxAge",
+            args: [strategy.targetToken]
+        })
+    ])
+    if (feed === "0x0000000000000000000000000000000000000000" || maxAge < 60 || maxAge > 86_400) {
+        throw new Error("Target token has no valid guardian-allowlisted Chainlink USD feed.")
     }
-    console.info(JSON.stringify({
-        event: "mock_market_quote",
-        tokenIn: quote.tokenIn,
-        tokenOut: quote.tokenOut,
-        amountIn: quote.amountIn.toString(),
-        amountOutMin: quote.amountOutMin.toString(),
-        timestamp: quote.timestamp
-    }))
-
+    const [decimals, round] = await Promise.all([
+        readContract(client, {
+            address: feed,
+            abi: chainlinkFeedAbi,
+            functionName: "decimals"
+        }),
+        readContract(client, {
+            address: feed,
+            abi: chainlinkFeedAbi,
+            functionName: "latestRoundData"
+        })
+    ])
+    const [roundId, answer, , updatedAt, answeredInRound] = round
+    const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
+    if (
+        decimals > 18
+        || roundId === 0n
+        || answer <= 0n
+        || updatedAt === 0n
+        || updatedAt > nowSeconds
+        || nowSeconds - updatedAt > BigInt(maxAge)
+        || answeredInRound < roundId
+    ) {
+        throw new Error("Chainlink target-token USD feed is invalid, incomplete, future-dated, or stale.")
+    }
+    const normalizedPrice = answer * (10n ** BigInt(18 - decimals))
+    if (normalizedPrice <= 0n || normalizedPrice > 10n ** 36n) {
+        throw new Error("Chainlink target-token USD price is outside supported bounds.")
+    }
+    const priceMicros = (normalizedPrice - 1n) / 1_000_000_000_000n + 1n
+    const marketCall = await buildAgentBuyCall(client, {
+        accountAddress: strategy.account,
+        amountBnb: strategy.amountBnb,
+        slippageBps: strategy.slippageBps,
+        maxPriceImpactBps: strategy.maxPriceImpactBps
+    }, config)
+    const observedAt = Date.now()
     return {
-        priceMicros: strategy.entryPriceMicros + BigInt(1),
-        reserves: MOCK_RESERVES,
-        observedAt: receivedAt,
-        receivedAt,
-        quote
+        priceMicros,
+        reserves: marketCall.reserves,
+        observedAt,
+        receivedAt: observedAt
     }
+}
+
+async function createOwnerValidator(
+    ownerAddress: Address,
+    config: AgentSmartAccountConfig
+): Promise<KernelValidator> {
+    const publicClient = createAgentPublicClient(config)
+    return signerToEcdsaValidator(publicClient, {
+        entryPoint: getEntryPoint("0.7"),
+        signer: addressToEmptyAccount(ownerAddress),
+        kernelVersion: KERNEL_V3_1
+    })
 }
 
 async function createWorkerRuntime() {
@@ -185,18 +277,18 @@ async function createWorkerRuntime() {
         ? await loadProvider<MarketDataProvider>(
             process.env.AGENT_MARKET_DATA_MODULE,
             "fetchMarketData",
-            "AGENT_MARKET_DATA_MODULE is required for live market data."
+            "Configured market-data adapter could not be loaded."
         )
         : undefined
-    const getOwnerValidator = marketProvider
-        ? await loadProvider<OwnerValidatorProvider>(
-            process.env.AGENT_OWNER_VALIDATOR_MODULE,
-            "getOwnerValidator",
-            "AGENT_OWNER_VALIDATOR_MODULE must provide the account's owner validator."
-        )
-        : async () => {
-            throw new Error("Owner validator provider is required before live UserOperation submission.")
-        }
+    const getOwnerValidator: OwnerValidatorProvider["getOwnerValidator"] =
+        process.env.AGENT_OWNER_VALIDATOR_MODULE
+            ? await loadProvider<OwnerValidatorProvider>(
+                process.env.AGENT_OWNER_VALIDATOR_MODULE,
+                "getOwnerValidator",
+                "Configured owner-validator adapter could not be loaded."
+            )
+            : async (_account, ownerConfig, ownerAddress) =>
+                createOwnerValidator(ownerAddress, ownerConfig)
 
     const workerReference: { current: AgentWorker | undefined } = { current: undefined }
     const reportExecutionFailure = createWorkerFailureReporter({
@@ -207,7 +299,7 @@ async function createWorkerRuntime() {
     const executor = new AgentExecutor({
         getConfig: () => config,
         resolveAuthorization: async intent => ({
-            ownerValidator: await getOwnerValidator(intent.account, config),
+            ownerValidator: await getOwnerValidator(intent.account, config, intent.ownerAddress),
             sessionKeySigner: agentAccount
         }),
         maxIntentAgeMs: QUOTE_SUBMISSION_BUDGET_MS,
@@ -239,11 +331,6 @@ async function createWorkerRuntime() {
                 worker.acknowledgeIntent(intent.strategyId)
                 return
             }
-            if (!marketProvider) {
-                console.warn("Mock quote produced a signal; UserOperation submission is disabled for mock data.")
-                worker.acknowledgeIntent(intent.strategyId)
-                return
-            }
             try {
                 const result = await executor.executeUserOperation(intent)
                 console.info(JSON.stringify({
@@ -270,7 +357,400 @@ async function createWorkerRuntime() {
     return worker
 }
 
+type ActiveScheduleClaim = {
+    claimId: string
+    scheduleId: string
+    ownerAddress: string
+    status: "CLAIMED" | "SUBMITTED" | "CONFIRMED" | "FAILED" | "STOPPED"
+    userOperationHash?: string
+    submissionUpdate?: Promise<void>
+}
+
+type PersistentScheduleContext = {
+    activeClaim: ActiveScheduleClaim | null
+    lastTelemetry: AgentCycleTelemetry | null
+    panicStopped: boolean
+}
+
+type PersistentScheduleRuntime = {
+    configHash: string
+    worker: AgentWorker
+    context: PersistentScheduleContext
+}
+
+function getLastTelemetry(context: PersistentScheduleContext): AgentCycleTelemetry | null {
+    return context.lastTelemetry
+}
+
+function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, expectedOwnerAddress: string): AgentStrategy {
+    if (!isRecord(value)) throw new Error("Persisted strategy configuration must be an object.")
+    const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
+    if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
+        || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
+        || typeof account !== "string" || !isAddress(account)
+        || typeof targetToken !== "string" || !isAddress(targetToken)
+        || typeof amountBnb !== "string"
+        || typeof entryPriceMicros !== "string" || !/^[0-9]+$/.test(entryPriceMicros)
+        || typeof slippageBps !== "number" || !Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 500
+        || typeof maxPriceImpactBps !== "number" || !Number.isInteger(maxPriceImpactBps) || maxPriceImpactBps < 1 || maxPriceImpactBps > 300) {
+        throw new Error("Persisted strategy is missing a required field or contains an invalid value.")
+    }
+    const normalizedOwner = getAddress(ownerAddress)
+    if (normalizedOwner !== getAddress(expectedOwnerAddress)) throw new Error("Persisted strategy owner does not match the schedule owner.")
+    const normalizedTarget = getAddress(targetToken)
+    if (normalizedTarget !== config.targetTokenAddress) throw new Error("Persisted strategy token does not match the configured agent token.")
+    const parsedAmount = parseEther(amountBnb)
+    if (parsedAmount <= BigInt(0) || parsedAmount > MAX_TRADE_BNB) throw new Error("Persisted strategy amount exceeds the worker's hard trade limit.")
+    const parsedEntry = BigInt(entryPriceMicros)
+    if (parsedEntry <= BigInt(0)) throw new Error("Persisted strategy entry-price threshold must be positive.")
+    return {
+        id,
+        ownerAddress: normalizedOwner,
+        account: getAddress(account),
+        targetToken: normalizedTarget,
+        amountBnb: parsedAmount,
+        entryPriceMicros: parsedEntry,
+        slippageBps,
+        maxPriceImpactBps
+    }
+}
+
+async function createPersistentWorkerRuntime() {
+    const config = getAgentSmartAccountConfig()
+    const agentAccount = loadPrivateKey()
+    const publicClient = createAgentPublicClient(config)
+    const validatorReader = createViemValidatorReader(publicClient, config.policyHookAddress)
+    const marketProvider = process.env.AGENT_MARKET_DATA_MODULE
+        ? await loadProvider<MarketDataProvider>(
+            process.env.AGENT_MARKET_DATA_MODULE,
+            "fetchMarketData",
+            "Configured market-data adapter could not be loaded.",
+        )
+        : undefined
+    const getOwnerValidator: OwnerValidatorProvider["getOwnerValidator"] =
+        process.env.AGENT_OWNER_VALIDATOR_MODULE
+            ? await loadProvider<OwnerValidatorProvider>(
+                process.env.AGENT_OWNER_VALIDATOR_MODULE,
+                "getOwnerValidator",
+                "Configured owner-validator adapter could not be loaded.",
+            )
+            : async (_account, ownerConfig, ownerAddress) =>
+                createOwnerValidator(ownerAddress, ownerConfig)
+    const store = new AgentMemoryStore()
+    await store.initialize()
+    const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || `persistent-bsc-agent-worker-${config.chain.id}`
+    const runtimes = new Map<string, PersistentScheduleRuntime>()
+
+    function createScheduleRuntime(schedule: Record<string, unknown>, strategy: AgentStrategy): PersistentScheduleRuntime {
+        const scheduleId = String(schedule.scheduleId)
+        const policyHash = String(schedule.policyHash).toLowerCase()
+        const configHash = createHash("sha256").update(JSON.stringify({
+            strategyConfig: schedule.strategyConfig,
+            policyVersion: schedule.policyVersion,
+            policyHash,
+        })).digest("hex")
+        const cached = runtimes.get(scheduleId)
+        if (cached && cached.configHash === configHash) return cached
+
+        const context: PersistentScheduleContext = { activeClaim: null, lastTelemetry: null, panicStopped: false }
+        const workerReference: { current: AgentWorker | undefined } = { current: undefined }
+        const executor = new AgentExecutor({
+            getConfig: () => config,
+            resolveAuthorization: async intent => ({
+                ownerValidator: await getOwnerValidator(intent.account, config, intent.ownerAddress),
+                sessionKeySigner: agentAccount,
+            }),
+            maxIntentAgeMs: QUOTE_SUBMISSION_BUDGET_MS,
+            log: event => {
+                console.info(JSON.stringify(event))
+                if (event.event === "userop_submitted" && context.activeClaim) {
+                    const active = context.activeClaim
+                    active.userOperationHash = event.userOperationHash
+                    active.submissionUpdate = store.updateExecutionClaim(active.claimId, active.ownerAddress, {
+                        status: "SUBMITTED",
+                        providerReference: event.userOperationHash,
+                        at: Date.now(),
+                    }).then(() => { active.status = "SUBMITTED" })
+                }
+            },
+            onFailure: createWorkerFailureReporter({
+                reportExecutionFailure: (strategyId, reasonCode, detail) => {
+                    workerReference.current?.reportExecutionFailure(strategyId, reasonCode, detail)
+                },
+            }),
+        })
+        const worker = new AgentWorker({
+            strategies: [strategy],
+            readMarket: current => fetchMarketData(current, config, publicClient, marketProvider),
+            readValidator: async current => {
+                const snapshot = await validatorReader(current)
+                const scheduleHashMatches = schedule.policyVersion === "WOLV_AGENT_POLICY_V4"
+                    && snapshot.policyHash.slice(2).toLowerCase() === policyHash
+                return scheduleHashMatches ? snapshot : { ...snapshot, policyHash: ("0x" + "1".repeat(64)) as Hex }
+            },
+            log: event => {
+                context.lastTelemetry = event
+                console.info(JSON.stringify(event))
+            },
+            alert: async event => {
+                console.error(JSON.stringify(event))
+                context.panicStopped = true
+                const active = context.activeClaim
+                if (!active) return
+                await store.setScheduleEnabled(active.ownerAddress, active.scheduleId, false, Date.now()).catch(error => {
+                    console.error("Could not disable panic-stopped autonomous schedule:", error instanceof Error ? error.message : String(error))
+                })
+                await store.recordAlert({
+                    ownerAddress: active.ownerAddress,
+                    claimId: active.claimId,
+                    severity: "CRITICAL",
+                    kind: event.reasonCode,
+                    message: event.message,
+                    createdAt: Date.now(),
+                }).catch(error => {
+                    console.error("Could not persist autonomous worker panic alert:", error instanceof Error ? error.message : String(error))
+                })
+            },
+            onIntent: async intent => {
+                const active = context.activeClaim
+                if (!active) throw new Error("Autonomous schedule execution has no durable claim.")
+                const quoteReceivedAt = Date.parse(intent.createdAt)
+                if (!Number.isFinite(quoteReceivedAt) || Date.now() - quoteReceivedAt > QUOTE_SUBMISSION_BUDGET_MS) {
+                    await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
+                        status: "STOPPED", failureCode: "QUOTE_STALE",
+                        failureDetail: "Market quote exceeded the submission freshness budget.", at: Date.now(),
+                    })
+                    active.status = "STOPPED"
+                    workerReference.current?.acknowledgeIntent(intent.strategyId)
+                    return
+                }
+                try {
+                    const result = await executor.executeUserOperation(intent)
+                    await active.submissionUpdate
+                    if (active.status !== "SUBMITTED") {
+                        await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
+                            status: "SUBMITTED", providerReference: result.userOperationHash, at: Date.now(),
+                        })
+                        active.status = "SUBMITTED"
+                    }
+                    await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
+                        status: "CONFIRMED", receiptHash: result.transactionHash,
+                        providerReference: result.userOperationHash, at: Date.now(),
+                    })
+                    active.status = "CONFIRMED"
+                } catch (error) {
+                    await active.submissionUpdate?.catch(() => undefined)
+                    const code = isRecord(error) && typeof error.code === "string" ? error.code : "AGENT_EXECUTION_FAILED"
+                    const detail = error instanceof Error ? error.message : "Unknown autonomous execution error."
+                    const submissionUncertain = Boolean(active.userOperationHash)
+                    const fatalPolicyFailure = ["POLICY_HASH_MISMATCH", "POLICY_EXPIRED", "POLICY_REVOKED", "POLICY_NOT_CONFIGURED", "SESSION_REVOKED", "SESSION_NOT_INSTALLED"].includes(code)
+                    const disableSchedule = submissionUncertain || fatalPolicyFailure
+                    const status = submissionUncertain ? "STOPPED" : "FAILED"
+                    await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
+                        status, failureCode: code, failureDetail: detail,
+                        ...(active.userOperationHash ? { providerReference: active.userOperationHash } : {}),
+                        at: Date.now(),
+                    })
+                    active.status = status
+                    if (disableSchedule) {
+                        await store.setScheduleEnabled(active.ownerAddress, active.scheduleId, false, Date.now()).catch(disableError => {
+                            console.error("Could not disable schedule after uncertain UserOperation submission:", disableError instanceof Error ? disableError.message : String(disableError))
+                        })
+                    }
+                    await store.recordAlert({
+                        ownerAddress: active.ownerAddress, claimId: active.claimId,
+                        severity: disableSchedule ? "CRITICAL" : "WARNING",
+                        kind: submissionUncertain ? "USEROP_RECEIPT_UNCERTAIN" : code,
+                        message: detail, createdAt: Date.now(),
+                    }).catch(alertError => {
+                        console.error("Could not persist autonomous execution failure alert:", alertError instanceof Error ? alertError.message : String(alertError))
+                    })
+                    throw error
+                } finally {
+                    workerReference.current?.acknowledgeIntent(intent.strategyId)
+                }
+            },
+        }, { intervalMs: POLL_INTERVAL_MS, maxConsecutiveFailures: 3, maxMarketAgeMs: 20_000 })
+        workerReference.current = worker
+        const runtime = { configHash, worker, context }
+        runtimes.set(scheduleId, runtime)
+        return runtime
+    }
+
+    async function processSchedule(schedule: Record<string, unknown>) {
+        const scheduleId = String(schedule.scheduleId ?? "")
+        const ownerAddress = String(schedule.ownerAddress ?? "")
+        const policyHash = String(schedule.policyHash ?? "").toLowerCase()
+        if (!/^[0-9a-f]{64}$/.test(policyHash) || schedule.policyVersion !== "WOLV_AGENT_POLICY_V4") {
+            await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now()).catch(() => undefined)
+            await store.recordAlert({ ownerAddress, severity: "WARNING", kind: "POLICY_VERSION_MISMATCH",
+                message: "Autonomous schedule was disabled because its policy hash or version is invalid.", createdAt: Date.now() })
+            return
+        }
+        let strategy: AgentStrategy
+        try {
+            strategy = parseStoredStrategy(schedule.strategyConfig, config, ownerAddress)
+        } catch (error) {
+            await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now()).catch(() => undefined)
+            await store.recordAlert({ ownerAddress, severity: "WARNING", kind: "INVALID_STRATEGY_CONFIG",
+                message: error instanceof Error ? error.message : "Persisted strategy configuration is invalid.", createdAt: Date.now() })
+            return
+        }
+        const lastRunAt = Number(schedule.lastRunAt)
+        if (!Number.isSafeInteger(lastRunAt) || lastRunAt <= 0) return
+        const runKey = createHash("sha256").update(scheduleId + ":" + String(lastRunAt)).digest("hex")
+        const claimId = randomUUID()
+        const claim = await store.claimExecution({
+            claimId, scheduleId, ownerAddress, runKey, policyHash, createdAt: Date.now(),
+        })
+        if (!claim.claimId) return
+        let runtime: PersistentScheduleRuntime
+        try {
+            runtime = createScheduleRuntime(schedule, strategy)
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : "Autonomous schedule runtime could not be created."
+            await store.updateExecutionClaim(claimId, ownerAddress, {
+                status: "FAILED", failureCode: "WORKER_RUNTIME_INIT_FAILED", failureDetail: detail, at: Date.now(),
+            })
+            await store.recordAlert({ ownerAddress, claimId, severity: "CRITICAL", kind: "WORKER_RUNTIME_INIT_FAILED", message: detail, createdAt: Date.now() })
+            return
+        }
+        const active: ActiveScheduleClaim = { claimId, scheduleId, ownerAddress, status: "CLAIMED" }
+        runtime.context.activeClaim = active
+        runtime.context.lastTelemetry = null
+        runtime.context.panicStopped = false
+        try {
+            await runtime.worker.evaluateOnce()
+            if (active.status === "CLAIMED") {
+                const lastTelemetry = getLastTelemetry(runtime.context)
+                const reason = runtime.context.panicStopped ? "WORKER_PANIC_STOP" : lastTelemetry?.reasonCode ?? "NO_EXECUTION"
+                const detail = lastTelemetry?.detail ?? "No trade intent was submitted during this schedule evaluation."
+                await store.updateExecutionClaim(claimId, ownerAddress, {
+                    status: "STOPPED", failureCode: reason, failureDetail: detail, at: Date.now(),
+                })
+                active.status = "STOPPED"
+                if (reason !== "TRIGGER_NOT_MET" && reason !== "SLIPPAGE_HIGH") {
+                    const disableSchedule = ["WORKER_PANIC_STOP", "POLICY_HASH_MISMATCH", "POLICY_EXPIRED", "SESSION_REVOKED",
+                        "SESSION_NOT_INSTALLED", "POLICY_NOT_CONFIGURED", "TRADE_CAP_EXCEEDED"].includes(reason)
+                    if (disableSchedule && !runtime.context.panicStopped) await store.setScheduleEnabled(ownerAddress, scheduleId, false, Date.now())
+                    if (!runtime.context.panicStopped) await store.recordAlert({
+                        ownerAddress, claimId, severity: disableSchedule ? "CRITICAL" : "WARNING",
+                        kind: reason, message: detail, createdAt: Date.now(),
+                    })
+                }
+            }
+        } catch (error) {
+            if (active.status === "CLAIMED") {
+                await store.updateExecutionClaim(claimId, ownerAddress, {
+                    status: "FAILED", failureCode: "WORKER_CYCLE_FAILED",
+                    failureDetail: error instanceof Error ? error.message : "Unknown worker cycle failure.", at: Date.now(),
+                })
+            }
+            await store.recordAlert({
+                ownerAddress, claimId, severity: "CRITICAL", kind: "WORKER_CYCLE_FAILED",
+                message: error instanceof Error ? error.message : "Unknown worker cycle failure.", createdAt: Date.now(),
+            })
+        } finally {
+            await store.rescheduleAutonomousAgentSchedule(ownerAddress, scheduleId, Date.now()).catch(error => {
+                console.error("Could not reschedule autonomous strategy after worker cycle:", error instanceof Error ? error.message : String(error))
+            })
+            runtime.context.activeClaim = null
+        }
+    }
+
+    async function heartbeat() {
+        const now = Date.now()
+        const network = resolveAgentExecutionNetwork(config.chain.id)
+        const control = await store.getControlState()
+        const globallyPaused = control.emergency_stop === true || control.stop_monitoring === true || control.reject_new_opportunities === true
+        await store.recordWorkerHeartbeat({
+            workerId,
+            workerMode: "PERSISTENT_AUTONOMOUS",
+            chainId: config.chain.id,
+            lastSeenAt: now,
+            metadata: {
+                executionGateEnabled: network.allowed,
+                executionGateReason: network.allowed ? null : network.reason,
+                globallyPaused,
+                pauseReason: globallyPaused ? control.stop_reason ?? "Global agent control is paused." : null,
+                processId: process.pid,
+            },
+        })
+        return { network, globallyPaused, pauseReason: control.stop_reason ?? "Global agent control is paused." }
+    }
+
+    async function poll() {
+        const now = Date.now()
+        const state = await heartbeat()
+        if (!state.network.allowed) {
+            console.warn(JSON.stringify({ event: "autonomous_worker_gated", reason: state.network.reason, chainId: config.chain.id }))
+            return
+        }
+        if (state.globallyPaused) {
+            console.warn(JSON.stringify({ event: "autonomous_worker_paused", reason: state.pauseReason }))
+            return
+        }
+        const schedules = await store.claimDueAutonomousAgentSchedules(now, 20)
+        for (const schedule of schedules) await processSchedule(schedule)
+    }
+
+    return {
+        poll,
+        heartbeat,
+        close: async () => {
+            for (const runtime of runtimes.values()) runtime.worker.stop()
+            await store.close()
+        },
+    }
+}
+
+async function mainPersistent() {
+    const runtime = await createPersistentWorkerRuntime()
+    let shuttingDown = false
+    let activePoll: Promise<void> | undefined
+    let activeHeartbeat: Promise<void> | undefined
+    const pulseHeartbeat = async () => {
+        if (shuttingDown || activeHeartbeat) return
+        activeHeartbeat = runtime.heartbeat().then(() => undefined).catch(error => {
+            console.error("Autonomous worker heartbeat failed:", error instanceof Error ? error.message : String(error))
+        }).finally(() => { activeHeartbeat = undefined })
+        await activeHeartbeat
+    }
+    const pollSchedules = async () => {
+        if (shuttingDown || activePoll) return
+        activePoll = runtime.poll().catch(error => {
+            console.error("Autonomous schedule poll failed:", error instanceof Error ? error.message : String(error))
+        }).finally(() => { activePoll = undefined })
+        await activePoll
+    }
+    const timer = setInterval(() => { void pollSchedules() }, POLL_INTERVAL_MS)
+    const heartbeatTimer = setInterval(() => { void pulseHeartbeat() }, POLL_INTERVAL_MS)
+    void pulseHeartbeat()
+    void pollSchedules()
+    const gracefulShutdown = async (signal: NodeJS.Signals) => {
+        if (shuttingDown) return
+        shuttingDown = true
+        console.info("Received " + signal + "; stopping persistent autonomous worker.")
+        clearInterval(timer)
+        clearInterval(heartbeatTimer)
+        await activePoll
+        await activeHeartbeat
+        await runtime.close()
+        await closeIntentNonceTracker()
+        console.info("Persistent autonomous worker stopped.")
+    }
+    process.once("SIGINT", () => { void gracefulShutdown("SIGINT").catch(error => { console.error("Worker shutdown failed:", error); process.exitCode = 1 }) })
+    process.once("SIGTERM", () => { void gracefulShutdown("SIGTERM").catch(error => { console.error("Worker shutdown failed:", error); process.exitCode = 1 }) })
+}
+
 async function main() {
+    if (process.env.WOLV_AGENT_DATABASE_URL || process.env.WOLV_TRADING_DATABASE_URL) {
+        await mainPersistent()
+        return
+    }
+    await mainStatic()
+}
+async function mainStatic() {
     const worker = await createWorkerRuntime()
     let shuttingDown = false
     let activePoll: Promise<void> | undefined
