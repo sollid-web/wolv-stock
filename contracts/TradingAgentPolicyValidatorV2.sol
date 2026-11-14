@@ -655,11 +655,28 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (tokenPriceMicros == 0 || tokenPriceMicros > state.entryPriceMicros) revert OraclePriceAboveEntryLimit(tokenPriceMicros, state.entryPriceMicros);
         uint8 tokenDecimals = IERC20Decimals(trade.tokenOut).decimals();
         if (tokenDecimals > 18) revert InvalidOracleFeed(tokenFeed);
-        uint256 tokenUnit = 10 ** uint256(tokenDecimals);
-        uint256 numerator = trade.value * bnbUsd * tokenUnit;
+        uint256 oracleMinimumOut = _calculateOracleMinimumOut(
+            trade,
+            state,
+            bnbUsd,
+            tokenUsd,
+            tokenDecimals
+        );
+        if (trade.amountOutMin < oracleMinimumOut) {
+            revert OraclePriceImpactExceeded(trade.amountOutMin, oracleMinimumOut);
+        }
+    }
+
+    function _calculateOracleMinimumOut(
+        DecodedTrade memory trade,
+        AccountState storage state,
+        uint256 bnbUsd,
+        uint256 tokenUsd,
+        uint8 tokenDecimals
+    ) private view returns (uint256) {
+        uint256 numerator = trade.value * bnbUsd * (10 ** uint256(tokenDecimals));
         uint256 denominator = tokenUsd * PRICE_SCALE;
-        // Round both stages upward: rounding down would silently grant extra
-        // slippage against the owner-configured oracle floor.
+        // Round both stages upward so integer truncation cannot grant extra slippage.
         uint256 fairOut = (numerator + denominator - 1) / denominator;
         uint16 effectiveSlippageBps = trade.slippageBps < state.maxSlippageBps
             ? trade.slippageBps
@@ -671,8 +688,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
             ? effectiveSlippageBps
             : effectiveImpactBps;
         uint256 toleratedOut = fairOut * (BPS_DENOMINATOR - effectiveToleranceBps);
-        uint256 oracleMinimumOut = (toleratedOut + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
-        if (trade.amountOutMin < oracleMinimumOut) revert OraclePriceImpactExceeded(trade.amountOutMin, oracleMinimumOut);
+        return (toleratedOut + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
     }
 
     function _readUsdPrice(address feed, uint32 maxAge) private view returns (uint256 price) {
