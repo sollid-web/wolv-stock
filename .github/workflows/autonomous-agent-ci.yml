@@ -47,17 +47,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       - name: TypeScript validation
-        run: npx tsc --noEmit
+        run: pnpm exec tsc --noEmit
       - name: Agent runtime logic tests
-        run: npm run test:logic
+        run: pnpm run test:logic
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
       - name: Production build
-        run: npm run build
+        run: pnpm run build
