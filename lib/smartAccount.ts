@@ -328,12 +328,17 @@ export async function buildAgentBuyCall(
         request.maxPriceImpactBps
     )
 
+    const reservesInOut = isWrappedNativeToken0
+        ? { reserveIn: reserve0, reserveOut: reserve1 }
+        : { reserveIn: reserve1, reserveOut: reserve0 }
+
     return {
         ...encodeAgentBuyCall(
             request,
             quote.amountOutMin,
             config
         ),
+        reserves: reservesInOut,
         quote: { ...quote, poolAddress: getAddress(poolAddress) }
     }
 }
