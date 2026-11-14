@@ -39,7 +39,7 @@ async function compileContract() {
   const input = {
     language: "Solidity",
     sources: {
-      "TradingAgentPolicyValidator.sol": { content: source },
+      "TradingAgentPolicyValidatorV2.sol": { content: source },
     },
     settings: {
       optimizer: { enabled: true, runs: 200 },
@@ -69,10 +69,10 @@ async function compileContract() {
   }
 
   const contract =
-    output.contracts?.["TradingAgentPolicyValidator.sol"]
+    output.contracts?.["TradingAgentPolicyValidatorV2.sol"]
       ?.TradingAgentPolicyValidatorV2;
   if (!contract?.abi || !contract.evm?.bytecode?.object) {
-    throw new Error("Failed to compile TradingAgentPolicyValidator.");
+    throw new Error("Failed to compile TradingAgentPolicyValidatorV2.");
   }
   return { abi: contract.abi, bytecode: `0x${contract.evm.bytecode.object}` };
 }
