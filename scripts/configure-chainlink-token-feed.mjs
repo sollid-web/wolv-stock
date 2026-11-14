@@ -46,7 +46,7 @@ const [validatorCode, tokenCode, feedCode, decimals, description, round] = await
 ]);
 if (!validatorCode || !tokenCode || !feedCode) throw new Error("Validator, token, and Chainlink feed must all have deployed bytecode.");
 if (decimals > 18) throw new Error("Feed decimals above 18 are not supported.");
-if (!/\/\s*USD$/i.test(description.trim())) {
+if (!/\/\s*USD(?:$|[\s-])/i.test(description.trim())) {
   throw new Error(`Configured feed description "${description}" is not a USD-quoted Chainlink feed.`);
 }
 const [roundId, answer, , updatedAt, answeredInRound] = round;
