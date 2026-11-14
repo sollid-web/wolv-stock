@@ -46,6 +46,9 @@ function validPolicyState(overrides = {}) {
     maxTradeValue: parseEther("0.5"),
     policyExpiresAt: POLICY_EXPIRY,
     intentSigner: INTENT_SIGNER,
+    entryPriceMicros: strategy.entryPriceMicros,
+    maxSlippageBps: strategy.slippageBps,
+    maxPriceImpactBps: strategy.maxPriceImpactBps,
     ...overrides,
   };
 }
@@ -341,4 +344,13 @@ test("prevents overlapping evaluation cycles", async () => {
   await firstCycle;
 
   assert.equal(telemetry.length, 1);
+});
+
+test("rejects on-chain V2 risk limits that drift from the owner-authorized strategy", async () => {
+  const harness = createHarness({
+    readValidator: async () => validPolicyState({ maxSlippageBps: strategy.slippageBps + 1 }),
+  });
+  await harness.worker.evaluateOnce();
+  assert.equal(harness.telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(harness.intents.length, 0);
 });
