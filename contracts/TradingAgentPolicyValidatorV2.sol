@@ -191,6 +191,8 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
     event AccountPolicyCleared(address indexed smartAccount);
     event TokenUsdFeedUpdated(address indexed token, address indexed feed, uint32 maxAge);
     event BnbFeedMaxAgeUpdated(uint32 maxAge);
+    event AccountRiskPolicyConfigured(address indexed smartAccount, uint64 entryPriceMicros, uint16 maxSlippageBps, uint16 maxPriceImpactBps);
+    event TokenUsdFeedCleared(address indexed token);
 
     constructor(address approvedRouter_, address entryPoint_, address bnbUsdFeed_) {
         if (block.chainid != BSC_MAINNET_CHAIN_ID && block.chainid != BSC_TESTNET_CHAIN_ID) {
@@ -251,6 +253,12 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         tokenUsdFeeds[token] = feed;
         tokenFeedMaxAge[token] = maxAge;
         emit TokenUsdFeedUpdated(token, feed, maxAge);
+    }
+    function clearTokenUsdFeed(address token) external {
+        if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
+        delete tokenUsdFeeds[token];
+        delete tokenFeedMaxAge[token];
+        emit TokenUsdFeedCleared(token);
     }
     function setBnbFeedMaxAge(uint32 maxAge) external {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
