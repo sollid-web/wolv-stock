@@ -72,6 +72,9 @@ const policyAbi = [{
     { name: "policyHash", type: "bytes32" },
     { name: "maxTradeValue", type: "uint192" },
     { name: "expiresAt", type: "uint64" },
+    { name: "entryPriceMicros", type: "uint64" },
+    { name: "maxSlippageBps", type: "uint16" },
+    { name: "maxPriceImpactBps", type: "uint16" },
   ],
   outputs: [],
 }];
@@ -85,6 +88,7 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
     0n,
     "0x0000000000000000000000000000000000000000",
   ];
+  const riskState = [0n, 0, 0];
   const calls = [];
   const waits = [];
   const transport = custom({
@@ -106,6 +110,9 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
         args: [ACCOUNT],
       }).slice(0, 10)) {
         return encodeAbiParameters([{ type: "address" }], [installedTarget]);
+      }
+      if (selector === encodeFunctionData({ abi: readAbi, functionName: "getAccountRiskPolicy", args: [ACCOUNT] }).slice(0, 10)) {
+        return encodeAbiParameters([{ type: "uint64" }, { type: "uint16" }, { type: "uint16" }], riskState);
       }
       if (selector === encodeFunctionData({
         abi: readAbi,
@@ -134,6 +141,7 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
         return INSTALL_HASH;
       }
       const configured = decodeFunctionData({ abi: policyAbi, data: call.data });
+      riskState.splice(0, 3, configured.args[5], configured.args[6], configured.args[7]);
       policyState = [
         true,
         configured.args[2],
@@ -201,6 +209,9 @@ test("installs hook then signs policy in separate single-call owner UserOperatio
     result.policyHash,
     parseEther("0.5"),
     expiresAt,
+    POLICY_STRATEGY.entryPriceMicros,
+    POLICY_STRATEGY.slippageBps,
+    POLICY_STRATEGY.maxPriceImpactBps,
   ]);
 });
 
