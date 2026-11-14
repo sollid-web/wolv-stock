@@ -246,7 +246,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
 
     function setTokenUsdFeed(address token, address feed, uint32 maxAge) external {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
-        if (token == address(0) || token.code.length == 0 || feed == address(0) || feed.code.length == 0 || maxAge == 0) revert InvalidOracleFeed(feed);
+        if (token == address(0) || token.code.length == 0 || feed == address(0) || feed.code.length == 0 || maxAge == 0 || maxAge > 86_400) revert InvalidOracleFeed(feed);
         _validateFeed(feed);
         tokenUsdFeeds[token] = feed;
         tokenFeedMaxAge[token] = maxAge;
@@ -254,7 +254,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
     }
     function setBnbFeedMaxAge(uint32 maxAge) external {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
-        if (maxAge == 0) revert InvalidOracleFeed(bnbUsdFeed);
+        if (maxAge == 0 || maxAge > 86_400) revert InvalidOracleFeed(bnbUsdFeed);
         bnbFeedMaxAge = maxAge;
         emit BnbFeedMaxAgeUpdated(maxAge);
     }
@@ -634,7 +634,8 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (tokenDecimals > 18) revert InvalidOracleFeed(tokenFeed);
         uint256 tokenUnit = 10 ** uint256(tokenDecimals);
         uint256 fairOut = (trade.value * bnbUsd * tokenUnit) / (tokenUsd * PRICE_SCALE);
-        uint256 oracleMinimumOut = (fairOut * (BPS_DENOMINATOR - state.maxPriceImpactBps)) / BPS_DENOMINATOR;
+        uint16 effectiveToleranceBps = state.maxSlippageBps < state.maxPriceImpactBps ? state.maxSlippageBps : state.maxPriceImpactBps;
+        uint256 oracleMinimumOut = (fairOut * (BPS_DENOMINATOR - effectiveToleranceBps)) / BPS_DENOMINATOR;
         if (trade.amountOutMin < oracleMinimumOut) revert OraclePriceImpactExceeded(trade.amountOutMin, oracleMinimumOut);
     }
 
@@ -643,7 +644,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         uint8 feedDecimals = IChainlinkAggregatorV3(feed).decimals();
         if (feedDecimals > 18) revert InvalidOracleFeed(feed);
         (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = IChainlinkAggregatorV3(feed).latestRoundData();
-        if (answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > maxAge || answeredInRound < roundId) revert OraclePriceUnavailable(feed);
+        if (roundId == 0 || answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > maxAge || answeredInRound < roundId) revert OraclePriceUnavailable(feed);
         uint256 scale = 10 ** uint256(18 - feedDecimals);
         if (uint256(answer) > type(uint256).max / scale) revert OraclePriceUnavailable(feed);
         price = uint256(answer) * scale;
