@@ -2348,7 +2348,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       ) VALUES (
         ${input.scheduleId}, ${owner}, ${input.name}, ${input.enabled ?? true}, ${input.intervalSeconds},
         ${input.policyVersion}, ${input.policyHash}, ${new Date(input.nextRunAt)},
-        ${strategyType}, ${executionMode}, ${strategyConfig}::jsonb,
+        ${strategyType}, ${executionMode}, ${this.sql.json(jsonValue(strategyConfig))},
         ${new Date(createdAt)}, ${new Date(updatedAt)}
       )
       ON CONFLICT (owner_address, name) DO UPDATE SET
@@ -2819,13 +2819,13 @@ function isPositiveDecimalAmount(value: string): boolean {
   return BigInt(`${whole}${fraction.padEnd(18, "0")}`) > BigInt(0);
 }
 
-function serializeStrategyConfig(value: unknown): string {
+function serializeStrategyConfig(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new TypeError("Strategy configuration must be a JSON object.");
   const serialized = JSON.stringify(value);
   if (typeof serialized !== "string" || Buffer.byteLength(serialized, "utf8") > 16_384) {
     throw new TypeError("Strategy configuration exceeds the 16 KB limit.");
   }
-  return serialized;
+  return value;
 }
 
 function isPostgresUrl(value: string): boolean {

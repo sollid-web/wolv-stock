@@ -37,16 +37,15 @@ const browserStore = new BrowserTradeIntentStore(TEST_DATABASE_URL);
 const bawStore = new BawExecutionStore(TEST_DATABASE_URL);
 const concurrentBrowserStore = new BrowserTradeIntentStore(TEST_DATABASE_URL);
 
-before(async () => {
-  await browserStore.initialize();
-});
+async function resetTestDatabase() {
+  const postgres = (await import("postgres")).default;
+  const cleanup = postgres(TEST_DATABASE_URL, {
+    max: 1,
+    idle_timeout: 5,
+    connect_timeout: 3,
+    prepare: false,
+  });
 
-after(async () => {
-  await browserStore.close();
-  await concurrentBrowserStore.close();
-  await bawStore.close();
-  const sql = (await import("postgres")).default;
-  const cleanup = sql(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
   try {
     await cleanup`DROP TABLE IF EXISTS wolv_trade_intents;`;
     await cleanup`DROP TABLE IF EXISTS wolv_trading_schema_migrations;`;
@@ -55,19 +54,49 @@ after(async () => {
     await cleanup`DROP TABLE IF EXISTS baw_auth_sessions;`;
     await cleanup`DROP TABLE IF EXISTS baw_execution_schema_migrations;`;
     await cleanup`
-      DROP TABLE IF EXISTS wolv_agent_memory_migrations, wolv_agent_market_candles,
-        wolv_agent_market_observations, wolv_agent_asset_history, wolv_agent_runs,
-        wolv_agent_events, wolv_agent_opportunities, wolv_agent_analyses,
-        wolv_agent_policy_decisions, wolv_agent_risk_policies, wolv_agent_proposals,
-        wolv_agent_control, wolv_strategy_evaluations, wolv_agent_execution_claims,
-        wolv_agent_schedules, wolv_agent_delegated_custody, wolv_agent_alerts,
-        wolv_agent_market_calendar, wolv_agent_intent_nonces CASCADE
+      DROP TABLE IF EXISTS
+        wolv_agent_memory_migrations,
+        wolv_agent_market_candles,
+        wolv_agent_market_observations,
+        wolv_agent_asset_history,
+        wolv_agent_runs,
+        wolv_agent_events,
+        wolv_agent_opportunities,
+        wolv_agent_analyses,
+        wolv_agent_policy_decisions,
+        wolv_agent_risk_policies,
+        wolv_agent_proposals,
+        wolv_agent_control,
+        wolv_strategy_evaluations,
+        wolv_agent_execution_claims,
+        wolv_agent_schedules,
+        wolv_agent_delegated_custody,
+        wolv_agent_alerts,
+        wolv_agent_market_calendar,
+        wolv_agent_intent_nonces,
+        wolv_agent_session_plans,
+        wolv_dynamic_strategy_cycles,
+        wolv_dynamic_strategy_runs,
+        wolv_agent_worker_heartbeats
+      CASCADE
     `;
     await cleanup`DROP FUNCTION IF EXISTS wolv_agent_events_are_append_only();`;
     await cleanup`DROP FUNCTION IF EXISTS wolv_agent_proposals_material_immutable();`;
   } finally {
     await cleanup.end({ timeout: 3 });
   }
+}
+
+before(async () => {
+  await resetTestDatabase();
+  await browserStore.initialize();
+});
+
+after(async () => {
+  await browserStore.close();
+  await concurrentBrowserStore.close();
+  await bawStore.close();
+  await resetTestDatabase();
 });
 
 test("browser trade intent store creates and retrieves durable records", async () => {
