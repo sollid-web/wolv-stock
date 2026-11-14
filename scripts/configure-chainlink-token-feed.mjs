@@ -51,7 +51,7 @@ if (!/\/\s*USD(?:$|[\s-])/i.test(description.trim())) {
 }
 const [roundId, answer, , updatedAt, answeredInRound] = round;
 const now = BigInt(Math.floor(Date.now() / 1000));
-if (answer <= 0n || updatedAt === 0n || updatedAt > now || now - updatedAt > BigInt(maxAge) || answeredInRound < roundId) {
+if (roundId === 0n || answer <= 0n || updatedAt === 0n || updatedAt > now || now - updatedAt > BigInt(maxAge) || answeredInRound < roundId) {
   throw new Error("Chainlink feed has an invalid, stale, or incomplete latest round.");
 }
 console.log(`Guardian: ${account.address}`);
