@@ -224,6 +224,26 @@ contract TradingAgentPolicyValidatorV2Test {
             150
         );
 
+        bytes memory routerCall = _buildSignedRouterCall(
+            amountOutMin,
+            slippageBps,
+            maxPriceImpactBps,
+            tokenUsdAnswer
+        );
+        bytes memory execution = abi.encodePacked(address(router), uint256(0.1 ether), routerCall);
+        return abi.encodeWithSelector(
+            bytes4(keccak256("execute(bytes32,bytes)")),
+            bytes32(0),
+            execution
+        );
+    }
+
+    function _buildSignedRouterCall(
+        uint256 amountOutMin,
+        uint16 slippageBps,
+        uint16 maxPriceImpactBps,
+        int256 tokenUsdAnswer
+    ) private returns (bytes memory) {
         uint64 deadline = uint64(block.timestamp + 10);
         uint64 validUntil = uint64(block.timestamp + 12);
         bytes32 nonce = keccak256(abi.encode(amountOutMin, tokenUsdAnswer, slippageBps, maxPriceImpactBps));
@@ -246,25 +266,19 @@ contract TradingAgentPolicyValidatorV2Test {
                 validUntil: validUntil,
                 nonce: nonce
             });
-        bytes32 digest = validator.hashTradeIntent(intent);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PRIVATE_KEY, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-        bytes memory routerCall = bytes.concat(
-            abi.encodeWithSelector(
-                BUY_SELECTOR,
-                amountOutMin,
-                path,
-                ACCOUNT,
-                uint256(deadline)
-            ),
+        bytes memory signature = _signTradeIntent(intent);
+        return bytes.concat(
+            abi.encodeWithSelector(BUY_SELECTOR, amountOutMin, path, ACCOUNT, uint256(deadline)),
             abi.encode(POLICY, nonce, validUntil, slippageBps, maxPriceImpactBps, signature)
         );
-        bytes memory execution = abi.encodePacked(address(router), uint256(0.1 ether), routerCall);
-        return abi.encodeWithSelector(
-            bytes4(keccak256("execute(bytes32,bytes)")),
-            bytes32(0),
-            execution
-        );
+    }
+
+    function _signTradeIntent(
+        TradingAgentPolicyValidatorV2.TradeIntent memory intent
+    ) private returns (bytes memory) {
+        bytes32 digest = validator.hashTradeIntent(intent);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PRIVATE_KEY, digest);
+        return abi.encodePacked(r, s, v);
     }
 
 }
