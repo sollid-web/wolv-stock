@@ -215,7 +215,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         approvedRouter = approvedRouter_;
         entryPoint = entryPoint_;
         bnbUsdFeed = bnbUsdFeed_;
-        _validateFeed(bnbUsdFeed_);
+        _validateFeed(bnbUsdFeed_, 3600);
         guardian = msg.sender;
         deploymentChainId = block.chainid;
         wrappedNativeToken = block.chainid == BSC_MAINNET_CHAIN_ID
@@ -249,7 +249,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
     function setTokenUsdFeed(address token, address feed, uint32 maxAge) external {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
         if (token == address(0) || token.code.length == 0 || feed == address(0) || feed.code.length == 0 || maxAge == 0 || maxAge > 86_400) revert InvalidOracleFeed(feed);
-        _validateFeed(feed);
+        _validateFeed(feed, maxAge);
         tokenUsdFeeds[token] = feed;
         tokenFeedMaxAge[token] = maxAge;
         emit TokenUsdFeedUpdated(token, feed, maxAge);
@@ -659,10 +659,10 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (price == 0 || price > 1e36) revert OraclePriceUnavailable(feed);
     }
 
-    function _validateFeed(address feed) private view {
+    function _validateFeed(address feed, uint32 maxAge) private view {
         if (feed == address(0) || feed.code.length == 0) revert InvalidOracleFeed(feed);
         if (IChainlinkAggregatorV3(feed).decimals() > 18) revert InvalidOracleFeed(feed);
-        _readUsdPrice(feed, 3600);
+        _readUsdPrice(feed, maxAge);
     }
 
     function _hashTradeIntent(TradeIntent memory intent) private view returns (bytes32) {
