@@ -97,10 +97,7 @@ contract TradingAgentPolicyValidatorV2Test {
         vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OraclePriceUnavailable.selector);
         validator.setTokenUsdFeed(address(token), address(tokenFeed), 3600);
     }
-}
-
-
-    function testUninstallClearsDelegatedPolicyAndRiskLimits() public {
+{
         vm.prank(ACCOUNT);
         validator.setAccountPolicy(
             ACCOUNT,
@@ -143,3 +140,4 @@ contract TradingAgentPolicyValidatorV2Test {
         vm.expectPartialRevert(TradingAgentPolicyValidatorV2.InvalidOracleFeed.selector);
         validator.setTokenUsdFeed(address(token), address(tokenFeed), 59);
     }
+}
