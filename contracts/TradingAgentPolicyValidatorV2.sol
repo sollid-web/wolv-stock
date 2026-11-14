@@ -642,10 +642,12 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (feed == address(0) || feed.code.length == 0 || maxAge == 0) revert InvalidOracleFeed(feed);
         uint8 feedDecimals = IChainlinkAggregatorV3(feed).decimals();
         if (feedDecimals > 18) revert InvalidOracleFeed(feed);
-        (, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = IChainlinkAggregatorV3(feed).latestRoundData();
-        if (answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > maxAge || answeredInRound == 0) revert OraclePriceUnavailable(feed);
-        price = uint256(answer) * (10 ** uint256(18 - feedDecimals));
-        if (price == 0) revert OraclePriceUnavailable(feed);
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) = IChainlinkAggregatorV3(feed).latestRoundData();
+        if (answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > maxAge || answeredInRound < roundId) revert OraclePriceUnavailable(feed);
+        uint256 scale = 10 ** uint256(18 - feedDecimals);
+        if (uint256(answer) > type(uint256).max / scale) revert OraclePriceUnavailable(feed);
+        price = uint256(answer) * scale;
+        if (price == 0 || price > 1e36) revert OraclePriceUnavailable(feed);
     }
 
     function _validateFeed(address feed) private view {
