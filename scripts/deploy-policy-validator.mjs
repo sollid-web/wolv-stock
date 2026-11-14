@@ -137,7 +137,7 @@ async function main() {
     publicClient.readContract({ address: BNB_USD_FEED, abi: BNB_FEED_ABI, functionName: "latestRoundData" }),
   ]);
   if (!bnbFeedCode || bnbFeedCode === "0x") throw new Error("Configured BNB/USD feed has no bytecode.");
-  if (bnbFeedDecimals > 18 || !/BNB\\s*\\/\\s*USD$/i.test(bnbFeedDescription.trim())) {
+  if (bnbFeedDecimals > 18 || !/BNB\s*\/\s*USD$/i.test(bnbFeedDescription.trim())) {
     throw new Error(`Configured Chainlink feed "${bnbFeedDescription}" is not a supported BNB/USD feed.`);
   }
   const [feedRoundId, feedAnswer, , feedUpdatedAt, feedAnsweredInRound] = bnbFeedRound;
