@@ -21,6 +21,13 @@ jobs:
         run: |
           forge build
           forge test -vv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Slither
+        run: python -m pip install --disable-pip-version-check slither-analyzer
+      - name: Static security analysis
+        run: slither contracts/TradingAgentPolicyValidatorV2.sol --fail-high
       - uses: actions/setup-node@v4
         with:
           node-version: 22
