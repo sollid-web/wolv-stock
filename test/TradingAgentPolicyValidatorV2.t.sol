@@ -8,6 +8,8 @@ interface VmV2 {
     function prank(address sender) external;
     function expectPartialRevert(bytes4 revertData) external;
     function warp(uint256 timestamp) external;
+    function addr(uint256 privateKey) external returns (address);
+    function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
 }
 
 contract V2Factory {}
@@ -38,7 +40,9 @@ contract V2Feed is IChainlinkAggregatorV3 {
 contract TradingAgentPolicyValidatorV2Test {
     VmV2 private constant vm = VmV2(address(uint160(uint256(keccak256("hevm cheat code")))));
     address private constant ACCOUNT = address(0xA11CE);
-    address private constant SIGNER = address(0xB0B);
+    uint256 private constant SIGNER_PRIVATE_KEY = 0xB0B;
+    address private SIGNER;
+    bytes4 private constant BUY_SELECTOR = 0x7ff36ab5;
     bytes32 private constant POLICY = keccak256("v2-policy");
     V2Factory private factory;
     V2Router private router;
@@ -51,6 +55,7 @@ contract TradingAgentPolicyValidatorV2Test {
     function setUp() public {
         vm.chainId(56);
         vm.warp(1_700_000_000);
+        SIGNER = vm.addr(SIGNER_PRIVATE_KEY);
         factory = new V2Factory();
         router = new V2Router(address(factory));
         entryPoint = new V2EntryPoint();
@@ -141,4 +146,125 @@ contract TradingAgentPolicyValidatorV2Test {
         vm.expectPartialRevert(TradingAgentPolicyValidatorV2.InvalidOracleFeed.selector);
         validator.setTokenUsdFeed(address(token), address(tokenFeed), 59);
     }
+
+    function testValidSignedTradePassesOnChainOracleAndPolicyChecks() public {
+        bytes memory callData = _buildSignedTrade(
+            59_400_000_000_000_000_000,
+            2_000_000,
+            100,
+            150,
+            100_000_000
+        );
+        vm.prank(ACCOUNT);
+        bytes memory hookData = validator.preCheck(address(entryPoint), 0, callData);
+        require(hookData.length == 96, "hook receipt data missing");
+        require(validator.getRollingVolume(ACCOUNT) == 0.1 ether, "rolling volume not recorded");
+        vm.prank(ACCOUNT);
+        validator.postCheck(hookData);
+    }
+
+    function testRejectsOraclePriceAboveOwnerEntryCeiling() public {
+        bytes memory callData = _buildSignedTrade(
+            59_400_000_000_000_000_000,
+            2_000_000,
+            100,
+            150,
+            200_000_001
+        );
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OraclePriceAboveEntryLimit.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsMinimumOutputBelowChainlinkOracleFloor() public {
+        bytes memory callData = _buildSignedTrade(
+            59 ether,
+            2_000_000,
+            100,
+            150,
+            100_000_000
+        );
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OraclePriceImpactExceeded.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testHonorsStricterSignedSlippageBound() public {
+        bytes memory callData = _buildSignedTrade(
+            59_600_000_000_000_000_000,
+            2_000_000,
+            50,
+            150,
+            100_000_000
+        );
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OraclePriceImpactExceeded.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function _buildSignedTrade(
+        uint256 amountOutMin,
+        uint64 entryPriceMicros,
+        uint16 slippageBps,
+        uint16 maxPriceImpactBps,
+        int256 tokenUsdAnswer
+    ) private returns (bytes memory) {
+        bnbFeed.setRound(60_000_000_000, block.timestamp, 1);
+        tokenFeed.setRound(tokenUsdAnswer, block.timestamp, 1);
+        validator.setTokenUsdFeed(address(token), address(tokenFeed), 3600);
+        vm.prank(ACCOUNT);
+        validator.setAccountPolicy(
+            ACCOUNT,
+            SIGNER,
+            POLICY,
+            0.5 ether,
+            uint64(block.timestamp + 1 days),
+            entryPriceMicros,
+            100,
+            150
+        );
+
+        uint64 deadline = uint64(block.timestamp + 10);
+        uint64 validUntil = uint64(block.timestamp + 12);
+        bytes32 nonce = keccak256(abi.encode(amountOutMin, tokenUsdAnswer, slippageBps, maxPriceImpactBps));
+        address[] memory path = new address[](2);
+        path[0] = validator.wrappedNativeToken();
+        path[1] = address(token);
+        TradingAgentPolicyValidatorV2.TradeIntent memory intent =
+            TradingAgentPolicyValidatorV2.TradeIntent({
+                smartAccount: ACCOUNT,
+                policyHash: POLICY,
+                router: address(router),
+                tokenIn: path[0],
+                tokenOut: address(token),
+                recipient: ACCOUNT,
+                amountIn: 0.1 ether,
+                amountOutMin: amountOutMin,
+                deadline: deadline,
+                slippageBps: slippageBps,
+                maxPriceImpactBps: maxPriceImpactBps,
+                validUntil: validUntil,
+                nonce: nonce
+            });
+        bytes32 digest = validator.hashTradeIntent(intent);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SIGNER_PRIVATE_KEY, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory routerCall = bytes.concat(
+            abi.encodeWithSelector(
+                BUY_SELECTOR,
+                amountOutMin,
+                path,
+                ACCOUNT,
+                uint256(deadline)
+            ),
+            abi.encode(POLICY, nonce, validUntil, slippageBps, maxPriceImpactBps, signature)
+        );
+        bytes memory execution = abi.encodePacked(address(router), uint256(0.1 ether), routerCall);
+        return abi.encodeWithSelector(
+            bytes4(keccak256("execute(bytes32,bytes)")),
+            bytes32(0),
+            execution
+        );
+    }
+
 }
