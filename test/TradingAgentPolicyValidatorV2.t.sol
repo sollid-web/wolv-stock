@@ -281,4 +281,34 @@ contract TradingAgentPolicyValidatorV2Test {
         return abi.encodePacked(r, s, v);
     }
 
+
+    function testRejectsReplayedSignedIntent() public {
+        bytes memory callData = _buildSignedTrade(
+            59_400_000_000_000_000_000,
+            2_000_000,
+            100,
+            150,
+            100_000_000
+        );
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.PolicyIntentReplay.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsStaleBnbUsdFeedAtExecution() public {
+        bytes memory callData = _buildSignedTrade(
+            59_400_000_000_000_000_000,
+            2_000_000,
+            100,
+            150,
+            100_000_000
+        );
+        bnbFeed.setRound(60_000_000_000, block.timestamp - 3601, 1);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OraclePriceUnavailable.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
 }
