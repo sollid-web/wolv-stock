@@ -93,6 +93,9 @@ export type AgentExecutorDependencies = {
         maxTradeValue?: bigint
         expiresAt?: bigint
         intentSigner?: Address
+        entryPriceMicros?: bigint
+        maxSlippageBps?: number
+        maxPriceImpactBps?: number
     }>
     buildBuyCall?: typeof buildAgentBuyCall
     encodeBuyCall?: typeof encodeAgentBuyCall
@@ -136,6 +139,17 @@ const VALIDATOR_ABI = [
         name: "getEffectiveRollingVolume",
         inputs: [{ name: "account", type: "address" }],
         outputs: [{ type: "uint256" }],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
+        name: "getAccountRiskPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "entryPriceMicros", type: "uint64" },
+            { name: "maxSlippageBps", type: "uint16" },
+            { name: "maxPriceImpactBps", type: "uint16" }
+        ],
         stateMutability: "view"
     },
     {
@@ -214,7 +228,7 @@ export function resolveAgentExecutionNetwork(
 
 export async function readAgentValidatorState(client: Client, account: Address) {
     const config = getAgentSmartAccountConfig()
-    const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
+    const [paused, installed, revoked, rollingVolume, accountPolicy, riskPolicy] = await Promise.all([
         readContract(client, {
             address: config.policyHookAddress,
             abi: VALIDATOR_ABI,
@@ -243,9 +257,16 @@ export async function readAgentValidatorState(client: Client, account: Address) 
             abi: VALIDATOR_ABI,
             functionName: "getAccountPolicy",
             args: [account]
+        }),
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: VALIDATOR_ABI,
+            functionName: "getAccountRiskPolicy",
+            args: [account]
         })
     ])
     const [policyConfigured, policyHash, maxTradeValue, expiresAt, intentSigner] = accountPolicy
+    const [entryPriceMicros, maxSlippageBps, maxPriceImpactBps] = riskPolicy
     return {
         paused,
         installed,
@@ -255,7 +276,10 @@ export async function readAgentValidatorState(client: Client, account: Address) 
         policyHash,
         maxTradeValue,
         expiresAt,
-        intentSigner
+        intentSigner,
+        entryPriceMicros,
+        maxSlippageBps,
+        maxPriceImpactBps
     }
 }
 
@@ -623,6 +647,9 @@ export class AgentExecutor {
             maxTradeValue?: bigint
             expiresAt?: bigint
             intentSigner?: Address
+            entryPriceMicros?: bigint
+            maxSlippageBps?: number
+            maxPriceImpactBps?: number
         },
         intent: AgentExecutionIntent,
         signer: Address
@@ -666,6 +693,10 @@ export class AgentExecutor {
         const intentSignerMismatch = !validator.intentSigner
             || !/^0x[0-9a-f]{40}$/i.test(validator.intentSigner)
             || getAddress(validator.intentSigner) !== getAddress(signer)
+        const riskPolicyMismatch =
+            validator.entryPriceMicros !== intent.entryPriceMicros
+            || validator.maxSlippageBps !== intent.slippageBps
+            || validator.maxPriceImpactBps !== intent.maxPriceImpactBps
         if (
             validator.paused
             || !validator.installed
@@ -677,6 +708,7 @@ export class AgentExecutor {
             || policyCapExceeded
             || policyHashMismatch
             || intentSignerMismatch
+            || riskPolicyMismatch
             || validator.policyConfigured !== true
         ) {
             throw new AgentExecutorError(
