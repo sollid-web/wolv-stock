@@ -143,6 +143,9 @@ function createHarness(overrides = {}) {
       maxTradeValue: parseEther("0.5"),
       expiresAt: POLICY_EXPIRY,
       intentSigner: INTENT_SIGNER,
+      entryPriceMicros: 100_000_000n,
+      maxSlippageBps: 100,
+      maxPriceImpactBps: 300,
     }),
     buildBuyCall: async () => ({
       to: router,
@@ -686,4 +689,29 @@ test("onchain account policy rejects missing, expired, capped, and mismatched in
     capHarness.executor.executeUserOperation({ ...capHarness.intent, policyHash }),
     error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
   );
+});
+
+test("refuses dispatch when on-chain V2 risk limits differ from the strategy", async () => {
+  const harness = createHarness({
+    readValidator: async () => ({
+      paused: false,
+      installed: true,
+      revoked: false,
+      rollingVolume: parseEther("0.2"),
+      policyConfigured: true,
+      policyHash: POLICY_HASH,
+      maxTradeValue: parseEther("0.5"),
+      expiresAt: POLICY_EXPIRY,
+      intentSigner: INTENT_SIGNER,
+      entryPriceMicros: 100_000_000n,
+      maxSlippageBps: 101,
+      maxPriceImpactBps: 300,
+    }),
+  });
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
+  assert.equal(harness.signedTypedData.length, 0);
+  assert.equal(harness.sentCalls.length, 0);
 });
