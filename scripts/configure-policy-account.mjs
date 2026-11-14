@@ -70,6 +70,9 @@ async function main() {
   const entryPriceMicros = BigInt(args.get("--entry-price-micros"));
   const slippageBps = Number(args.get("--slippage-bps"));
   const maxPriceImpactBps = Number(args.get("--max-price-impact-bps"));
+  if (entryPriceMicros <= 0n || entryPriceMicros > (1n << 64n) - 1n) throw new Error("--entry-price-micros must fit a positive uint64 micro-USD value.");
+  if (!Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 500) throw new Error("--slippage-bps must be an integer from 1 to 500.");
+  if (!Number.isInteger(maxPriceImpactBps) || maxPriceImpactBps < 1 || maxPriceImpactBps > 300) throw new Error("--max-price-impact-bps must be an integer from 1 to 300.");
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
   if (expiresAt <= nowSeconds || expiresAt > (1n << 64n) - 1n) {
     throw new Error("--expires-at must be a future Unix timestamp that fits uint64.");
