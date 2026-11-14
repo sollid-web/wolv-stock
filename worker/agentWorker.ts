@@ -243,11 +243,12 @@ async function fetchChainlinkMarketData(
         slippageBps: strategy.slippageBps,
         maxPriceImpactBps: strategy.maxPriceImpactBps
     }, config)
+    const observedAt = Date.now()
     return {
         priceMicros,
         reserves: marketCall.reserves,
-        observedAt: Number(updatedAt) * 1000,
-        receivedAt: Date.now()
+        observedAt,
+        receivedAt: observedAt
     }
 }
 
