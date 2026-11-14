@@ -98,3 +98,48 @@ contract TradingAgentPolicyValidatorV2Test {
         validator.setTokenUsdFeed(address(token), address(tokenFeed), 3600);
     }
 }
+
+
+    function testUninstallClearsDelegatedPolicyAndRiskLimits() public {
+        vm.prank(ACCOUNT);
+        validator.setAccountPolicy(
+            ACCOUNT,
+            SIGNER,
+            POLICY,
+            0.1 ether,
+            uint64(block.timestamp + 1 days),
+            125_000_000,
+            75,
+            150
+        );
+
+        vm.prank(ACCOUNT);
+        validator.onUninstall(bytes(""));
+
+        (bool configured, bytes32 policyHash, uint192 maxTradeValue, uint64 expiresAt, address intentSigner) =
+            validator.getAccountPolicy(ACCOUNT);
+        (uint64 entryPrice, uint16 slippage, uint16 impact) =
+            validator.getAccountRiskPolicy(ACCOUNT);
+
+        require(!configured, "policy remained active after uninstall");
+        require(policyHash == bytes32(0), "policy hash not cleared");
+        require(maxTradeValue == 0 && expiresAt == 0, "policy limits not cleared");
+        require(intentSigner == address(0), "delegated signer not cleared");
+        require(entryPrice == 0 && slippage == 0 && impact == 0, "risk limits not cleared");
+
+        vm.prank(ACCOUNT);
+        validator.onInstall(abi.encodePacked(bytes1(0), abi.encode(address(token))));
+        (configured,,,,) = validator.getAccountPolicy(ACCOUNT);
+        require(!configured, "reinstall unexpectedly restored old delegated policy");
+    }
+
+    function testRejectsFutureOracleRound() public {
+        tokenFeed.setRound(60_000_000, block.timestamp + 1, 2);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OraclePriceUnavailable.selector);
+        validator.setTokenUsdFeed(address(token), address(tokenFeed), 3600);
+    }
+
+    function testRejectsTooShortFeedFreshnessWindow() public {
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.InvalidOracleFeed.selector);
+        validator.setTokenUsdFeed(address(token), address(tokenFeed), 59);
+    }
