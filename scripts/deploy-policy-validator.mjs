@@ -18,9 +18,9 @@ const RPC_URL =
   "https://data-seed-prebsc-1-s1.binance.org:8545";
 
 function requirePrivateKey() {
-  const privateKey = process.env.PRIVATE_KEY?.trim().replace(/^['"]|['"]$/g, "");
+  const privateKey = process.env.DEPLOYER_PRIVATE_KEY?.trim().replace(/^['"]|['"]$/g, "");
   if (!privateKey) {
-    throw new Error("PRIVATE_KEY is not set in this terminal environment.");
+    throw new Error("DEPLOYER_PRIVATE_KEY is not set in this terminal environment.");
   }
   const normalizedPrivateKey = /^0x/i.test(privateKey)
     ? privateKey
