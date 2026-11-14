@@ -4,9 +4,9 @@ import { resolve } from "node:path"
 import type { KernelValidator } from "@zerodev/sdk"
 import type { AgentSmartAccountConfig } from "../lib/smartAccount.ts"
 import {
+    buildAgentBuyCall,
     createAgentPublicClient,
-    getAgentSmartAccountConfig,
-    type PoolReserves
+    getAgentSmartAccountConfig
 } from "../lib/smartAccount.ts"
 import {
     AgentExecutor,
@@ -31,24 +31,12 @@ import {
     type Address,
     type Hex
 } from "viem"
+import { readContract } from "viem/actions"
 import { privateKeyToAccount } from "viem/accounts"
 import type { PublicClient } from "viem"
 
 const POLL_INTERVAL_MS = 5_000
 const QUOTE_SUBMISSION_BUDGET_MS = 15_000
-const MOCK_RESERVES: PoolReserves = {
-    reserveIn: parseEther("1000"),
-    reserveOut: parseEther("1000000")
-}
-
-type MockMarketQuote = {
-    tokenIn: Address
-    tokenOut: Address
-    amountIn: bigint
-    amountOutMin: bigint
-    timestamp: number
-}
-
 type MarketDataProvider = {
     fetchMarketData: (
         strategy: AgentStrategy,
@@ -62,6 +50,46 @@ type OwnerValidatorProvider = {
         config: AgentSmartAccountConfig
     ) => Promise<KernelValidator>
 }
+
+const policyFeedAbi = [
+    {
+        type: "function",
+        name: "tokenUsdFeeds",
+        stateMutability: "view",
+        inputs: [{ name: "token", type: "address" }],
+        outputs: [{ type: "address" }]
+    },
+    {
+        type: "function",
+        name: "tokenFeedMaxAge",
+        stateMutability: "view",
+        inputs: [{ name: "token", type: "address" }],
+        outputs: [{ type: "uint32" }]
+    }
+] as const
+
+const chainlinkFeedAbi = [
+    {
+        type: "function",
+        name: "decimals",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "uint8" }]
+    },
+    {
+        type: "function",
+        name: "latestRoundData",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [
+            { type: "uint80" },
+            { type: "int256" },
+            { type: "uint256" },
+            { type: "uint256" },
+            { type: "uint80" }
+        ]
+    }
+] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -150,35 +178,76 @@ export async function fetchMarketData(
     config: AgentSmartAccountConfig,
     client: PublicClient,
     marketProvider?: MarketDataProvider["fetchMarketData"]
-): Promise<MarketSnapshot & { quote?: MockMarketQuote }> {
-    if (marketProvider) {
-        const snapshot = await marketProvider(strategy, { config, client })
-        return { ...snapshot, receivedAt: Date.now() }
-    }
+): Promise<MarketSnapshot> {
+    const snapshot = marketProvider
+        ? await marketProvider(strategy, { config, client })
+        : await fetchChainlinkMarketData(strategy, config, client)
+    return { ...snapshot, receivedAt: Date.now() }
+}
 
-    const receivedAt = Date.now()
-    const quote: MockMarketQuote = {
-        tokenIn: config.wrappedNativeAddress,
-        tokenOut: strategy.targetToken,
-        amountIn: strategy.amountBnb,
-        amountOutMin: BigInt(1),
-        timestamp: receivedAt
+async function fetchChainlinkMarketData(
+    strategy: AgentStrategy,
+    config: AgentSmartAccountConfig,
+    client: PublicClient
+): Promise<MarketSnapshot> {
+    const [feed, maxAge] = await Promise.all([
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: policyFeedAbi,
+            functionName: "tokenUsdFeeds",
+            args: [strategy.targetToken]
+        }),
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: policyFeedAbi,
+            functionName: "tokenFeedMaxAge",
+            args: [strategy.targetToken]
+        })
+    ])
+    if (feed === "0x0000000000000000000000000000000000000000" || maxAge < 60 || maxAge > 86_400) {
+        throw new Error("Target token has no valid guardian-allowlisted Chainlink USD feed.")
     }
-    console.info(JSON.stringify({
-        event: "mock_market_quote",
-        tokenIn: quote.tokenIn,
-        tokenOut: quote.tokenOut,
-        amountIn: quote.amountIn.toString(),
-        amountOutMin: quote.amountOutMin.toString(),
-        timestamp: quote.timestamp
-    }))
-
+    const [decimals, round] = await Promise.all([
+        readContract(client, {
+            address: feed,
+            abi: chainlinkFeedAbi,
+            functionName: "decimals"
+        }),
+        readContract(client, {
+            address: feed,
+            abi: chainlinkFeedAbi,
+            functionName: "latestRoundData"
+        })
+    ])
+    const [roundId, answer, , updatedAt, answeredInRound] = round
+    const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
+    if (
+        decimals > 18
+        || roundId === 0n
+        || answer <= 0n
+        || updatedAt === 0n
+        || updatedAt > nowSeconds
+        || nowSeconds - updatedAt > BigInt(maxAge)
+        || answeredInRound < roundId
+    ) {
+        throw new Error("Chainlink target-token USD feed is invalid, incomplete, future-dated, or stale.")
+    }
+    const normalizedPrice = answer * (10n ** BigInt(18 - decimals))
+    if (normalizedPrice <= 0n || normalizedPrice > 10n ** 36n) {
+        throw new Error("Chainlink target-token USD price is outside supported bounds.")
+    }
+    const priceMicros = (normalizedPrice - 1n) / 1_000_000_000_000n + 1n
+    const marketCall = await buildAgentBuyCall(client, {
+        accountAddress: strategy.account,
+        amountBnb: strategy.amountBnb,
+        slippageBps: strategy.slippageBps,
+        maxPriceImpactBps: strategy.maxPriceImpactBps
+    }, config)
     return {
-        priceMicros: strategy.entryPriceMicros + BigInt(1),
-        reserves: MOCK_RESERVES,
-        observedAt: receivedAt,
-        receivedAt,
-        quote
+        priceMicros,
+        reserves: marketCall.reserves,
+        observedAt: Number(updatedAt) * 1000,
+        receivedAt: Date.now()
     }
 }
 
@@ -192,18 +261,14 @@ async function createWorkerRuntime() {
         ? await loadProvider<MarketDataProvider>(
             process.env.AGENT_MARKET_DATA_MODULE,
             "fetchMarketData",
-            "AGENT_MARKET_DATA_MODULE is required for live market data."
+            "Configured market-data adapter could not be loaded."
         )
         : undefined
-    const getOwnerValidator = marketProvider
-        ? await loadProvider<OwnerValidatorProvider>(
-            process.env.AGENT_OWNER_VALIDATOR_MODULE,
-            "getOwnerValidator",
-            "AGENT_OWNER_VALIDATOR_MODULE must provide the account's owner validator."
-        )
-        : async () => {
-            throw new Error("Owner validator provider is required before live UserOperation submission.")
-        }
+    const getOwnerValidator = await loadProvider<OwnerValidatorProvider>(
+        process.env.AGENT_OWNER_VALIDATOR_MODULE,
+        "getOwnerValidator",
+        "AGENT_OWNER_VALIDATOR_MODULE must provide the account's owner validator."
+    )
 
     const workerReference: { current: AgentWorker | undefined } = { current: undefined }
     const reportExecutionFailure = createWorkerFailureReporter({
@@ -243,11 +308,6 @@ async function createWorkerRuntime() {
                 || Date.now() - quoteReceivedAt > QUOTE_SUBMISSION_BUDGET_MS
             ) {
                 console.warn("Quote stale, aborting")
-                worker.acknowledgeIntent(intent.strategyId)
-                return
-            }
-            if (!marketProvider) {
-                console.warn("Mock quote produced a signal; UserOperation submission is disabled for mock data.")
                 worker.acknowledgeIntent(intent.strategyId)
                 return
             }
@@ -340,11 +400,13 @@ async function createPersistentWorkerRuntime() {
     const agentAccount = loadPrivateKey()
     const publicClient = createAgentPublicClient(config)
     const validatorReader = createViemValidatorReader(publicClient, config.policyHookAddress)
-    const marketProvider = await loadProvider<MarketDataProvider>(
-        process.env.AGENT_MARKET_DATA_MODULE,
-        "fetchMarketData",
-        "AGENT_MARKET_DATA_MODULE is required for persistent autonomous trading schedules.",
-    )
+    const marketProvider = process.env.AGENT_MARKET_DATA_MODULE
+        ? await loadProvider<MarketDataProvider>(
+            process.env.AGENT_MARKET_DATA_MODULE,
+            "fetchMarketData",
+            "Configured market-data adapter could not be loaded.",
+        )
+        : undefined
     const getOwnerValidator = await loadProvider<OwnerValidatorProvider>(
         process.env.AGENT_OWNER_VALIDATOR_MODULE,
         "getOwnerValidator",
