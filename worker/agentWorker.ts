@@ -1,7 +1,9 @@
 import { pathToFileURL } from "node:url"
 import { createHash, randomUUID } from "node:crypto"
 import { resolve } from "node:path"
-import type { KernelValidator } from "@zerodev/sdk"
+import { addressToEmptyAccount, type KernelValidator } from "@zerodev/sdk"
+import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator"
+import { getEntryPoint, KERNEL_V3_1 } from "@zerodev/sdk/constants"
 import type { AgentSmartAccountConfig } from "../lib/smartAccount.ts"
 import {
     buildAgentBuyCall,
@@ -47,7 +49,8 @@ type MarketDataProvider = {
 type OwnerValidatorProvider = {
     getOwnerValidator: (
         account: Address,
-        config: AgentSmartAccountConfig
+        config: AgentSmartAccountConfig,
+        ownerAddress: Address
     ) => Promise<KernelValidator>
 }
 
@@ -252,6 +255,18 @@ async function fetchChainlinkMarketData(
     }
 }
 
+async function createOwnerValidator(
+    ownerAddress: Address,
+    config: AgentSmartAccountConfig
+): Promise<KernelValidator> {
+    const publicClient = createAgentPublicClient(config)
+    return signerToEcdsaValidator(publicClient, {
+        entryPoint: getEntryPoint("0.7"),
+        signer: addressToEmptyAccount(ownerAddress),
+        kernelVersion: KERNEL_V3_1
+    })
+}
+
 async function createWorkerRuntime() {
     const config = getAgentSmartAccountConfig()
     const agentAccount = loadPrivateKey()
@@ -265,11 +280,15 @@ async function createWorkerRuntime() {
             "Configured market-data adapter could not be loaded."
         )
         : undefined
-    const getOwnerValidator = await loadProvider<OwnerValidatorProvider>(
-        process.env.AGENT_OWNER_VALIDATOR_MODULE,
-        "getOwnerValidator",
-        "AGENT_OWNER_VALIDATOR_MODULE must provide the account's owner validator."
-    )
+    const getOwnerValidator: OwnerValidatorProvider["getOwnerValidator"] =
+        process.env.AGENT_OWNER_VALIDATOR_MODULE
+            ? await loadProvider<OwnerValidatorProvider>(
+                process.env.AGENT_OWNER_VALIDATOR_MODULE,
+                "getOwnerValidator",
+                "Configured owner-validator adapter could not be loaded."
+            )
+            : async (_account, ownerConfig, ownerAddress) =>
+                createOwnerValidator(ownerAddress, ownerConfig)
 
     const workerReference: { current: AgentWorker | undefined } = { current: undefined }
     const reportExecutionFailure = createWorkerFailureReporter({
@@ -280,7 +299,7 @@ async function createWorkerRuntime() {
     const executor = new AgentExecutor({
         getConfig: () => config,
         resolveAuthorization: async intent => ({
-            ownerValidator: await getOwnerValidator(intent.account, config),
+            ownerValidator: await getOwnerValidator(intent.account, config, intent.ownerAddress),
             sessionKeySigner: agentAccount
         }),
         maxIntentAgeMs: QUOTE_SUBMISSION_BUDGET_MS,
@@ -408,11 +427,15 @@ async function createPersistentWorkerRuntime() {
             "Configured market-data adapter could not be loaded.",
         )
         : undefined
-    const getOwnerValidator = await loadProvider<OwnerValidatorProvider>(
-        process.env.AGENT_OWNER_VALIDATOR_MODULE,
-        "getOwnerValidator",
-        "AGENT_OWNER_VALIDATOR_MODULE must provide the account's owner validator.",
-    )
+    const getOwnerValidator: OwnerValidatorProvider["getOwnerValidator"] =
+        process.env.AGENT_OWNER_VALIDATOR_MODULE
+            ? await loadProvider<OwnerValidatorProvider>(
+                process.env.AGENT_OWNER_VALIDATOR_MODULE,
+                "getOwnerValidator",
+                "Configured owner-validator adapter could not be loaded.",
+            )
+            : async (_account, ownerConfig, ownerAddress) =>
+                createOwnerValidator(ownerAddress, ownerConfig)
     const store = new AgentMemoryStore()
     await store.initialize()
     const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || `persistent-bsc-agent-worker-${config.chain.id}`
@@ -434,7 +457,7 @@ async function createPersistentWorkerRuntime() {
         const executor = new AgentExecutor({
             getConfig: () => config,
             resolveAuthorization: async intent => ({
-                ownerValidator: await getOwnerValidator(intent.account, config),
+                ownerValidator: await getOwnerValidator(intent.account, config, intent.ownerAddress),
                 sessionKeySigner: agentAccount,
             }),
             maxIntentAgeMs: QUOTE_SUBMISSION_BUDGET_MS,
