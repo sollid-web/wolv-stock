@@ -17,7 +17,7 @@ const MAX_TRADE_VALUE = 500_000_000_000_000_000n;
 const POLICY_ABI = parseAbi([
   "function isInitialized(address smartAccount) view returns (bool)",
   "function getTargetToken(address account) view returns (address)",
-  "function setAccountPolicy(address smartAccount, address intentSigner, bytes32 policyHash, uint192 maxTradeValue, uint64 expiresAt)",
+  "function setAccountPolicy(address smartAccount, address intentSigner, bytes32 policyHash, uint192 maxTradeValue, uint64 expiresAt, uint64 entryPriceMicros, uint16 maxSlippageBps, uint16 maxPriceImpactBps)",
 ]);
 const KERNEL_ABI = parseAbi([
   "function execute(bytes32 mode, bytes executionCalldata)",
@@ -118,7 +118,7 @@ async function main() {
   const policyCall = encodeFunctionData({
     abi: POLICY_ABI,
     functionName: "setAccountPolicy",
-    args: [accountAddress, intentSigner, policyHash, maxTradeValue, expiresAt],
+    args: [accountAddress, intentSigner, policyHash, maxTradeValue, expiresAt, entryPriceMicros, slippageBps, maxPriceImpactBps],
   });
   const executionCalldata = concatHex([
     hookAddress,
