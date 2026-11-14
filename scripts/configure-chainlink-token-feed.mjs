@@ -28,6 +28,7 @@ const publicClient = createPublicClient({ chain: bscTestnet, transport: http(pro
 const walletClient = createWalletClient({ account, chain: bscTestnet, transport: publicClient.transport });
 const feedAbi = parseAbi([
   "function decimals() view returns (uint8)",
+  "function description() view returns (string)",
   "function latestRoundData() view returns (uint80,int256,uint256,uint256,uint80)",
 ]);
 const validatorAbi = parseAbi([
@@ -35,15 +36,19 @@ const validatorAbi = parseAbi([
   "function tokenUsdFeeds(address token) view returns (address)",
 ]);
 if (await publicClient.getChainId() !== 97) throw new Error("This setup script only supports BSC Testnet.");
-const [validatorCode, tokenCode, feedCode, decimals, round] = await Promise.all([
+const [validatorCode, tokenCode, feedCode, decimals, description, round] = await Promise.all([
   publicClient.getBytecode({ address: validator }),
   publicClient.getBytecode({ address: token }),
   publicClient.getBytecode({ address: feed }),
   publicClient.readContract({ address: feed, abi: feedAbi, functionName: "decimals" }),
+  publicClient.readContract({ address: feed, abi: feedAbi, functionName: "description" }),
   publicClient.readContract({ address: feed, abi: feedAbi, functionName: "latestRoundData" }),
 ]);
 if (!validatorCode || !tokenCode || !feedCode) throw new Error("Validator, token, and Chainlink feed must all have deployed bytecode.");
 if (decimals > 18) throw new Error("Feed decimals above 18 are not supported.");
+if (!/\/\s*USD$/i.test(description.trim())) {
+  throw new Error(`Configured feed description "${description}" is not a USD-quoted Chainlink feed.`);
+}
 const [roundId, answer, , updatedAt, answeredInRound] = round;
 const now = BigInt(Math.floor(Date.now() / 1000));
 if (answer <= 0n || updatedAt === 0n || updatedAt > now || now - updatedAt > BigInt(maxAge) || answeredInRound < roundId) {
