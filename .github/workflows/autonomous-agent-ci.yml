@@ -27,7 +27,7 @@ jobs:
       - name: Install Slither
         run: python -m pip install --disable-pip-version-check slither-analyzer
       - name: Static security analysis
-        run: slither contracts/TradingAgentPolicyValidatorV2.sol --fail-high
+        run: slither . --fail-high
       - uses: actions/setup-node@v4
         with:
           node-version: 22
