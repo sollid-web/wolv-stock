@@ -1,0 +1,35 @@
+name: Autonomous agent runtime CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [autonomy/onchain-agent-runtime]
+
+permissions:
+  contents: read
+
+jobs:
+  contracts-and-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Compile and test Solidity policy validators
+        run: |
+          forge build
+          forge test -vv
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript validation
+        run: npx tsc --noEmit
+      - name: Agent runtime logic tests
+        run: npm run test:logic
+      - name: Lint
+        run: npm run lint
