@@ -60,6 +60,13 @@ export const AGENT_POLICY_HOOK_ABI = [
     },
     {
         type: "function",
+        name: "getAccountRiskPolicy",
+        stateMutability: "view",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [{ type: "uint64" }, { type: "uint16" }, { type: "uint16" }]
+    },
+    {
+        type: "function",
         name: "revokeAccount",
         stateMutability: "nonpayable",
         inputs: [{ name: "smartAccount", type: "address" }],
@@ -74,7 +81,10 @@ export const AGENT_POLICY_HOOK_ABI = [
             { name: "intentSigner", type: "address" },
             { name: "policyHash", type: "bytes32" },
             { name: "maxTradeValue", type: "uint192" },
-            { name: "expiresAt", type: "uint64" }
+            { name: "expiresAt", type: "uint64" },
+            { name: "entryPriceMicros", type: "uint64" },
+            { name: "maxSlippageBps", type: "uint16" },
+            { name: "maxPriceImpactBps", type: "uint16" }
         ],
         outputs: []
     }
@@ -140,6 +150,8 @@ export async function configureAgentPolicy(
     if (input.maxTradeValue <= BigInt(0) || input.maxTradeValue > MAX_TRADE_VALUE) {
         throw new RangeError("Policy maximum trade value must be between 1 wei and 0.5 BNB.")
     }
+    if (input.entryPriceMicros <= 0n || input.entryPriceMicros > (1n << 64n) - 1n) throw new RangeError("Entry price threshold must fit a positive uint64 micro-USD value.")
+    if (!Number.isInteger(input.slippageBps) || input.slippageBps < 1 || input.slippageBps > 500 || !Number.isInteger(input.maxPriceImpactBps) || input.maxPriceImpactBps < 1 || input.maxPriceImpactBps > 300) throw new RangeError("Slippage and price-impact limits are outside validator bounds.")
     const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
     if (input.expiresAt <= nowSeconds || input.expiresAt > (BigInt(1) << BigInt(64)) - BigInt(1)) {
         throw new RangeError("Policy expiry must be a future Unix timestamp that fits uint64.")
@@ -209,7 +221,7 @@ export async function configureAgentPolicy(
     const policyCall = encodeFunctionData({
         abi: AGENT_POLICY_HOOK_ABI,
         functionName: "setAccountPolicy",
-        args: [account, intentSigner, policyHash, input.maxTradeValue, input.expiresAt]
+        args: [account, intentSigner, policyHash, input.maxTradeValue, input.expiresAt, input.entryPriceMicros, input.slippageBps, input.maxPriceImpactBps]
     })
     const policyUserOperationHash = await input.ownerKernelClient.sendUserOperation({
         calls: [{ to: validatorAddress, value: BigInt(0), data: policyCall }]
@@ -227,8 +239,10 @@ export async function configureAgentPolicy(
         functionName: "getAccountPolicy",
         args: [account]
     })
+    const riskState = await input.publicClient.readContract({ address: validatorAddress, abi: AGENT_POLICY_HOOK_ABI, functionName: "getAccountRiskPolicy", args: [account] })
     if (
-        !policyState[0]
+        riskState[0] !== input.entryPriceMicros || riskState[1] !== input.slippageBps || riskState[2] !== input.maxPriceImpactBps
+        || !policyState[0]
         || policyState[1].toLowerCase() !== policyHash.toLowerCase()
         || policyState[2] !== input.maxTradeValue
         || policyState[3] !== input.expiresAt
