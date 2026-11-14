@@ -52,6 +52,10 @@ const readAbi = [{
     { type: "uint64" },
     { type: "address" },
   ],
+}, {
+  type: "function", name: "getAccountRiskPolicy", stateMutability: "view",
+  inputs: [{ name: "account", type: "address" }],
+  outputs: [{ type: "uint64" }, { type: "uint16" }, { type: "uint16" }],
 }];
 const installAbi = [{
   type: "function",
