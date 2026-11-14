@@ -7,6 +7,7 @@ interface VmV2 {
     function chainId(uint256 newChainId) external;
     function prank(address sender) external;
     function expectPartialRevert(bytes4 revertData) external;
+    function warp(uint256 timestamp) external;
 }
 
 contract V2Factory {}
@@ -49,6 +50,7 @@ contract TradingAgentPolicyValidatorV2Test {
 
     function setUp() public {
         vm.chainId(56);
+        vm.warp(1_700_000_000);
         factory = new V2Factory();
         router = new V2Router(address(factory));
         entryPoint = new V2EntryPoint();
