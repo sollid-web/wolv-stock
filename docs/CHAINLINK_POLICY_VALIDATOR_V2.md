@@ -19,7 +19,7 @@ Any missing, stale, negative, zero, incomplete, or unsupported oracle response r
 1. Verify the official Chainlink BNB/USD feed address for BSC Testnet from Chainlink's feed directory. Do not copy a mainnet feed address into testnet configuration.
 2. Set `BSC_TESTNET_BNB_USD_FEED` to that verified address and deploy with `npm run deploy:testnet-policy`. The deployer becomes guardian.
 3. Record the deployed V2 address. Verify the contract bytecode, constructor feed, guardian, router, and EntryPoint on the explorer.
-4. For each target token, configure its official Chainlink USD feed as guardian using:
+4. Set the application's `NEXT_PUBLIC_POLICY_HOOK_ADDRESS` to the new V2 deployment for the intended chain, then restart/redeploy the app. For each target token, configure its official Chainlink USD feed as guardian using:
    `npm run configure:testnet-token-feed -- <validator> <token> <chainlink-usd-feed> <max-age-seconds>`
    The command validates chain ID, bytecode, feed decimals, and current round before sending the guardian transaction.
 5. For each smart account, owner-authorize uninstalling the old V1 hook, install V2, and configure a fresh policy. V1 policy storage is not copied to V2.
