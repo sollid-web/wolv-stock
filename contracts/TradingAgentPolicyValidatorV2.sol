@@ -244,11 +244,20 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (!state.installed) revert NotInitialized(msg.sender);
         state.installed = false;
         state.targetToken = address(0);
+        if (state.policyConfigured) emit AccountPolicyCleared(msg.sender);
+        state.policyConfigured = false;
+        state.policyHash = bytes32(0);
+        state.policyExpiresAt = 0;
+        state.maxTradeValue = 0;
+        state.intentSigner = address(0);
+        state.entryPriceMicros = 0;
+        state.maxSlippageBps = 0;
+        state.maxPriceImpactBps = 0;
     }
 
     function setTokenUsdFeed(address token, address feed, uint32 maxAge) external {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
-        if (token == address(0) || token.code.length == 0 || feed == address(0) || feed.code.length == 0 || maxAge == 0 || maxAge > 86_400) revert InvalidOracleFeed(feed);
+        if (token == address(0) || token.code.length == 0 || feed == address(0) || feed.code.length == 0 || maxAge < 60 || maxAge > 86_400) revert InvalidOracleFeed(feed);
         _validateFeed(feed, maxAge);
         tokenUsdFeeds[token] = feed;
         tokenFeedMaxAge[token] = maxAge;
@@ -262,7 +271,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
     }
     function setBnbFeedMaxAge(uint32 maxAge) external {
         if (msg.sender != guardian) revert OnlyGuardian(msg.sender);
-        if (maxAge == 0 || maxAge > 86_400) revert InvalidOracleFeed(bnbUsdFeed);
+        if (maxAge < 60 || maxAge > 86_400) revert InvalidOracleFeed(bnbUsdFeed);
         bnbFeedMaxAge = maxAge;
         emit BnbFeedMaxAgeUpdated(maxAge);
     }
@@ -318,6 +327,12 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
             maxTradeValue,
             expiresAt,
             intentSigner
+        );
+        emit AccountRiskPolicyConfigured(
+            smartAccount,
+            entryPriceMicros,
+            maxSlippageBps,
+            maxPriceImpactBps
         );
     }
 
@@ -641,9 +656,22 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         uint8 tokenDecimals = IERC20Decimals(trade.tokenOut).decimals();
         if (tokenDecimals > 18) revert InvalidOracleFeed(tokenFeed);
         uint256 tokenUnit = 10 ** uint256(tokenDecimals);
-        uint256 fairOut = (trade.value * bnbUsd * tokenUnit) / (tokenUsd * PRICE_SCALE);
-        uint16 effectiveToleranceBps = state.maxSlippageBps < state.maxPriceImpactBps ? state.maxSlippageBps : state.maxPriceImpactBps;
-        uint256 oracleMinimumOut = (fairOut * (BPS_DENOMINATOR - effectiveToleranceBps)) / BPS_DENOMINATOR;
+        uint256 numerator = trade.value * bnbUsd * tokenUnit;
+        uint256 denominator = tokenUsd * PRICE_SCALE;
+        // Round both stages upward: rounding down would silently grant extra
+        // slippage against the owner-configured oracle floor.
+        uint256 fairOut = (numerator + denominator - 1) / denominator;
+        uint16 effectiveSlippageBps = trade.slippageBps < state.maxSlippageBps
+            ? trade.slippageBps
+            : state.maxSlippageBps;
+        uint16 effectiveImpactBps = trade.maxPriceImpactBps < state.maxPriceImpactBps
+            ? trade.maxPriceImpactBps
+            : state.maxPriceImpactBps;
+        uint16 effectiveToleranceBps = effectiveSlippageBps < effectiveImpactBps
+            ? effectiveSlippageBps
+            : effectiveImpactBps;
+        uint256 toleratedOut = fairOut * (BPS_DENOMINATOR - effectiveToleranceBps);
+        uint256 oracleMinimumOut = (toleratedOut + BPS_DENOMINATOR - 1) / BPS_DENOMINATOR;
         if (trade.amountOutMin < oracleMinimumOut) revert OraclePriceImpactExceeded(trade.amountOutMin, oracleMinimumOut);
     }
 
