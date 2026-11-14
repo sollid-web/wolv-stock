@@ -636,7 +636,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (tokenFeed == address(0) || tokenMaxAge == 0) revert InvalidOracleFeed(tokenFeed);
         uint256 tokenUsd = _readUsdPrice(tokenFeed, tokenMaxAge);
         uint256 bnbUsd = _readUsdPrice(bnbUsdFeed, bnbFeedMaxAge);
-        uint256 tokenPriceMicros = tokenUsd / 1e12;
+        uint256 tokenPriceMicros = (tokenUsd - 1) / 1e12 + 1;
         if (tokenPriceMicros == 0 || tokenPriceMicros > state.entryPriceMicros) revert OraclePriceAboveEntryLimit(tokenPriceMicros, state.entryPriceMicros);
         uint8 tokenDecimals = IERC20Decimals(trade.tokenOut).decimals();
         if (tokenDecimals > 18) revert InvalidOracleFeed(tokenFeed);
