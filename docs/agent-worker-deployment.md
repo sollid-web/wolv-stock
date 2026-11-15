@@ -33,6 +33,19 @@ Required worker environment:
 
 The database must be reachable from the worker host. Use a dedicated restricted database role and TLS where supported. Keep the delegated signer key in the host's secret store, restrict access to worker operators, and fund it only as required for the testnet session.
 
+## Web application configuration
+
+The web application that owns the schedule-registration API also needs:
+
+- `WOLV_AGENT_CONTROL_PLANE_ENABLED=true` so the schedule UI reports worker readiness.
+- `WOLV_AGENT_DATABASE_URL` (or `WOLV_TRADING_DATABASE_URL`) pointing to the same PostgreSQL database used by the worker.
+- `BAW_WALLET_API_TOKEN`: random high-entropy server secret of at least 32 bytes.
+- `BAW_AUTHORIZED_BROWSER_WALLETS`: comma-separated allowlist of owner wallet addresses.
+- `BAW_EXECUTION_DATABASE_URL`: PostgreSQL connection for the short-lived browser wallet session/challenge store.
+- The same chain, RPC, bundler, router, V2 hook, target-token and delegated signer public configuration used to verify the owner-authorized policy.
+
+The BAW browser session is used once to authorize schedule creation/management. It is not a per-trade approval and does not replace the on-chain owner policy.
+
 ## Before starting the worker
 
 1. Deploy V2 to BSC testnet and verify the deployment bytecode and constructor configuration.
