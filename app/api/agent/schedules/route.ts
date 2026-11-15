@@ -16,16 +16,15 @@ const HEADERS = { "Cache-Control": "no-store" };
 function getWorkerReadiness() {
   const missing = [
     !/^0x[0-9a-f]{64}$/i.test(process.env.AGENT_PRIVATE_KEY ?? "") ? "AGENT_PRIVATE_KEY" : null,
-    !process.env.AGENT_MARKET_DATA_MODULE ? "AGENT_MARKET_DATA_MODULE" : null,
-    !process.env.AGENT_OWNER_VALIDATOR_MODULE ? "AGENT_OWNER_VALIDATOR_MODULE" : null,
-    !process.env.REDIS_URL ? "REDIS_URL" : null,
+    !process.env.WOLV_AGENT_DATABASE_URL && !process.env.WOLV_TRADING_DATABASE_URL
+      ? "WOLV_AGENT_DATABASE_URL" : null,
   ].filter((value): value is string => Boolean(value));
   try {
     const config = getAgentSmartAccountConfig();
     const network = resolveAgentExecutionNetwork(config.chain.id);
     return {
       configuredChainId: config.chain.id,
-      workerReady: missing.length === 0,
+      workerReady: missing.length === 0 && network.allowed,
       workerConfigIssues: missing,
       executionGateEnabled: network.allowed,
       executionGateReason: network.allowed ? null : network.reason,
