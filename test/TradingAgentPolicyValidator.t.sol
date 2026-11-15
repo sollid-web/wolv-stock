@@ -52,6 +52,7 @@ contract TradingAgentPolicyValidatorTest {
     bytes4 private constant SELL_SELECTOR = 0x18cbafe5;
     bytes4 private constant EXECUTE_SELECTOR = bytes4(keccak256("execute(bytes32,bytes)"));
     address private constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
+    uint256 private constant MAX_SWAP_DEADLINE_SECONDS = 15;
 
     event AgentExecutionAttempt(
         address indexed smartAccount,
@@ -592,7 +593,7 @@ contract TradingAgentPolicyValidatorTest {
         uint256 minimumOutput,
         address pathStart
     ) private returns (bytes memory) {
-        uint64 deadline = uint64(block.timestamp + hook.MAX_SWAP_DEADLINE_SECONDS());
+        uint64 deadline = uint64(block.timestamp + MAX_SWAP_DEADLINE_SECONDS);
         bytes memory execution = _encodeExecution(
             pathStart,
             target,
@@ -735,7 +736,7 @@ contract TradingAgentPolicyValidatorTest {
             tokenOut,
             recipient,
             minimumOutput,
-            uint64(block.timestamp + hook.MAX_SWAP_DEADLINE_SECONDS())
+            uint64(block.timestamp + MAX_SWAP_DEADLINE_SECONDS)
         );
     }
 
