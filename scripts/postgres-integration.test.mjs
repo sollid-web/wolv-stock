@@ -286,6 +286,35 @@ test("BawExecutionStore enforces durable approval consumption and reject invalid
   await assert.rejects(() => bawStore.consumeApproval(executionId, tokenHash, now + 20_000), /USED|NOT_FOUND/);
 });
 
+test("agent memory tables deny public API roles and require backend access", async () => {
+  const store = new AgentMemoryStore(TEST_DATABASE_URL);
+  const postgres = (await import("postgres")).default;
+  const audit = postgres(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
+  try {
+    await store.initialize();
+    const rows = await audit`
+      SELECT c.relname, c.relrowsecurity,
+        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') AS anon_exists,
+        CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon')
+          THEN has_table_privilege('anon', c.oid, 'SELECT') ELSE false END AS anon_select,
+        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') AS authenticated_exists,
+        CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated')
+          THEN has_table_privilege('authenticated', c.oid, 'SELECT') ELSE false END AS authenticated_select
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r'
+        AND c.relname IN ('wolv_agent_asset_history', 'wolv_agent_market_observations', 'wolv_agent_market_candles', 'wolv_agent_runs', 'wolv_agent_events', 'wolv_agent_opportunities', 'wolv_agent_analyses', 'wolv_strategy_evaluations', 'wolv_agent_risk_policies', 'wolv_agent_policy_decisions', 'wolv_agent_proposals', 'wolv_agent_control', 'wolv_agent_session_plans', 'wolv_dynamic_strategy_cycles', 'wolv_dynamic_strategy_runs', 'wolv_agent_schedules', 'wolv_agent_execution_claims', 'wolv_agent_delegated_custody', 'wolv_agent_alerts', 'wolv_agent_market_calendar', 'wolv_agent_intent_nonces', 'wolv_agent_worker_heartbeats', 'wolv_agent_memory_migrations')
+    `;
+    assert.equal(rows.length, 23);
+    assert.ok(rows.every(row => row.relrowsecurity === true), "every internal agent table must have RLS enabled");
+    assert.ok(rows.every(row => row.anon_select === false), "anon must not be able to SELECT internal agent data");
+    assert.ok(rows.every(row => row.authenticated_select === false), "authenticated must not be able to SELECT internal agent data");
+  } finally {
+    await store.close();
+    await audit.end({ timeout: 3 });
+  }
+});
+
 test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals, and execution isolation", async () => {
   const ownerA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const ownerB = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
