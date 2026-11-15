@@ -65,3 +65,12 @@ jobs:
         run: pnpm run lint
       - name: Production build
         run: pnpm run build
+
+  worker-image:
+    name: Build persistent worker container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build worker image
+        run: docker build --file Dockerfile.agent-worker --tag wolv-agent-worker:ci .
