@@ -150,7 +150,7 @@ export async function configureAgentPolicy(
     if (input.maxTradeValue <= BigInt(0) || input.maxTradeValue > MAX_TRADE_VALUE) {
         throw new RangeError("Policy maximum trade value must be between 1 wei and 0.5 BNB.")
     }
-    if (input.entryPriceMicros <= 0n || input.entryPriceMicros > (1n << 64n) - 1n) throw new RangeError("Entry price threshold must fit a positive uint64 micro-USD value.")
+    if (input.entryPriceMicros <= BigInt(0) || input.entryPriceMicros > (BigInt(1) << BigInt(64)) - BigInt(1)) throw new RangeError("Entry price threshold must fit a positive uint64 micro-USD value.")
     if (!Number.isInteger(input.slippageBps) || input.slippageBps < 1 || input.slippageBps > 500 || !Number.isInteger(input.maxPriceImpactBps) || input.maxPriceImpactBps < 1 || input.maxPriceImpactBps > 300) throw new RangeError("Slippage and price-impact limits are outside validator bounds.")
     const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
     if (input.expiresAt <= nowSeconds || input.expiresAt > (BigInt(1) << BigInt(64)) - BigInt(1)) {

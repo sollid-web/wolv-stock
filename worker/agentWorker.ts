@@ -226,20 +226,20 @@ async function fetchChainlinkMarketData(
     const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
     if (
         decimals > 18
-        || roundId === 0n
-        || answer <= 0n
-        || updatedAt === 0n
+        || roundId === BigInt(0)
+        || answer <= BigInt(0)
+        || updatedAt === BigInt(0)
         || updatedAt > nowSeconds
         || nowSeconds - updatedAt > BigInt(maxAge)
         || answeredInRound < roundId
     ) {
         throw new Error("Chainlink target-token USD feed is invalid, incomplete, future-dated, or stale.")
     }
-    const normalizedPrice = answer * (10n ** BigInt(18 - decimals))
-    if (normalizedPrice <= 0n || normalizedPrice > 10n ** 36n) {
+    const normalizedPrice = answer * (BigInt(10) ** BigInt(18 - decimals))
+    if (normalizedPrice <= BigInt(0) || normalizedPrice > BigInt(10) ** BigInt(36)) {
         throw new Error("Chainlink target-token USD price is outside supported bounds.")
     }
-    const priceMicros = (normalizedPrice - 1n) / 1_000_000_000_000n + 1n
+    const priceMicros = (normalizedPrice - BigInt(1)) / BigInt(1_000_000_000_000) + BigInt(1)
     const marketCall = await buildAgentBuyCall(client, {
         accountAddress: strategy.account,
         amountBnb: strategy.amountBnb,
