@@ -603,8 +603,9 @@ const MIGRATIONS = [{
   version: 11,
   statements: [
     `DO $
-      DECLARE table_name text;
-      DECLARE role_name text;
+      DECLARE
+        table_name text;
+        role_name text;
       BEGIN
         FOREACH table_name IN ARRAY ARRAY[
         "wolv_agent_asset_history",
