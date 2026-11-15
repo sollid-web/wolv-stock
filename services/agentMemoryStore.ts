@@ -599,6 +599,47 @@ const MIGRATIONS = [{
     `CREATE INDEX IF NOT EXISTS wolv_agent_worker_heartbeats_last_seen
       ON wolv_agent_worker_heartbeats (last_seen_at DESC)`,
   ],
+  }, {
+  version: 11,
+  statements: [
+    `DO $
+      DECLARE table_name text;
+      DECLARE role_name text;
+      BEGIN
+        FOREACH table_name IN ARRAY ARRAY[
+        "wolv_agent_asset_history",
+        "wolv_agent_market_observations",
+        "wolv_agent_market_candles",
+        "wolv_agent_runs",
+        "wolv_agent_events",
+        "wolv_agent_opportunities",
+        "wolv_agent_analyses",
+        "wolv_strategy_evaluations",
+        "wolv_agent_risk_policies",
+        "wolv_agent_policy_decisions",
+        "wolv_agent_proposals",
+        "wolv_agent_control",
+        "wolv_agent_session_plans",
+        "wolv_dynamic_strategy_cycles",
+        "wolv_dynamic_strategy_runs",
+        "wolv_agent_schedules",
+        "wolv_agent_execution_claims",
+        "wolv_agent_delegated_custody",
+        "wolv_agent_alerts",
+        "wolv_agent_market_calendar",
+        "wolv_agent_intent_nonces",
+        "wolv_agent_worker_heartbeats",
+        "wolv_agent_memory_migrations"
+        ] LOOP
+          EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+          FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+              EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', table_name, role_name);
+            END IF;
+          END LOOP;
+        END LOOP;
+      END $`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
