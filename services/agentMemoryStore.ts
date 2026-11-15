@@ -599,6 +599,7 @@ const MIGRATIONS = [{
     `CREATE INDEX IF NOT EXISTS wolv_agent_worker_heartbeats_last_seen
       ON wolv_agent_worker_heartbeats (last_seen_at DESC)`,
   ],
+  // Internal agent records live in public for the direct PostgreSQL worker, but are never a public Data API.
   }, {
   version: 11,
   statements: [
