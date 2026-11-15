@@ -641,7 +641,7 @@ const MIGRATIONS = [{
         END LOOP;
       END $$`,
   ],
-}
+}];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
 const MAX_PAGE_SIZE = 100;
