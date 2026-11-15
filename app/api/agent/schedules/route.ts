@@ -18,6 +18,8 @@ function getWorkerReadiness() {
     !/^0x[0-9a-f]{64}$/i.test(process.env.AGENT_PRIVATE_KEY ?? "") ? "AGENT_PRIVATE_KEY" : null,
     !process.env.WOLV_AGENT_DATABASE_URL && !process.env.WOLV_TRADING_DATABASE_URL
       ? "WOLV_AGENT_DATABASE_URL" : null,
+    process.env.WOLV_AGENT_CONTROL_PLANE_ENABLED !== "true"
+      ? "WOLV_AGENT_CONTROL_PLANE_ENABLED" : null,
   ].filter((value): value is string => Boolean(value));
   try {
     const config = getAgentSmartAccountConfig();
