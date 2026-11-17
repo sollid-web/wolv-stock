@@ -5,7 +5,6 @@ import {
   calculateDynamicQuote,
   encodeAgentBuyCall,
   getAgentSmartAccountConfig,
-  runAgentExecutionWithTelemetry,
 } from "../lib/smartAccount.ts";
 import { decodeFunctionData, parseEther } from "viem";
 
@@ -287,71 +286,4 @@ test("rejects empty pools, excessive price impact, and invalid slippage", () => 
     ),
     /slippageBps must be an integer between 1 and 500/,
   );
-});
-
-test("records structured submitted and successful UserOperation telemetry", async () => {
-  const records = [];
-  const hash = `0x${"a".repeat(64)}`;
-  const transactionHash = `0x${"b".repeat(64)}`;
-  await runAgentExecutionWithTelemetry(
-    {
-      account: "0x0000000000000000000000000000000000000789",
-      targetToken: "0x0000000000000000000000000000000000000456",
-      amountBnb: parseEther("0.001"),
-    },
-    async onSubmitted => {
-      onSubmitted(hash, { priceImpactBps: 35, slippageBps: 100 });
-      return {
-        userOperationHash: hash,
-        receipt: { success: true, receipt: { transactionHash } },
-        quote: { priceImpactBps: 35, slippageBps: 100 },
-      };
-    },
-    record => records.push(record),
-  );
-
-  assert.deepEqual(records.map(({ event }) => event), [
-    "attempted",
-    "submitted",
-    "succeeded",
-  ]);
-  assert.equal(records[1].userOperationHash, hash);
-  assert.equal(records[2].transactionHash, transactionHash);
-  assert.equal(records[2].priceImpactBps, 35);
-});
-
-test("records failed UserOperation telemetry with a stable rejection reason", async () => {
-  const records = [];
-  const hash = `0x${"c".repeat(64)}`;
-
-  await assert.rejects(
-    runAgentExecutionWithTelemetry(
-      {
-        account: "0x0000000000000000000000000000000000000789",
-        targetToken: "0x0000000000000000000000000000000000000456",
-        amountBnb: parseEther("0.001"),
-      },
-      async onSubmitted => {
-        onSubmitted(hash, { priceImpactBps: 310, slippageBps: 100 });
-        return {
-          userOperationHash: hash,
-          receipt: {
-            success: false,
-            reason: "UserOperation execution reverted",
-            receipt: { transactionHash: `0x${"d".repeat(64)}` },
-          },
-        };
-      },
-      record => records.push(record),
-    ),
-    /UserOperation execution reverted/,
-  );
-
-  assert.deepEqual(records.map(({ event }) => event), [
-    "attempted",
-    "submitted",
-    "rejected",
-  ]);
-  assert.equal(records[2].reasonCode, "USER_OPERATION_REVERTED");
-  assert.equal(records[2].userOperationHash, hash);
 });

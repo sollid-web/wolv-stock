@@ -2,10 +2,13 @@ import type { KernelValidator } from "@zerodev/sdk"
 import type { Signer } from "@zerodev/sdk/types"
 import { toECDSASigner } from "@zerodev/permissions/signers"
 import type { Address, Client, Hex } from "viem"
-import { concatHex, encodeAbiParameters, getAddress } from "viem"
+import { concatHex, decodeEventLog, encodeAbiParameters, getAddress, parseAbi, parseAbiItem } from "viem"
 import { readContract } from "viem/actions"
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
+import { verifySwapReceiptOutput } from "../lib/swapOutcomeVerification.ts"
 import {
     buildAgentBuyCall,
+    createAgentPublicClient,
     createAgentSmartAccountClient,
     encodeAgentBuyCall,
     AGENT_SWAP_DEADLINE_SECONDS,
@@ -32,6 +35,7 @@ export type AgentExecutorErrorCode =
     | "BUNDLER_MEMPOOL_REJECTED"
     | "ONCHAIN_EXECUTION_REVERTED"
     | "USEROP_RECEIPT_TIMEOUT"
+    | "SWAP_OUTCOME_UNVERIFIED"
     | "RPC_FAILURE"
 
 export class AgentExecutorError extends Error {
@@ -69,6 +73,21 @@ export type AgentExecutorTelemetry = {
 export type AgentAuthorization = {
     ownerValidator: KernelValidator
     sessionKeySigner: Signer
+    /** Owner's one-time Kernel enable signature for the agent validator (see lib/agentPermission.ts). */
+    pluginEnableSignature?: Hex
+}
+
+/** Verified on-chain evidence for a completed autonomous trade. */
+export type AgentExecutionEvidence = {
+    userOperationHash: Hex
+    transactionHash: Hex
+    blockNumber: string
+    amountIn: string
+    amountOutMin: string
+    receivedAmount: string
+    hookReportedAmountOut: string
+    tokenBalanceBefore: string
+    tokenBalanceAfter: string
 }
 
 type AgentIntentSigner = Awaited<ReturnType<typeof toECDSASigner>>
@@ -92,6 +111,9 @@ export type AgentExecutorDependencies = {
         maxTradeValue?: bigint
         expiresAt?: bigint
         intentSigner?: Address
+        entryPriceMicros?: bigint
+        maxSlippageBps?: number
+        maxPriceImpactBps?: number
     }>
     buildBuyCall?: typeof buildAgentBuyCall
     encodeBuyCall?: typeof encodeAgentBuyCall
@@ -103,6 +125,7 @@ export type AgentExecutorDependencies = {
     ) => void
     now?: () => number
     getNextIntentNonce?: (smartAccount: Address) => Promise<Hex>
+    readTokenBalance?: (client: Client, token: Address, account: Address, blockNumber?: bigint) => Promise<bigint>
     maxIntentAgeMs?: number
     receiptTimeoutMs?: number
     receiptPollingIntervalMs?: number
@@ -139,6 +162,17 @@ const VALIDATOR_ABI = [
     },
     {
         type: "function",
+        name: "getAccountRiskPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "entryPriceMicros", type: "uint64" },
+            { name: "maxSlippageBps", type: "uint16" },
+            { name: "maxPriceImpactBps", type: "uint16" }
+        ],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
         name: "getAccountPolicy",
         inputs: [{ name: "account", type: "address" }],
         outputs: [
@@ -170,6 +204,21 @@ const TRADE_INTENT_TYPES = {
     ]
 } as const
 
+const HOOK_SUCCESS_EVENT = parseAbiItem(
+    "event AgentExecutionSucceeded(address indexed smartAccount, address indexed targetToken, uint256 value, uint256 amountOut, uint256 timestamp)"
+)
+const ERC20_BALANCE_ABI = parseAbi(["function balanceOf(address) view returns (uint256)"])
+
+async function readErc20Balance(client: Client, token: Address, account: Address, blockNumber?: bigint) {
+    return readContract(client, {
+        address: token,
+        abi: ERC20_BALANCE_ABI,
+        functionName: "balanceOf",
+        args: [account],
+        ...(blockNumber === undefined ? {} : { blockNumber })
+    })
+}
+
 const DEFAULT_MAX_INTENT_AGE_MS = 20_000
 const INTENT_VALIDITY_SECONDS = 20
 const DEFAULT_RECEIPT_TIMEOUT_MS = 120_000
@@ -179,6 +228,7 @@ export function isLiveUserOperationSubmissionEnabled(
     env: NodeJS.ProcessEnv = process.env
 ) {
     return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
+        && env.WOLV_AUTONOMOUS_TRADING_ENABLED === "true"
 }
 
 export function resolveAgentExecutionNetwork(
@@ -187,6 +237,9 @@ export function resolveAgentExecutionNetwork(
 ):
     | { allowed: true; chainId: 97 | 56 }
     | { allowed: false; reason: string } {
+    if (env.WOLV_AUTONOMOUS_TRADING_ENABLED !== "true") {
+        return { allowed: false, reason: "Autonomous trading is disabled by the master safety gate." };
+    }
     if (configuredChainId === 97) {
         return env.ENABLE_LIVE_USEROP_SUBMISSION === "true"
             ? { allowed: true, chainId: 97 }
@@ -209,7 +262,7 @@ export function resolveAgentExecutionNetwork(
 
 export async function readAgentValidatorState(client: Client, account: Address) {
     const config = getAgentSmartAccountConfig()
-    const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
+    const [paused, installed, revoked, rollingVolume, accountPolicy, riskPolicy] = await Promise.all([
         readContract(client, {
             address: config.policyHookAddress,
             abi: VALIDATOR_ABI,
@@ -238,9 +291,16 @@ export async function readAgentValidatorState(client: Client, account: Address) 
             abi: VALIDATOR_ABI,
             functionName: "getAccountPolicy",
             args: [account]
+        }),
+        readContract(client, {
+            address: config.policyHookAddress,
+            abi: VALIDATOR_ABI,
+            functionName: "getAccountRiskPolicy",
+            args: [account]
         })
     ])
     const [policyConfigured, policyHash, maxTradeValue, expiresAt, intentSigner] = accountPolicy
+    const [entryPriceMicros, maxSlippageBps, maxPriceImpactBps] = riskPolicy
     return {
         paused,
         installed,
@@ -250,7 +310,10 @@ export async function readAgentValidatorState(client: Client, account: Address) 
         policyHash,
         maxTradeValue,
         expiresAt,
-        intentSigner
+        intentSigner,
+        entryPriceMicros,
+        maxSlippageBps,
+        maxPriceImpactBps
     }
 }
 
@@ -298,7 +361,7 @@ export class AgentExecutor {
             if (!(this.dependencies.isLiveEnabled ?? isLiveUserOperationSubmissionEnabled)()) {
                 throw new AgentExecutorError(
                     "LIVE_SUBMISSION_DISABLED",
-                    "Live UserOperation submission is disabled; set ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
+                    "Live UserOperation submission is disabled; set WOLV_AUTONOMOUS_TRADING_ENABLED=true and ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
                 )
             }
             const config = this.dependencies.getConfig?.() ?? getAgentSmartAccountConfig()
@@ -315,12 +378,29 @@ export class AgentExecutor {
             this.validateIntent(intent, config)
 
             const authorization = await this.dependencies.resolveAuthorization(intent)
+            // Read on-chain policy state first: its expiry is the agent validator's
+            // TimestampPolicy bound and must match what the owner signed.
+            const validator = await (
+                this.dependencies.readValidator ?? readAgentValidatorState
+            )(createAgentPublicClient(config), getAddress(intent.account))
+            if (validator.expiresAt === undefined) {
+                throw new AgentExecutorError(
+                    "VALIDATOR_PREFLIGHT_FAILED",
+                    "On-chain policy expiry is unavailable."
+                )
+            }
             const { account, client } = await (
                 this.dependencies.createAccountClient ?? createAgentSmartAccountClient
             )(
                 authorization.ownerValidator,
                 authorization.sessionKeySigner,
-                config
+                config,
+                {
+                    accountAddress: getAddress(intent.account),
+                    ownerAddress: getAddress(intent.ownerAddress),
+                    pluginEnableSignature: authorization.pluginEnableSignature,
+                    permissionValidUntil: validator.expiresAt
+                }
             )
             if (getAddress(account.address) !== getAddress(intent.account)) {
                 throw new AgentExecutorError(
@@ -329,9 +409,6 @@ export class AgentExecutor {
                 )
             }
 
-            const validator = await (
-                this.dependencies.readValidator ?? readAgentValidatorState
-            )(client.client, account.address)
             const delegatedSigner = this.dependencies.createIntentSigner
                 ? await this.dependencies.createIntentSigner(authorization.sessionKeySigner)
                 : await toECDSASigner({ signer: authorization.sessionKeySigner })
@@ -476,6 +553,13 @@ export class AgentExecutor {
                 data: concatHex([safeCall.data, intentEnvelope])
             }
 
+            const readBalance = this.dependencies.readTokenBalance ?? readErc20Balance
+            const tokenBalanceBefore = await readBalance(
+                client.client,
+                getAddress(intent.targetToken),
+                account.address
+            )
+
             log({
                 event: "userop_prepared",
                 ...metadata,
@@ -537,12 +621,26 @@ export class AgentExecutor {
                 )
             }
 
+            // A receipt is not proof of a trade. Require (1) the V2 policy hook's success event
+            // for this account, proving on-chain enforcement ran, and (2) target-token Transfer
+            // logs to the account covering the signed minimum output.
+            const evidence = await this.verifyOutcome({
+                client: client.client,
+                receipt,
+                intent,
+                accountAddress: account.address,
+                policyHookAddress: config.policyHookAddress,
+                amountOutMin: safeCall.quote.amountOutMin,
+                tokenBalanceBefore,
+                readBalance
+            })
             const result = {
                 userOperationHash,
                 transactionHash: receipt.receipt.transactionHash,
                 receipt,
                 gasUsed: receipt.actualGasUsed,
                 gasCostWei: receipt.actualGasCost,
+                evidence,
                 status: "success" as const
             }
             log({
@@ -575,6 +673,66 @@ export class AgentExecutor {
                 this.dependencies.onFailure?.(intent, executorError.code, executorError)
             }
             throw executorError
+        }
+    }
+
+    private async verifyOutcome(input: {
+        client: Client
+        receipt: AgentReceipt
+        intent: AgentExecutionIntent
+        accountAddress: Address
+        policyHookAddress: Address
+        amountOutMin: bigint
+        tokenBalanceBefore: bigint
+        readBalance: (client: Client, token: Address, account: Address, blockNumber?: bigint) => Promise<bigint>
+    }): Promise<AgentExecutionEvidence> {
+        const account = getAddress(input.accountAddress)
+        const token = getAddress(input.intent.targetToken)
+        const logs = input.receipt.logs ?? []
+        let hookAmountOut: bigint | null = null
+        for (const entry of logs) {
+            if (getAddress(entry.address) !== getAddress(input.policyHookAddress)) continue
+            try {
+                const decoded = decodeEventLog({ abi: [HOOK_SUCCESS_EVENT], data: entry.data, topics: entry.topics })
+                if (getAddress(decoded.args.smartAccount) === account && getAddress(decoded.args.targetToken) === token) {
+                    hookAmountOut = decoded.args.amountOut
+                }
+            } catch {
+                continue
+            }
+        }
+        if (hookAmountOut === null) {
+            throw new AgentExecutorError(
+                "SWAP_OUTCOME_UNVERIFIED",
+                "UserOperation succeeded but the V2 policy hook did not report a verified execution for this account."
+            )
+        }
+        const outcome = verifySwapReceiptOutput({
+            receipt: { status: "success", logs },
+            tokenAddress: token,
+            recipientAddress: account,
+            minimumOutputAmount: input.amountOutMin.toString()
+        })
+        if (outcome.state !== "OUTPUT_VERIFIED") {
+            throw new AgentExecutionOutcomeError(outcome.reason ?? "Swap output could not be verified.")
+        }
+        const blockNumber = input.receipt.receipt.blockNumber
+        const tokenBalanceAfter = await input.readBalance(input.client, token, account, blockNumber)
+        if (tokenBalanceAfter < input.tokenBalanceBefore + input.amountOutMin) {
+            throw new AgentExecutionOutcomeError(
+                `Token balance increased by less than the signed minimum (before ${input.tokenBalanceBefore}, after ${tokenBalanceAfter}).`
+            )
+        }
+        return {
+            userOperationHash: input.receipt.userOpHash,
+            transactionHash: input.receipt.receipt.transactionHash,
+            blockNumber: blockNumber.toString(),
+            amountIn: input.intent.amountBnb.toString(),
+            amountOutMin: input.amountOutMin.toString(),
+            receivedAmount: outcome.receivedAmount,
+            hookReportedAmountOut: hookAmountOut.toString(),
+            tokenBalanceBefore: input.tokenBalanceBefore.toString(),
+            tokenBalanceAfter: tokenBalanceAfter.toString()
         }
     }
 
@@ -618,6 +776,9 @@ export class AgentExecutor {
             maxTradeValue?: bigint
             expiresAt?: bigint
             intentSigner?: Address
+            entryPriceMicros?: bigint
+            maxSlippageBps?: number
+            maxPriceImpactBps?: number
         },
         intent: AgentExecutionIntent,
         signer: Address
@@ -629,12 +790,42 @@ export class AgentExecutor {
                 || validator.expiresAt * BigInt(1000) <= BigInt(this.now()))
         const policyCapExceeded = validator.policyConfigured === true &&
             (validator.maxTradeValue === undefined || amountBnb > validator.maxTradeValue)
+        let expectedPolicyHash: Hex | null = null
+        if (
+            validator.policyConfigured === true
+            && validator.maxTradeValue !== undefined
+            && validator.expiresAt !== undefined
+            && validator.intentSigner !== undefined
+        ) {
+            try {
+                expectedPolicyHash = hashAgentPolicy({
+                    strategyId: intent.strategyId,
+                    ownerAddress: intent.ownerAddress,
+                    account: intent.account,
+                    targetToken: intent.targetToken,
+                    maxTradeValue: validator.maxTradeValue,
+                    expiresAt: validator.expiresAt,
+                    intentSigner: validator.intentSigner,
+                    amountBnb: intent.amountBnb,
+                    entryPriceMicros: intent.entryPriceMicros,
+                    slippageBps: intent.slippageBps,
+                    maxPriceImpactBps: intent.maxPriceImpactBps
+                })
+            } catch {
+                expectedPolicyHash = null
+            }
+        }
         const policyHashMismatch = validator.policyConfigured === true &&
-            (!intent.policyHash || !validator.policyHash ||
-                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase())
+            (!intent.policyHash || !validator.policyHash || !expectedPolicyHash ||
+                intent.policyHash.toLowerCase() !== validator.policyHash.toLowerCase() ||
+                expectedPolicyHash.toLowerCase() !== validator.policyHash.toLowerCase())
         const intentSignerMismatch = !validator.intentSigner
             || !/^0x[0-9a-f]{40}$/i.test(validator.intentSigner)
             || getAddress(validator.intentSigner) !== getAddress(signer)
+        const riskPolicyMismatch =
+            validator.entryPriceMicros !== intent.entryPriceMicros
+            || validator.maxSlippageBps !== intent.slippageBps
+            || validator.maxPriceImpactBps !== intent.maxPriceImpactBps
         if (
             validator.paused
             || !validator.installed
@@ -646,6 +837,7 @@ export class AgentExecutor {
             || policyCapExceeded
             || policyHashMismatch
             || intentSignerMismatch
+            || riskPolicyMismatch
             || validator.policyConfigured !== true
         ) {
             throw new AgentExecutorError(
@@ -718,6 +910,12 @@ export function createWorkerFailureReporter(
                 error.message
             )
         }
+    }
+}
+
+class AgentExecutionOutcomeError extends AgentExecutorError {
+    constructor(message: string) {
+        super("SWAP_OUTCOME_UNVERIFIED", message)
     }
 }
 

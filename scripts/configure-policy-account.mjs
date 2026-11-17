@@ -17,7 +17,7 @@ const MAX_TRADE_VALUE = 500_000_000_000_000_000n;
 const POLICY_ABI = parseAbi([
   "function isInitialized(address smartAccount) view returns (bool)",
   "function getTargetToken(address account) view returns (address)",
-  "function setAccountPolicy(address smartAccount, address intentSigner, bytes32 policyHash, uint192 maxTradeValue, uint64 expiresAt)",
+  "function setAccountPolicy(address smartAccount, address intentSigner, bytes32 policyHash, uint192 maxTradeValue, uint64 expiresAt, uint64 entryPriceMicros, uint16 maxSlippageBps, uint16 maxPriceImpactBps)",
 ]);
 const KERNEL_ABI = parseAbi([
   "function execute(bytes32 mode, bytes executionCalldata)",
@@ -34,7 +34,7 @@ function parseArguments(argv) {
       confirmed = true;
       continue;
     }
-    if (!["--hook", "--account", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"].includes(argument)) {
+    if (!["--hook", "--account", "--owner-address", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"].includes(argument)) {
       throw new Error(`Unknown argument: ${argument}`);
     }
     if (values.has(argument)) throw new Error(`Duplicate argument: ${argument}`);
@@ -44,7 +44,7 @@ function parseArguments(argv) {
     index += 1;
   }
   if (!confirmed) throw new Error("Refusing to prepare policy calldata without --confirm-testnet.");
-  for (const required of ["--hook", "--account", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at"]) {
+  for (const required of ["--hook", "--account", "--owner-address", "--strategy-id", "--target-token", "--intent-signer", "--max-trade-wei", "--expires-at", "--amount-bnb-wei", "--entry-price-micros", "--slippage-bps", "--max-price-impact-bps"]) {
     if (!values.has(required)) throw new Error(`Required argument missing: ${required}`);
   }
   return values;
@@ -54,6 +54,11 @@ async function main() {
   const args = parseArguments(process.argv.slice(2));
   const hookAddress = getAddress(args.get("--hook"));
   const accountAddress = getAddress(args.get("--account"));
+  const ownerAddress = getAddress(args.get("--owner-address"));
+  const strategyId = args.get("--strategy-id");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyId)) {
+    throw new Error("--strategy-id must be 1-64 safe identifier characters.");
+  }
   const targetToken = getAddress(args.get("--target-token"));
   const intentSigner = getAddress(args.get("--intent-signer"));
   const maxTradeValue = BigInt(args.get("--max-trade-wei"));
@@ -61,6 +66,13 @@ async function main() {
     throw new Error("--max-trade-wei must be between 1 and 0.5 BNB in wei.");
   }
   const expiresAt = BigInt(args.get("--expires-at"));
+  const amountBnb = BigInt(args.get("--amount-bnb-wei"));
+  const entryPriceMicros = BigInt(args.get("--entry-price-micros"));
+  const slippageBps = Number(args.get("--slippage-bps"));
+  const maxPriceImpactBps = Number(args.get("--max-price-impact-bps"));
+  if (entryPriceMicros <= 0n || entryPriceMicros > (1n << 64n) - 1n) throw new Error("--entry-price-micros must fit a positive uint64 micro-USD value.");
+  if (!Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 500) throw new Error("--slippage-bps must be an integer from 1 to 500.");
+  if (!Number.isInteger(maxPriceImpactBps) || maxPriceImpactBps < 1 || maxPriceImpactBps > 300) throw new Error("--max-price-impact-bps must be an integer from 1 to 300.");
   const nowSeconds = BigInt(Math.floor(Date.now() / 1000));
   if (expiresAt <= nowSeconds || expiresAt > (1n << 64n) - 1n) {
     throw new Error("--expires-at must be a future Unix timestamp that fits uint64.");
@@ -93,16 +105,23 @@ async function main() {
     throw new Error(`Installed policy hook target ${installedTargetToken} does not match --target-token ${targetToken}.`);
   }
   const policyHash = hashAgentPolicy({
+    strategyId,
+    ownerAddress,
+    account: accountAddress,
     targetToken,
     maxTradeValue,
     expiresAt,
     intentSigner,
+    amountBnb,
+    entryPriceMicros,
+    slippageBps,
+    maxPriceImpactBps,
   });
 
   const policyCall = encodeFunctionData({
     abi: POLICY_ABI,
     functionName: "setAccountPolicy",
-    args: [accountAddress, intentSigner, policyHash, maxTradeValue, expiresAt],
+    args: [accountAddress, intentSigner, policyHash, maxTradeValue, expiresAt, entryPriceMicros, slippageBps, maxPriceImpactBps],
   });
   const executionCalldata = concatHex([
     hookAddress,
@@ -119,10 +138,15 @@ async function main() {
   console.log(`Chain: BSC Testnet 97`);
   console.log(`Hook: ${hookAddress}`);
   console.log(`Smart account: ${accountAddress}`);
+  console.log(`Strategy ID: ${strategyId}`);
   console.log(`Target token: ${targetToken}`);
   console.log(`Intent signer: ${intentSigner}`);
   console.log(`Policy hash: ${policyHash}`);
   console.log(`Maximum trade: ${maxTradeValue} wei`);
+  console.log(`Strategy amount: ${amountBnb} wei`);
+  console.log(`Entry price threshold: ${entryPriceMicros} micro-USD`);
+  console.log(`Maximum slippage: ${slippageBps} BPS`);
+  console.log(`Maximum price impact: ${maxPriceImpactBps} BPS`);
   console.log(`Policy expires: ${expiresAt}`);
   console.log("Submit this Kernel call through the smart account with its owner validator:");
   console.log(kernelCallData);

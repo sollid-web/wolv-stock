@@ -1,0 +1,11 @@
+# Never upload local secrets or tooling state with `vercel deploy`.
+.env
+.env.*
+!.env.example
+/cache/
+/broadcast/
+/out/
+/contracts/test/
+/test/
+/lib/forge-std/
+.venv/

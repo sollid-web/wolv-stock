@@ -1,4 +1,5 @@
 import type { Address, Client, Hex } from "viem"
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
 import { readContract } from "viem/actions"
 import {
     calculateDynamicQuote,
@@ -10,6 +11,7 @@ export const MAX_ROLLING_VOLUME_BNB = BigInt("1000000000000000000")
 
 export type AgentStrategy = {
     id: string
+    ownerAddress: Address
     account: Address
     targetToken: Address
     amountBnb: bigint
@@ -29,12 +31,16 @@ export type ValidatorSnapshot = {
     paused: boolean
     installed: boolean
     revoked: boolean
+    targetToken: Address
     rollingVolume: bigint
     policyConfigured: boolean
     policyHash: Hex
     maxTradeValue: bigint
     policyExpiresAt: bigint
     intentSigner: Address
+    entryPriceMicros: bigint
+    maxSlippageBps: number
+    maxPriceImpactBps: number
 }
 
 export type AgentCycleReason =
@@ -46,6 +52,7 @@ export type AgentCycleReason =
     | "SESSION_REVOKED"
     | "SESSION_NOT_INSTALLED"
     | "POLICY_NOT_CONFIGURED"
+    | "POLICY_HASH_MISMATCH"
     | "POLICY_EXPIRED"
     | "SLIPPAGE_HIGH"
     | "VALIDATOR_PASS"
@@ -73,6 +80,7 @@ export type AgentCycleTelemetry = {
 
 export type AgentExecutionIntent = {
     strategyId: string
+    ownerAddress: Address
     account: Address
     targetToken: Address
     amountBnb: bigint
@@ -81,6 +89,7 @@ export type AgentExecutionIntent = {
     slippageBps: number
     maxPriceImpactBps: number
     sourcePriceMicros: bigint
+    entryPriceMicros: bigint
     createdAt: string
     policyHash: Hex
 }
@@ -137,9 +146,27 @@ const validatorAbi = [
     },
     {
         type: "function",
+        name: "getTargetToken",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [{ type: "address" }],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
         name: "getEffectiveRollingVolume",
         inputs: [{ name: "account", type: "address" }],
         outputs: [{ type: "uint256" }],
+        stateMutability: "view"
+    },
+    {
+        type: "function",
+        name: "getAccountRiskPolicy",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [
+            { name: "entryPriceMicros", type: "uint64" },
+            { name: "maxSlippageBps", type: "uint16" },
+            { name: "maxPriceImpactBps", type: "uint16" }
+        ],
         stateMutability: "view"
     },
     {
@@ -162,7 +189,7 @@ export function createViemValidatorReader(
     validatorAddress: Address
 ) {
     return async (strategy: AgentStrategy): Promise<ValidatorSnapshot> => {
-        const [paused, installed, revoked, rollingVolume, accountPolicy] = await Promise.all([
+        const [paused, installed, revoked, targetToken, rollingVolume, accountPolicy, riskPolicy] = await Promise.all([
             readContract(client, {
                 address: validatorAddress,
                 abi: validatorAbi,
@@ -183,6 +210,12 @@ export function createViemValidatorReader(
             readContract(client, {
                 address: validatorAddress,
                 abi: validatorAbi,
+                functionName: "getTargetToken",
+                args: [strategy.account]
+            }),
+            readContract(client, {
+                address: validatorAddress,
+                abi: validatorAbi,
                 functionName: "getEffectiveRollingVolume",
                 args: [strategy.account]
             }),
@@ -191,20 +224,31 @@ export function createViemValidatorReader(
                 abi: validatorAbi,
                 functionName: "getAccountPolicy",
                 args: [strategy.account]
+            }),
+            readContract(client, {
+                address: validatorAddress,
+                abi: validatorAbi,
+                functionName: "getAccountRiskPolicy",
+                args: [strategy.account]
             })
         ])
         const [policyConfigured, policyHash, maxTradeValue, policyExpiresAt, intentSigner] =
             accountPolicy
+        const [entryPriceMicros, maxSlippageBps, maxPriceImpactBps] = riskPolicy
         return {
             paused,
             installed,
             revoked,
+            targetToken,
             rollingVolume,
             policyConfigured,
             policyHash,
             maxTradeValue,
             policyExpiresAt,
-            intentSigner
+            intentSigner,
+            entryPriceMicros,
+            maxSlippageBps,
+            maxPriceImpactBps
         }
     }
 }
@@ -366,8 +410,22 @@ export class AgentWorker {
             this.rejectCycle(strategy, telemetry("POLICY_NOT_CONFIGURED"))
             return
         }
-        if (validator.policyExpiresAt * BigInt(1000) <= BigInt(this.now())) {
-            this.rejectCycle(strategy, telemetry("POLICY_EXPIRED"))
+        if (
+            validator.entryPriceMicros !== strategy.entryPriceMicros
+            || validator.maxSlippageBps !== strategy.slippageBps
+            || validator.maxPriceImpactBps !== strategy.maxPriceImpactBps
+        ) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                "On-chain V2 risk limits do not match the owner-authorized strategy configuration."
+            ))
+            return
+        }
+        if (validator.targetToken.toLowerCase() !== strategy.targetToken.toLowerCase()) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                "Configured strategy token does not match the installed policy hook token."
+            ))
             return
         }
         if (strategy.amountBnb <= BigInt(0) || strategy.amountBnb > MAX_TRADE_BNB) {
@@ -376,6 +434,39 @@ export class AgentWorker {
         }
         if (strategy.amountBnb > validator.maxTradeValue) {
             this.rejectCycle(strategy, telemetry("TRADE_CAP_EXCEEDED"))
+            return
+        }
+        let expectedPolicyHash: Hex
+        try {
+            expectedPolicyHash = hashAgentPolicy({
+                strategyId: strategy.id,
+                ownerAddress: strategy.ownerAddress,
+                account: strategy.account,
+                targetToken: strategy.targetToken,
+                maxTradeValue: validator.maxTradeValue,
+                expiresAt: validator.policyExpiresAt,
+                intentSigner: validator.intentSigner,
+                amountBnb: strategy.amountBnb,
+                entryPriceMicros: strategy.entryPriceMicros,
+                slippageBps: strategy.slippageBps,
+                maxPriceImpactBps: strategy.maxPriceImpactBps
+            })
+        } catch (error) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                error instanceof Error ? error.message : "Strategy policy identity is invalid."
+            ))
+            return
+        }
+        if (expectedPolicyHash.toLowerCase() !== validator.policyHash.toLowerCase()) {
+            this.rejectCycle(strategy, telemetry(
+                "POLICY_HASH_MISMATCH",
+                "Configured strategy identity does not match the owner-authorized on-chain policy hash."
+            ))
+            return
+        }
+        if (validator.policyExpiresAt * BigInt(1000) <= BigInt(this.now())) {
+            this.rejectCycle(strategy, telemetry("POLICY_EXPIRED"))
             return
         }
         if (
@@ -422,6 +513,7 @@ export class AgentWorker {
         try {
             const intent: AgentExecutionIntent = {
                 strategyId: strategy.id,
+                ownerAddress: strategy.ownerAddress,
                 account: strategy.account,
                 targetToken: strategy.targetToken,
                 amountBnb: strategy.amountBnb,
@@ -430,6 +522,7 @@ export class AgentWorker {
                 slippageBps: strategy.slippageBps,
                 maxPriceImpactBps: strategy.maxPriceImpactBps,
                 sourcePriceMicros: market.priceMicros,
+                entryPriceMicros: strategy.entryPriceMicros,
                 createdAt: new Date(market.receivedAt ?? market.observedAt).toISOString(),
                 policyHash: validator.policyHash
             }

@@ -14,9 +14,17 @@ import { bscTestnet } from "viem/chains";
 import { configureAgentPolicy } from "../lib/setupAgentPolicy.ts";
 
 const ACCOUNT = "0x0000000000000000000000000000000000000789";
+const OWNER = "0x0000000000000000000000000000000000000111";
 const HOOK = "0x0000000000000000000000000000000000000321";
 const TOKEN = "0x0000000000000000000000000000000000000456";
 const SIGNER = "0x0000000000000000000000000000000000000788";
+const POLICY_STRATEGY = {
+  strategyId: "aapl-entry",
+  amountBnb: parseEther("0.1"),
+  entryPriceMicros: 100_000_000n,
+  slippageBps: 100,
+  maxPriceImpactBps: 300,
+};
 const INSTALL_HASH = `0x${"a".repeat(64)}`;
 const POLICY_USEROP_HASH = `0x${"c".repeat(64)}`;
 
@@ -44,6 +52,10 @@ const readAbi = [{
     { type: "uint64" },
     { type: "address" },
   ],
+}, {
+  type: "function", name: "getAccountRiskPolicy", stateMutability: "view",
+  inputs: [{ name: "account", type: "address" }],
+  outputs: [{ type: "uint64" }, { type: "uint16" }, { type: "uint16" }],
 }];
 const installAbi = [{
   type: "function",
@@ -64,12 +76,20 @@ const policyAbi = [{
     { name: "policyHash", type: "bytes32" },
     { name: "maxTradeValue", type: "uint192" },
     { name: "expiresAt", type: "uint64" },
+    { name: "entryPriceMicros", type: "uint64" },
+    { name: "maxSlippageBps", type: "uint16" },
+    { name: "maxPriceImpactBps", type: "uint16" },
   ],
   outputs: [],
 }];
 
-function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } = {}) {
+function createHarness({ initiallyInstalled = false, installedTarget = TOKEN, staleNonceReads = 0 } = {}) {
   let initialized = initiallyInstalled;
+  // EntryPoint nonce as the bundler sees it vs. what a lagging public RPC reports.
+  let chainNonce = 0n;
+  let observedNonce = 0n;
+  let pendingStaleReads = 0;
+  const nonces = [];
   let policyState = [
     false,
     `0x${"0".repeat(64)}`,
@@ -77,6 +97,7 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
     0n,
     "0x0000000000000000000000000000000000000000",
   ];
+  const riskState = [0n, 0, 0];
   const calls = [];
   const waits = [];
   const transport = custom({
@@ -99,6 +120,9 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
       }).slice(0, 10)) {
         return encodeAbiParameters([{ type: "address" }], [installedTarget]);
       }
+      if (selector === encodeFunctionData({ abi: readAbi, functionName: "getAccountRiskPolicy", args: [ACCOUNT] }).slice(0, 10)) {
+        return encodeAbiParameters([{ type: "uint64" }, { type: "uint16" }, { type: "uint16" }], riskState);
+      }
       if (selector === encodeFunctionData({
         abi: readAbi,
         functionName: "getAccountPolicy",
@@ -114,9 +138,23 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
   });
   const publicClient = createPublicClient({ chain: bscTestnet, transport });
   const kernelClient = {
-    account: { address: ACCOUNT },
+    account: {
+      address: ACCOUNT,
+      getNonce: async () => {
+        if (pendingStaleReads > 0) {
+          pendingStaleReads -= 1;
+          return observedNonce;
+        }
+        observedNonce = chainNonce;
+        return observedNonce;
+      },
+    },
     chain: bscTestnet,
-    sendUserOperation: async ({ calls: userOpCalls }) => {
+    sendUserOperation: async ({ calls: userOpCalls, nonce }) => {
+      assert.equal(nonce, chainNonce, "UserOperation must use the current EntryPoint nonce");
+      nonces.push(nonce);
+      chainNonce += 1n;
+      pendingStaleReads = staleNonceReads;
       calls.push(userOpCalls);
       const call = userOpCalls[0];
       if (call.to === ACCOUNT) {
@@ -126,6 +164,7 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
         return INSTALL_HASH;
       }
       const configured = decodeFunctionData({ abi: policyAbi, data: call.data });
+      riskState.splice(0, 3, configured.args[5], configured.args[6], configured.args[7]);
       policyState = [
         true,
         configured.args[2],
@@ -142,6 +181,7 @@ function createHarness({ initiallyInstalled = false, installedTarget = TOKEN } =
   };
   return {
     calls,
+    nonces,
     waits,
     publicClient,
     kernelClient,
@@ -155,6 +195,8 @@ test("installs hook then signs policy in separate single-call owner UserOperatio
     ownerKernelClient: harness.kernelClient,
     publicClient: harness.publicClient,
     validatorAddress: HOOK,
+    ownerAddress: OWNER,
+    ...POLICY_STRATEGY,
     targetToken: TOKEN,
     intentSigner: SIGNER,
     maxTradeValue: parseEther("0.5"),
@@ -191,6 +233,9 @@ test("installs hook then signs policy in separate single-call owner UserOperatio
     result.policyHash,
     parseEther("0.5"),
     expiresAt,
+    POLICY_STRATEGY.entryPriceMicros,
+    POLICY_STRATEGY.slippageBps,
+    POLICY_STRATEGY.maxPriceImpactBps,
   ]);
 });
 
@@ -200,6 +245,8 @@ test("configures policy without reinstalling an already installed hook", async (
     ownerKernelClient: harness.kernelClient,
     publicClient: harness.publicClient,
     validatorAddress: HOOK,
+    ownerAddress: OWNER,
+    ...POLICY_STRATEGY,
     targetToken: TOKEN,
     intentSigner: SIGNER,
     maxTradeValue: parseEther("0.25"),
@@ -216,6 +263,8 @@ test("fails before signing if the installed token or owner-operation receipt is 
     ownerKernelClient: mismatched.kernelClient,
     publicClient: mismatched.publicClient,
     validatorAddress: HOOK,
+    ownerAddress: OWNER,
+    ...POLICY_STRATEGY,
     targetToken: TOKEN,
     intentSigner: SIGNER,
     maxTradeValue: parseEther("0.25"),
@@ -229,10 +278,30 @@ test("fails before signing if the installed token or owner-operation receipt is 
     ownerKernelClient: reverted.kernelClient,
     publicClient: reverted.publicClient,
     validatorAddress: HOOK,
+    ownerAddress: OWNER,
+    ...POLICY_STRATEGY,
     targetToken: TOKEN,
     intentSigner: SIGNER,
     maxTradeValue: parseEther("0.25"),
     expiresAt: BigInt(Math.floor(Date.now() / 1000) + 3600),
   }), /Hook installation UserOperation reverted/);
   assert.equal(reverted.calls.length, 1);
+});
+
+test("waits for a lagging RPC to observe the install before sending the policy UserOperation", async () => {
+  const harness = createHarness({ staleNonceReads: 1 });
+  const expiresAt = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const result = await configureAgentPolicy({
+    ownerKernelClient: harness.kernelClient,
+    publicClient: harness.publicClient,
+    validatorAddress: HOOK,
+    ownerAddress: OWNER,
+    ...POLICY_STRATEGY,
+    targetToken: TOKEN,
+    intentSigner: SIGNER,
+    maxTradeValue: parseEther("0.5"),
+    expiresAt,
+  });
+  assert.equal(result.policyUserOperationHash, POLICY_USEROP_HASH);
+  assert.deepEqual(harness.nonces, [0n, 1n]);
 });

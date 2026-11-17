@@ -18,6 +18,7 @@ import {
   AGENT_SESSION_TESTNET_CHAIN_ID,
   AGENT_SESSION_VALIDITY_SECONDS,
 } from "../lib/agentSessionPlan.ts";
+import { postgresTlsOptions } from "../lib/postgresTls.ts";
 
 const MIGRATIONS = [{
   version: 1,
@@ -586,6 +587,77 @@ const MIGRATIONS = [{
       ON wolv_agent_execution_claims (owner_address, created_at)
       WHERE notional_value IS NOT NULL`,
   ],
+}, {
+  version: 10,
+  statements: [
+    `CREATE TABLE IF NOT EXISTS wolv_agent_worker_heartbeats (
+      worker_id varchar(128) PRIMARY KEY,
+      worker_mode varchar(64) NOT NULL,
+      chain_id integer NOT NULL CHECK (chain_id > 0),
+      last_seen_at timestamptz NOT NULL,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    )`,
+    `CREATE INDEX IF NOT EXISTS wolv_agent_worker_heartbeats_last_seen
+      ON wolv_agent_worker_heartbeats (last_seen_at DESC)`,
+  ],
+  // Internal agent records live in public for the direct PostgreSQL worker, but are never a public Data API.
+  }, {
+  version: 11,
+  statements: [
+    `DO $$
+      DECLARE
+        table_name text;
+        role_name text;
+      BEGIN
+        FOREACH table_name IN ARRAY ARRAY[
+          'wolv_agent_asset_history',
+          'wolv_agent_market_observations',
+          'wolv_agent_market_candles',
+          'wolv_agent_runs',
+          'wolv_agent_events',
+          'wolv_agent_opportunities',
+          'wolv_agent_analyses',
+          'wolv_strategy_evaluations',
+          'wolv_agent_risk_policies',
+          'wolv_agent_policy_decisions',
+          'wolv_agent_proposals',
+          'wolv_agent_control',
+          'wolv_agent_session_plans',
+          'wolv_dynamic_strategy_cycles',
+          'wolv_dynamic_strategy_runs',
+          'wolv_agent_schedules',
+          'wolv_agent_execution_claims',
+          'wolv_agent_delegated_custody',
+          'wolv_agent_alerts',
+          'wolv_agent_market_calendar',
+          'wolv_agent_intent_nonces',
+          'wolv_agent_worker_heartbeats',
+          'wolv_agent_memory_migrations'
+        ] LOOP
+          EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+          FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+              EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', table_name, role_name);
+            END IF;
+          END LOOP;
+        END LOOP;
+      END $$`,
+  ],
+}, {
+  // Additive only: verified on-chain evidence for autonomous trades (hashes, amounts, balances).
+  version: 12,
+  statements: [
+    `ALTER TABLE wolv_agent_execution_claims
+      ADD COLUMN IF NOT EXISTS execution_evidence jsonb`,
+  ],
+}, {
+  version: 13,
+  statements: [
+    // Evidence was briefly written as a JSON string inside jsonb; unwrap it (idempotent).
+    `UPDATE wolv_agent_execution_claims
+      SET execution_evidence = (execution_evidence #>> '{}')::jsonb
+      WHERE jsonb_typeof(execution_evidence) = 'string'`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -778,6 +850,10 @@ export interface AgentMemoryStorePort {
   listSchedules(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
+  claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
+  recordWorkerHeartbeat?(input: { workerId: string; workerMode: string; chainId: number; lastSeenAt: number; metadata?: Record<string, unknown> }): Promise<void>;
+  getLatestWorkerHeartbeat?(now: number, maxAgeMs?: number, chainId?: number): Promise<Record<string, unknown> | null>;
+  rescheduleAutonomousAgentSchedule?(ownerAddress: string, scheduleId: string, updatedAt: number): Promise<void>;
   claimExecution(input: {
     claimId: string;
     scheduleId: string;
@@ -796,6 +872,7 @@ export interface AgentMemoryStorePort {
     failureCode?: string;
     failureDetail?: string;
     providerReference?: string;
+    evidence?: Record<string, string>;
     at: number;
   }): Promise<void>;
   consumeIntentNonce(input: {
@@ -841,7 +918,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       connect_timeout: 5,
       max_lifetime: 300,
       prepare: false,
-      ssl: isLocalDevelopmentUrl(databaseUrl) ? false : "verify-full",
+      ssl: postgresTlsOptions(databaseUrl, isLocalDevelopmentUrl(databaseUrl)),
     });
     this.ready = this.runMigrations();
   }
@@ -2331,7 +2408,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       ) VALUES (
         ${input.scheduleId}, ${owner}, ${input.name}, ${input.enabled ?? true}, ${input.intervalSeconds},
         ${input.policyVersion}, ${input.policyHash}, ${new Date(input.nextRunAt)},
-        ${strategyType}, ${executionMode}, ${strategyConfig}::jsonb,
+        ${strategyType}, ${executionMode}, ${this.sql.json(jsonValue(strategyConfig))},
         ${new Date(createdAt)}, ${new Date(updatedAt)}
       )
       ON CONFLICT (owner_address, name) DO UPDATE SET
@@ -2356,7 +2433,13 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
     const rows = await this.sql`
       SELECT schedule_id, name, enabled, interval_seconds, policy_version, policy_hash,
              strategy_type, execution_mode, strategy_config,
-             next_run_at, last_run_at, created_at, updated_at
+             next_run_at, last_run_at, created_at, updated_at,
+             EXISTS (
+               SELECT 1 FROM wolv_agent_execution_claims active_claim
+               WHERE active_claim.schedule_id = wolv_agent_schedules.schedule_id
+                 AND active_claim.owner_address = wolv_agent_schedules.owner_address
+                 AND active_claim.status IN ('CLAIMED', 'SUBMITTED')
+             ) AS has_active_execution_claim
       FROM wolv_agent_schedules WHERE owner_address = ${owner}
       ORDER BY updated_at DESC LIMIT ${safeLimit}
     `;
@@ -2367,6 +2450,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       strategyType: String(row.strategy_type), executionMode: String(row.execution_mode),
       strategyConfig: parseJson<AgentStrategyConfig>(row.strategy_config),
       lastRunAt: row.last_run_at ? Number(row.last_run_at) : null,
+      hasActiveExecutionClaim: row.has_active_execution_claim === true,
       createdAt: Number(row.created_at), updatedAt: Number(row.updated_at),
     }));
   }
@@ -2407,6 +2491,123 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       nextRunAt: Number(row.next_run_at),
       lastRunAt: Number(row.last_run_at),
     }));
+  }
+
+  async claimDueAutonomousAgentSchedules(now: number, limit = 20): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    if (!Number.isSafeInteger(now) || now <= 0) throw new TypeError("Schedule claim time is invalid.");
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const rows = await this.sql`
+      UPDATE wolv_agent_schedules SET last_run_at = ${new Date(now)},
+        next_run_at = ${new Date(now)} + interval_seconds * interval '1 second',
+        updated_at = ${new Date(now)}
+      WHERE schedule_id IN (
+        SELECT schedule_id FROM wolv_agent_schedules
+        WHERE enabled = true
+          AND execution_mode = 'AUTONOMOUS'
+          AND strategy_type = 'BSC_AGENT_TRADE'
+          AND next_run_at <= ${new Date(now)}
+          AND NOT EXISTS (
+            SELECT 1 FROM wolv_agent_execution_claims active_claim
+            WHERE active_claim.schedule_id = wolv_agent_schedules.schedule_id
+              AND active_claim.owner_address = wolv_agent_schedules.owner_address
+              AND active_claim.status IN ('CLAIMED', 'SUBMITTED')
+          )
+        ORDER BY next_run_at ASC
+        LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING schedule_id, owner_address, name, interval_seconds, policy_version, policy_hash,
+        strategy_type, execution_mode, strategy_config, next_run_at, last_run_at
+    `;
+    return rows.map((row) => ({
+      scheduleId: String(row.schedule_id),
+      ownerAddress: String(row.owner_address),
+      name: String(row.name),
+      intervalSeconds: Number(row.interval_seconds),
+      policyVersion: String(row.policy_version),
+      policyHash: String(row.policy_hash),
+      strategyType: String(row.strategy_type),
+      executionMode: String(row.execution_mode),
+      strategyConfig: parseJson<AgentStrategyConfig>(row.strategy_config),
+      nextRunAt: Number(row.next_run_at),
+      lastRunAt: Number(row.last_run_at),
+    }));
+  }
+  async rescheduleAutonomousAgentSchedule(ownerAddress: string, scheduleId: string, updatedAt: number): Promise<void> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    if (!/^[0-9a-f-]{36}$/i.test(scheduleId) ||
+      !Number.isSafeInteger(updatedAt) || updatedAt <= 0) {
+      throw new TypeError("Autonomous schedule reschedule fields are invalid.");
+    }
+    await this.sql`
+      UPDATE wolv_agent_schedules
+      SET next_run_at = ${new Date(updatedAt)} + interval_seconds * interval '1 second', updated_at = ${new Date(updatedAt)}
+      WHERE owner_address = ${owner} AND schedule_id = ${scheduleId}
+        AND enabled = true AND strategy_type = 'BSC_AGENT_TRADE' AND execution_mode = 'AUTONOMOUS'
+    `;
+  }
+
+  async recordWorkerHeartbeat(input: {
+    workerId: string;
+    workerMode: string;
+    chainId: number;
+    lastSeenAt: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
+    await this.ready;
+    const workerId = input.workerId.trim();
+    const workerMode = input.workerMode.trim();
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(workerId) ||
+      !/^[A-Za-z0-9._:-]{1,64}$/.test(workerMode) ||
+      !Number.isSafeInteger(input.chainId) || input.chainId <= 0 ||
+      !Number.isSafeInteger(input.lastSeenAt) || input.lastSeenAt <= 0) {
+      throw new TypeError("Worker heartbeat fields are invalid.");
+    }
+    const metadata = input.metadata ?? {};
+    await this.sql`
+      INSERT INTO wolv_agent_worker_heartbeats (worker_id, worker_mode, chain_id, last_seen_at, metadata)
+      VALUES (${workerId}, ${workerMode}, ${input.chainId}, ${new Date(input.lastSeenAt)}, ${JSON.stringify(metadata)}::jsonb)
+      ON CONFLICT (worker_id) DO UPDATE SET
+        worker_mode = EXCLUDED.worker_mode,
+        chain_id = EXCLUDED.chain_id,
+        last_seen_at = EXCLUDED.last_seen_at,
+        metadata = EXCLUDED.metadata
+    `;
+  }
+
+  async getLatestWorkerHeartbeat(now: number, maxAgeMs = 20_000, chainId?: number): Promise<Record<string, unknown> | null> {
+    await this.ready;
+    if (!Number.isSafeInteger(now) || now <= 0 ||
+      !Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0 || maxAgeMs > 300_000 ||
+      (chainId !== undefined && (!Number.isSafeInteger(chainId) || chainId <= 0))) {
+      throw new TypeError("Worker heartbeat freshness window is invalid.");
+    }
+    const rows = chainId === undefined
+      ? await this.sql`
+          SELECT worker_id, worker_mode, chain_id, last_seen_at, metadata
+          FROM wolv_agent_worker_heartbeats
+          WHERE last_seen_at >= ${new Date(now - maxAgeMs)}
+          ORDER BY last_seen_at DESC
+          LIMIT 1
+        `
+      : await this.sql`
+          SELECT worker_id, worker_mode, chain_id, last_seen_at, metadata
+          FROM wolv_agent_worker_heartbeats
+          WHERE last_seen_at >= ${new Date(now - maxAgeMs)} AND chain_id = ${chainId}
+          ORDER BY last_seen_at DESC
+          LIMIT 1
+        `;
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      workerId: String(row.worker_id),
+      workerMode: String(row.worker_mode),
+      chainId: Number(row.chain_id),
+      lastSeenAt: Number(row.last_seen_at),
+      metadata: parseJson<Record<string, unknown>>(row.metadata),
+    };
   }
 
   async claimExecution(input: Parameters<AgentMemoryStorePort["claimExecution"]>[0]): Promise<{ claimId: string | null }> {
@@ -2499,6 +2700,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         provider_reference = COALESCE(${providerReference}, provider_reference),
         failure_code = COALESCE(${update.failureCode ?? null}, failure_code),
         failure_detail = COALESCE(${update.failureDetail ?? null}, failure_detail),
+        execution_evidence = COALESCE(${update.evidence ? this.sql.json(jsonValue(update.evidence)) : null}, execution_evidence),
         simulated_at = CASE WHEN ${update.status} = 'SIMULATED' THEN ${new Date(update.at)} ELSE simulated_at END,
         submitted_at = CASE WHEN ${update.status} = 'SUBMITTED' THEN ${new Date(update.at)} ELSE submitted_at END,
         confirmed_at = CASE WHEN ${update.status} = 'CONFIRMED' THEN ${new Date(update.at)} ELSE confirmed_at END,
@@ -2507,6 +2709,32 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       WHERE claim_id = ${claimId} AND owner_address = ${owner}
     `;
     if (result.count !== 1) throw new AgentMemoryStoreError("NOT_FOUND");
+  }
+
+  /**
+   * Releases leases held by a crashed or hung worker. Only claims that never reached
+   * submission (CLAIMED, no provider reference) are expired: a SUBMITTED claim may have an
+   * on-chain effect and stays locked until reconciled by an operator.
+   */
+  async expireStaleExecutionClaims(now: number, leaseMs: number): Promise<Array<{ claimId: string; ownerAddress: string; scheduleId: string }>> {
+    await this.ready;
+    if (!Number.isSafeInteger(now) || now <= 0 || !Number.isSafeInteger(leaseMs) || leaseMs < 60_000) {
+      throw new TypeError("Execution lease expiry parameters are invalid.");
+    }
+    const rows = await this.sql`
+      UPDATE wolv_agent_execution_claims
+      SET status = 'FAILED', run_ledger_status = 'FAILED', failure_code = 'LEASE_EXPIRED',
+        failure_detail = 'Worker lease expired before UserOperation submission.',
+        failed_at = ${new Date(now)}, updated_at = ${new Date(now)}
+      WHERE status = 'CLAIMED' AND provider_reference IS NULL
+        AND updated_at < ${new Date(now - leaseMs)}
+      RETURNING claim_id, owner_address, schedule_id
+    `;
+    return rows.map((row) => ({
+      claimId: String(row.claim_id),
+      ownerAddress: String(row.owner_address),
+      scheduleId: String(row.schedule_id),
+    }));
   }
 
   async consumeIntentNonce(input: Parameters<AgentMemoryStorePort["consumeIntentNonce"]>[0]): Promise<{ consumed: boolean }> {
@@ -2678,13 +2906,13 @@ function isPositiveDecimalAmount(value: string): boolean {
   return BigInt(`${whole}${fraction.padEnd(18, "0")}`) > BigInt(0);
 }
 
-function serializeStrategyConfig(value: unknown): string {
+function serializeStrategyConfig(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new TypeError("Strategy configuration must be a JSON object.");
   const serialized = JSON.stringify(value);
   if (typeof serialized !== "string" || Buffer.byteLength(serialized, "utf8") > 16_384) {
     throw new TypeError("Strategy configuration exceeds the 16 KB limit.");
   }
-  return serialized;
+  return value;
 }
 
 function isPostgresUrl(value: string): boolean {

@@ -9,24 +9,42 @@ import { AgentWorker } from "../services/agentWorker.ts";
 import {
   decodeAbiParameters,
   decodeFunctionData,
+  encodeAbiParameters,
+  encodeEventTopics,
   encodeFunctionData,
+  parseAbiItem,
   parseAbiParameters,
   parseEther,
   recoverTypedDataAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { encodeAgentBuyCall } from "../lib/smartAccount.ts";
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const HASH = `0x${"a".repeat(64)}`;
 const TX_HASH = `0x${"b".repeat(64)}`;
+const OWNER = "0x0000000000000000000000000000000000000111";
 const ACCOUNT = "0x0000000000000000000000000000000000000789";
 const TARGET = "0x0000000000000000000000000000000000000456";
 const router = "0x0000000000000000000000000000000000000123";
 const hook = "0x0000000000000000000000000000000000000321";
-const POLICY_HASH = `0x${"c".repeat(64)}`;
 const INTENT_NONCE = `0x${"d".repeat(64)}`;
 const intentSigningAccount = privateKeyToAccount(`0x${"01".padStart(64, "0")}`);
 const INTENT_SIGNER = intentSigningAccount.address;
+const POLICY_EXPIRY = 2_000_000_000n;
+const POLICY_HASH = hashAgentPolicy({
+  strategyId: "aapl-entry",
+  ownerAddress: OWNER,
+  account: ACCOUNT,
+  targetToken: TARGET,
+  maxTradeValue: parseEther("0.5"),
+  expiresAt: POLICY_EXPIRY,
+  intentSigner: INTENT_SIGNER,
+  amountBnb: parseEther("0.1"),
+  entryPriceMicros: 100_000_000n,
+  slippageBps: 100,
+  maxPriceImpactBps: 300,
+});
 const ROUTER_BUY_ABI = [{
   type: "function",
   name: "swapExactETHForTokens",
@@ -49,14 +67,41 @@ const KERNEL_EXECUTE_ABI = [{
   ],
   outputs: [],
 }];
+const HOOK_SUCCESS_EVENT = parseAbiItem(
+  "event AgentExecutionSucceeded(address indexed smartAccount, address indexed targetToken, uint256 value, uint256 amountOut, uint256 timestamp)",
+);
+const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+const PAIR = "0x0000000000000000000000000000000000000999";
+const SIGNED_MIN_OUT = 110n;
+
+function hookSuccessLog({ account = ACCOUNT, amountOut = SIGNED_MIN_OUT, address = hook } = {}) {
+  return {
+    address,
+    topics: encodeEventTopics({ abi: [HOOK_SUCCESS_EVENT], eventName: "AgentExecutionSucceeded", args: { smartAccount: account, targetToken: TARGET } }),
+    data: encodeAbiParameters(parseAbiParameters("uint256, uint256, uint256"), [parseEther("0.1"), amountOut, 1n]),
+  };
+}
+
+function transferLog({ to = ACCOUNT, value = SIGNED_MIN_OUT, token = TARGET } = {}) {
+  return {
+    address: token,
+    topics: encodeEventTopics({ abi: [TRANSFER_EVENT], eventName: "Transfer", args: { from: PAIR, to } }),
+    data: encodeAbiParameters(parseAbiParameters("uint256"), [value]),
+  };
+}
+
 const bundlerFlag = process.env.ENABLE_LIVE_USEROP_SUBMISSION;
+const autonomousFlag = process.env.WOLV_AUTONOMOUS_TRADING_ENABLED;
 
 afterEach(() => {
   if (bundlerFlag === undefined) delete process.env.ENABLE_LIVE_USEROP_SUBMISSION;
   else process.env.ENABLE_LIVE_USEROP_SUBMISSION = bundlerFlag;
+  if (autonomousFlag === undefined) delete process.env.WOLV_AUTONOMOUS_TRADING_ENABLED;
+  else process.env.WOLV_AUTONOMOUS_TRADING_ENABLED = autonomousFlag;
 });
 
 function createHarness(overrides = {}) {
+  process.env.WOLV_AUTONOMOUS_TRADING_ENABLED = "true";
   let now = Date.now();
   const telemetry = [];
   const failures = [];
@@ -75,10 +120,13 @@ function createHarness(overrides = {}) {
   };
   const receipt = {
     success: true,
+    userOpHash: HASH,
     actualGasUsed: 200_000n,
     actualGasCost: 1_000_000n,
-    receipt: { transactionHash: TX_HASH },
+    logs: [hookSuccessLog(), transferLog()],
+    receipt: { transactionHash: TX_HASH, blockNumber: 1234n },
   };
+  const accountClientCalls = [];
   const accountClient = {
     account: { address: ACCOUNT },
     client: {},
@@ -113,7 +161,15 @@ function createHarness(overrides = {}) {
       assert.equal(account, ACCOUNT);
       return INTENT_NONCE;
     },
-    createAccountClient: async () => ({ account: accountClient.account, client: accountClient }),
+    createAccountClient: async (...args) => {
+      accountClientCalls.push(args);
+      return { account: accountClient.account, client: accountClient };
+    },
+    readTokenBalance: async (_client, token, account, blockNumber) => {
+      assert.equal(token, TARGET);
+      assert.equal(account, ACCOUNT);
+      return blockNumber === undefined ? 1_000n : 1_000n + SIGNED_MIN_OUT;
+    },
     readValidator: async () => ({
       paused: false,
       installed: true,
@@ -122,8 +178,11 @@ function createHarness(overrides = {}) {
       policyConfigured: true,
       policyHash: POLICY_HASH,
       maxTradeValue: parseEther("0.5"),
-      expiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+      expiresAt: POLICY_EXPIRY,
       intentSigner: INTENT_SIGNER,
+      entryPriceMicros: 100_000_000n,
+      maxSlippageBps: 100,
+      maxPriceImpactBps: 300,
     }),
     buildBuyCall: async () => ({
       to: router,
@@ -151,6 +210,7 @@ function createHarness(overrides = {}) {
   };
   const intent = {
     strategyId: "aapl-entry",
+    ownerAddress: OWNER,
     account: ACCOUNT,
     targetToken: TARGET,
     amountBnb: parseEther("0.1"),
@@ -159,6 +219,7 @@ function createHarness(overrides = {}) {
     slippageBps: 100,
     maxPriceImpactBps: 300,
     sourcePriceMicros: 90_000_000n,
+    entryPriceMicros: 100_000_000n,
     createdAt: new Date(now).toISOString(),
     policyHash: POLICY_HASH,
   };
@@ -176,6 +237,7 @@ function createHarness(overrides = {}) {
       return intentSignature;
     },
     receipt,
+    accountClientCalls,
     setNow(value) {
       now = value;
     },
@@ -231,15 +293,22 @@ test("blocks mainnet submission even when live submission is enabled", async () 
 });
 
 test("network resolver requires separate acknowledgement for mainnet", () => {
+  assert.equal(resolveAgentExecutionNetwork(97, {
+    ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "false",
+  }).allowed, false);
   assert.deepEqual(resolveAgentExecutionNetwork(97, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
   }), { allowed: true, chainId: 97 });
   assert.equal(resolveAgentExecutionNetwork(56, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
     ENABLE_MAINNET_AGENT_TRADING: "false",
   }).allowed, false);
   assert.deepEqual(resolveAgentExecutionNetwork(56, {
     ENABLE_LIVE_USEROP_SUBMISSION: "true",
+    WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
     ENABLE_MAINNET_AGENT_TRADING: "true",
     MAINNET_AGENT_TRADING_ACK: "I_ACCEPT_AUTONOMOUS_MAINNET_RISK",
   }), { allowed: true, chainId: 56 });
@@ -565,6 +634,19 @@ test("worker failure reporter trips the worker panic stop on repeated dispatch f
   assert.equal(alerts[0].priority, "high");
 });
 
+test("executor rejects an unknown strategy label before signing or dispatch", async () => {
+  const harness = createHarness();
+  await assert.rejects(
+    harness.executor.executeUserOperation({
+      ...harness.intent,
+      strategyId: "unregistered-entry",
+    }),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
+  assert.equal(harness.signedTypedData.length, 0);
+  assert.equal(harness.sentCalls.length, 0);
+});
+
 test("onchain account policy rejects missing, expired, capped, and mismatched intent bindings", async () => {
   const policyHash = `0x${"a".repeat(64)}`;
   const expiredHarness = createHarness({
@@ -646,3 +728,106 @@ test("onchain account policy rejects missing, expired, capped, and mismatched in
     error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
   );
 });
+
+test("refuses dispatch when on-chain V2 risk limits differ from the strategy", async () => {
+  const harness = createHarness({
+    readValidator: async () => ({
+      paused: false,
+      installed: true,
+      revoked: false,
+      rollingVolume: parseEther("0.2"),
+      policyConfigured: true,
+      policyHash: POLICY_HASH,
+      maxTradeValue: parseEther("0.5"),
+      expiresAt: POLICY_EXPIRY,
+      intentSigner: INTENT_SIGNER,
+      entryPriceMicros: 100_000_000n,
+      maxSlippageBps: 101,
+      maxPriceImpactBps: 300,
+    }),
+  });
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "VALIDATOR_PREFLIGHT_FAILED",
+  );
+  assert.equal(harness.signedTypedData.length, 0);
+  assert.equal(harness.sentCalls.length, 0);
+});
+
+test("records verified on-chain evidence and pins the existing account for execution", async () => {
+  const harness = createHarness({
+    resolveAuthorization: async () => ({
+      ownerValidator: {},
+      sessionKeySigner: {},
+      pluginEnableSignature: `0x${"ab".repeat(65)}`,
+    }),
+  });
+  const result = await harness.executor.executeUserOperation(harness.intent);
+  assert.deepEqual(result.evidence, {
+    userOperationHash: HASH,
+    transactionHash: TX_HASH,
+    blockNumber: "1234",
+    amountIn: parseEther("0.1").toString(),
+    amountOutMin: SIGNED_MIN_OUT.toString(),
+    receivedAmount: SIGNED_MIN_OUT.toString(),
+    hookReportedAmountOut: SIGNED_MIN_OUT.toString(),
+    tokenBalanceBefore: "1000",
+    tokenBalanceAfter: (1_000n + SIGNED_MIN_OUT).toString(),
+  });
+  const [, , , authorization] = harness.accountClientCalls[0];
+  assert.equal(authorization.accountAddress, ACCOUNT);
+  assert.equal(authorization.ownerAddress, OWNER);
+  assert.equal(authorization.pluginEnableSignature, `0x${"ab".repeat(65)}`);
+});
+
+test("a successful receipt without the V2 hook success event is not a verified trade", async () => {
+  const harness = createHarness();
+  harness.receipt.logs = [transferLog()];
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "SWAP_OUTCOME_UNVERIFIED" && /policy hook/.test(error.message),
+  );
+  assert.equal(harness.sentCalls.length, 1);
+});
+
+test("a hook event emitted by another contract or for another account is ignored", async () => {
+  const harness = createHarness();
+  harness.receipt.logs = [
+    hookSuccessLog({ address: "0x0000000000000000000000000000000000000bad" }),
+    hookSuccessLog({ account: "0x0000000000000000000000000000000000000bee" }),
+    transferLog(),
+  ];
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "SWAP_OUTCOME_UNVERIFIED",
+  );
+});
+
+test("token delivery below the signed minimum is rejected even when the receipt succeeded", async () => {
+  const harness = createHarness();
+  harness.receipt.logs = [hookSuccessLog(), transferLog({ value: SIGNED_MIN_OUT - 1n })];
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "SWAP_OUTCOME_UNVERIFIED" && /below the approved minimum/.test(error.message),
+  );
+});
+
+test("transfers to another recipient do not count as delivered output", async () => {
+  const harness = createHarness();
+  harness.receipt.logs = [hookSuccessLog(), transferLog({ to: "0x0000000000000000000000000000000000000bee" })];
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "SWAP_OUTCOME_UNVERIFIED",
+  );
+});
+
+test("an on-chain balance increase below the minimum is rejected", async () => {
+  const harness = createHarness({
+    readTokenBalance: async (_client, _token, _account, blockNumber) => blockNumber === undefined ? 1_000n : 1_050n,
+  });
+  await assert.rejects(
+    harness.executor.executeUserOperation(harness.intent),
+    error => error.code === "SWAP_OUTCOME_UNVERIFIED" && /balance increased by less/.test(error.message),
+  );
+});
+

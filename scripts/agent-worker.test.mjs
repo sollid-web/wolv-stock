@@ -6,9 +6,11 @@ import {
   MAX_TRADE_BNB,
 } from "../services/agentWorker.ts";
 import { parseEther } from "viem";
+import { hashAgentPolicy } from "../lib/agentPolicyHash.ts";
 
 const strategy = {
   id: "aapl-entry",
+  ownerAddress: "0x0000000000000000000000000000000000000111",
   account: "0x0000000000000000000000000000000000000789",
   targetToken: "0x0000000000000000000000000000000000000456",
   amountBnb: parseEther("0.1"),
@@ -16,20 +18,37 @@ const strategy = {
   slippageBps: 100,
   maxPriceImpactBps: 300,
 };
-const POLICY_HASH = `0x${"a".repeat(64)}`;
 const INTENT_SIGNER = "0x0000000000000000000000000000000000000788";
+const POLICY_EXPIRY = 2_000_000_000n;
+const POLICY_HASH = hashAgentPolicy({
+  strategyId: strategy.id,
+  ownerAddress: strategy.ownerAddress,
+  account: strategy.account,
+  targetToken: strategy.targetToken,
+  maxTradeValue: parseEther("0.5"),
+  expiresAt: POLICY_EXPIRY,
+  intentSigner: INTENT_SIGNER,
+  amountBnb: strategy.amountBnb,
+  entryPriceMicros: strategy.entryPriceMicros,
+  slippageBps: strategy.slippageBps,
+  maxPriceImpactBps: strategy.maxPriceImpactBps,
+});
 
 function validPolicyState(overrides = {}) {
   return {
     paused: false,
     installed: true,
     revoked: false,
+    targetToken: strategy.targetToken,
     rollingVolume: parseEther("0.2"),
     policyConfigured: true,
     policyHash: POLICY_HASH,
     maxTradeValue: parseEther("0.5"),
-    policyExpiresAt: BigInt(Math.floor((Date.now() + 60_000) / 1000)),
+    policyExpiresAt: POLICY_EXPIRY,
     intentSigner: INTENT_SIGNER,
+    entryPriceMicros: strategy.entryPriceMicros,
+    maxSlippageBps: strategy.slippageBps,
+    maxPriceImpactBps: strategy.maxPriceImpactBps,
     ...overrides,
   };
 }
@@ -83,6 +102,7 @@ test("passes preflight then publishes a bounded intent and capacity telemetry", 
   assert.equal(intents[0].amountOutMin > 0n, true);
   assert.equal(intents[0].slippageBps, strategy.slippageBps);
   assert.equal(intents[0].maxPriceImpactBps, strategy.maxPriceImpactBps);
+  assert.equal(intents[0].ownerAddress, strategy.ownerAddress);
   assert.equal(intents[0].policyHash, POLICY_HASH);
   assert.equal("intentNonce" in intents[0], false);
   assert.equal(worker.hasPendingIntent, true);
@@ -105,6 +125,48 @@ test("anchors intent age to local market-data receipt time", async () => {
 
   assert.equal(intents.length, 1);
   assert.equal(intents[0].createdAt, new Date(receivedAt).toISOString());
+});
+
+test("rejects a strategy label that is not bound into the on-chain policy hash", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    strategies: [{ ...strategy, id: "unregistered-entry" }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
+});
+
+test("rejects a strategy token that differs from the installed policy hook", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    readValidator: async () => validPolicyState({
+      targetToken: "0x0000000000000000000000000000000000000788",
+    }),
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
+});
+
+test("rejects a strategy owner that differs from the owner-bound policy hash", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    strategies: [{ ...strategy, ownerAddress: "0x0000000000000000000000000000000000000999" }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
+});
+
+test("rejects strategy parameter changes that are not in the on-chain policy hash", async () => {
+  const { worker, telemetry, intents } = createHarness({
+    strategies: [{ ...strategy, slippageBps: 150 }],
+  });
+  await worker.evaluateOnce();
+
+  assert.equal(telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(intents.length, 0);
 });
 
 test("does not construct an intent when the price trigger is not met", async () => {
@@ -282,4 +344,13 @@ test("prevents overlapping evaluation cycles", async () => {
   await firstCycle;
 
   assert.equal(telemetry.length, 1);
+});
+
+test("rejects on-chain V2 risk limits that drift from the owner-authorized strategy", async () => {
+  const harness = createHarness({
+    readValidator: async () => validPolicyState({ maxSlippageBps: strategy.slippageBps + 1 }),
+  });
+  await harness.worker.evaluateOnce();
+  assert.equal(harness.telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
+  assert.equal(harness.intents.length, 0);
 });

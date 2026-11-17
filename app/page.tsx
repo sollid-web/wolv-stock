@@ -8,7 +8,6 @@ import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
 import { parseRwaAssetRecords } from "@/lib/spotAssets";
 import { getMarketPulseRows } from "@/lib/marketPulse";
-import Web3StrategyShowcase from "@/components/Web3StrategyShowcase";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +45,11 @@ function HomepageLoading() {
             <a href="#opportunities" className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d9a80a] px-5 text-xs font-black text-[#101010]">Explore opportunities <span aria-hidden="true" className="ml-2">→</span></a>
             <a href="#how-it-works" className="wolv-glass-control inline-flex min-h-11 items-center justify-center rounded-lg px-4 text-xs font-bold text-slate-200">How WOLV works</a>
           </div>
-          <a href="#strategy-center" className="mt-5 inline-flex max-w-xl items-center gap-3 rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.045] p-3.5 text-left transition hover:border-[#d9a80a]/40">
+          <a href="/agent" className="mt-5 inline-flex max-w-xl items-center gap-3 rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.045] p-3.5 text-left transition hover:border-[#d9a80a]/40">
             <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-[#d9a80a]/20 bg-[#d9a80a]/[0.08] text-[#f2c94c]" aria-hidden="true">✦</span>
             <span>
-              <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-[#f2c94c]">New · Strategy toolkit</span>
-              <span className="mt-1 block text-[11px] leading-4 text-slate-300">Exposure controls, weekend checks, and RFQ review · preview only</span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-[#f2c94c]">New · Autonomous agent</span>
+              <span className="mt-1 block text-[11px] leading-4 text-slate-300">Authorize once on-chain; the agent trades within enforced limits</span>
             </span>
             <span className="text-sm text-[#f2c94c]" aria-hidden="true">→</span>
           </a>
@@ -81,10 +80,6 @@ function HomepageLoading() {
           <p className="mt-5 border-t border-white/[0.08] pt-4 text-xs text-slate-400">Loading verified market data… no price or opportunity is inferred while the feed is unavailable.</p>
         </div>
       </section>
-
-      <div id="strategy-center" className="scroll-mt-24">
-        <Web3StrategyShowcase />
-      </div>
 
       <section id="opportunities" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14" aria-busy="true">
         <div className="mb-5 flex items-end justify-between gap-3">

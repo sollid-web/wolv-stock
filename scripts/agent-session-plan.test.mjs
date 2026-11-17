@@ -8,7 +8,6 @@ import {
   canTransitionAgentSessionStatus,
   createAgentSessionPlan,
 } from "../lib/agentSessionPlan.ts";
-import { buildCapabilityTelemetry } from "../lib/agentTelemetry.ts";
 
 test("session plan is strictly simulation-only on BSC testnet", () => {
   const plan = createAgentSessionPlan({
@@ -81,32 +80,6 @@ test("plan never enables execution even when live submission is signaled", () =>
 
   assert.equal(plan.executionEnabled, false);
   assert.match(plan.reason, /remain blocked/);
-});
-
-test("telemetry binds a valid owner and preserves the emergency-stop boundary", () => {
-  const ownerAddress = "0x0000000000000000000000000000000000001234";
-  const telemetry = buildCapabilityTelemetry({
-    ownerAddress,
-    emergencyStopEnabled: true,
-  });
-
-  assert.equal(telemetry.scopedSession.ownerAddress, ownerAddress);
-  assert.equal(telemetry.scopedSession.executionEnabled, false);
-  assert.match(
-    telemetry.scopedSession.reason,
-    /Global emergency stop remains active/,
-  );
-});
-
-test("status telemetry defaults to fail-safe when the global stop context is unavailable", () => {
-  const telemetry = buildCapabilityTelemetry({
-    ownerAddress: null,
-    emergencyStopEnabled: true,
-  });
-
-  assert.equal(telemetry.executionMode, "execution-blocked");
-  assert.equal(telemetry.scopedSession.executionEnabled, false);
-  assert.equal(telemetry.scopedSession.status, "not-granted");
 });
 
 test("session-plan lifecycle permits only prepared-to-terminal transitions", () => {

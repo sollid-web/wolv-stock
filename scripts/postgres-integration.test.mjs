@@ -37,16 +37,15 @@ const browserStore = new BrowserTradeIntentStore(TEST_DATABASE_URL);
 const bawStore = new BawExecutionStore(TEST_DATABASE_URL);
 const concurrentBrowserStore = new BrowserTradeIntentStore(TEST_DATABASE_URL);
 
-before(async () => {
-  await browserStore.initialize();
-});
+async function resetTestDatabase() {
+  const postgres = (await import("postgres")).default;
+  const cleanup = postgres(TEST_DATABASE_URL, {
+    max: 1,
+    idle_timeout: 5,
+    connect_timeout: 3,
+    prepare: false,
+  });
 
-after(async () => {
-  await browserStore.close();
-  await concurrentBrowserStore.close();
-  await bawStore.close();
-  const sql = (await import("postgres")).default;
-  const cleanup = sql(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
   try {
     await cleanup`DROP TABLE IF EXISTS wolv_trade_intents;`;
     await cleanup`DROP TABLE IF EXISTS wolv_trading_schema_migrations;`;
@@ -55,19 +54,49 @@ after(async () => {
     await cleanup`DROP TABLE IF EXISTS baw_auth_sessions;`;
     await cleanup`DROP TABLE IF EXISTS baw_execution_schema_migrations;`;
     await cleanup`
-      DROP TABLE IF EXISTS wolv_agent_memory_migrations, wolv_agent_market_candles,
-        wolv_agent_market_observations, wolv_agent_asset_history, wolv_agent_runs,
-        wolv_agent_events, wolv_agent_opportunities, wolv_agent_analyses,
-        wolv_agent_policy_decisions, wolv_agent_risk_policies, wolv_agent_proposals,
-        wolv_agent_control, wolv_strategy_evaluations, wolv_agent_execution_claims,
-        wolv_agent_schedules, wolv_agent_delegated_custody, wolv_agent_alerts,
-        wolv_agent_market_calendar, wolv_agent_intent_nonces CASCADE
+      DROP TABLE IF EXISTS
+        wolv_agent_memory_migrations,
+        wolv_agent_market_candles,
+        wolv_agent_market_observations,
+        wolv_agent_asset_history,
+        wolv_agent_runs,
+        wolv_agent_events,
+        wolv_agent_opportunities,
+        wolv_agent_analyses,
+        wolv_agent_policy_decisions,
+        wolv_agent_risk_policies,
+        wolv_agent_proposals,
+        wolv_agent_control,
+        wolv_strategy_evaluations,
+        wolv_agent_execution_claims,
+        wolv_agent_schedules,
+        wolv_agent_delegated_custody,
+        wolv_agent_alerts,
+        wolv_agent_market_calendar,
+        wolv_agent_intent_nonces,
+        wolv_agent_session_plans,
+        wolv_dynamic_strategy_cycles,
+        wolv_dynamic_strategy_runs,
+        wolv_agent_worker_heartbeats
+      CASCADE
     `;
     await cleanup`DROP FUNCTION IF EXISTS wolv_agent_events_are_append_only();`;
     await cleanup`DROP FUNCTION IF EXISTS wolv_agent_proposals_material_immutable();`;
   } finally {
     await cleanup.end({ timeout: 3 });
   }
+}
+
+before(async () => {
+  await resetTestDatabase();
+  await browserStore.initialize();
+});
+
+after(async () => {
+  await browserStore.close();
+  await concurrentBrowserStore.close();
+  await bawStore.close();
+  await resetTestDatabase();
 });
 
 test("browser trade intent store creates and retrieves durable records", async () => {
@@ -257,6 +286,35 @@ test("BawExecutionStore enforces durable approval consumption and reject invalid
   await assert.rejects(() => bawStore.consumeApproval(executionId, tokenHash, now + 20_000), /USED|NOT_FOUND/);
 });
 
+test("agent memory tables deny public API roles and require backend access", async () => {
+  const store = new AgentMemoryStore(TEST_DATABASE_URL);
+  const postgres = (await import("postgres")).default;
+  const audit = postgres(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
+  try {
+    await store.initialize();
+    const rows = await audit`
+      SELECT c.relname, c.relrowsecurity,
+        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') AS anon_exists,
+        CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon')
+          THEN has_table_privilege('anon', c.oid, 'SELECT') ELSE false END AS anon_select,
+        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') AS authenticated_exists,
+        CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated')
+          THEN has_table_privilege('authenticated', c.oid, 'SELECT') ELSE false END AS authenticated_select
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind = 'r'
+        AND c.relname IN ('wolv_agent_asset_history', 'wolv_agent_market_observations', 'wolv_agent_market_candles', 'wolv_agent_runs', 'wolv_agent_events', 'wolv_agent_opportunities', 'wolv_agent_analyses', 'wolv_strategy_evaluations', 'wolv_agent_risk_policies', 'wolv_agent_policy_decisions', 'wolv_agent_proposals', 'wolv_agent_control', 'wolv_agent_session_plans', 'wolv_dynamic_strategy_cycles', 'wolv_dynamic_strategy_runs', 'wolv_agent_schedules', 'wolv_agent_execution_claims', 'wolv_agent_delegated_custody', 'wolv_agent_alerts', 'wolv_agent_market_calendar', 'wolv_agent_intent_nonces', 'wolv_agent_worker_heartbeats', 'wolv_agent_memory_migrations')
+    `;
+    assert.equal(rows.length, 23);
+    assert.ok(rows.every(row => row.relrowsecurity === true), "every internal agent table must have RLS enabled");
+    assert.ok(rows.every(row => row.anon_select === false), "anon must not be able to SELECT internal agent data");
+    assert.ok(rows.every(row => row.authenticated_select === false), "authenticated must not be able to SELECT internal agent data");
+  } finally {
+    await store.close();
+    await audit.end({ timeout: 3 });
+  }
+});
+
 test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals, and execution isolation", async () => {
   const ownerA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const ownerB = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -386,6 +444,155 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
       updatedAt: now,
       correlationId: randomUUID(),
     });
+
+    const schedulePolicyHash = "d".repeat(64);
+    const scheduleBase = {
+      ownerAddress: ownerA,
+      intervalSeconds: 60,
+      policyVersion: "WOLV_AGENT_POLICY_V4",
+      policyHash: schedulePolicyHash,
+      nextRunAt: now - 1_000,
+      enabled: true,
+      createdAt: now - 10_000,
+      updatedAt: now - 10_000,
+    };
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: "77777777-7777-4777-8777-777777777777",
+      name: "bsc-autonomous-entry",
+      strategyType: "BSC_AGENT_TRADE",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: { id: "aapl-entry" },
+    });
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: "88888888-8888-4888-8888-888888888888",
+      name: "bsc-manual-entry",
+      strategyType: "BSC_AGENT_TRADE",
+      executionMode: "MANUAL",
+      strategyConfig: { id: "manual-entry" },
+    });
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: "99999999-9999-4999-8999-999999999999",
+      name: "dca-autonomous-entry",
+      strategyType: "DCA",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: { ticker: "AAPL" },
+    });
+    const claimedAutonomous = await store.claimDueAutonomousAgentSchedules(now, 20);
+    assert.equal(claimedAutonomous.length, 1);
+    assert.equal(claimedAutonomous[0].scheduleId, "77777777-7777-4777-8777-777777777777");
+    assert.equal(claimedAutonomous[0].ownerAddress, ownerA);
+    assert.equal(claimedAutonomous[0].executionMode, "AUTONOMOUS");
+    assert.equal((await store.claimDueAutonomousAgentSchedules(now, 20)).length, 0);
+
+    const autonomousScheduleId = "77777777-7777-4777-8777-777777777777";
+    await store.rescheduleAutonomousAgentSchedule(ownerA, autonomousScheduleId, now + 1_000);
+    const rescheduled = (await store.listSchedules(ownerA, 50)).find(row => row.scheduleId === autonomousScheduleId);
+    assert.ok(Number(rescheduled?.nextRunAt) >= now + 61_000);
+
+    // Two independent workers (separate connection pools) race for the same due schedule and
+    // the same run: exactly one schedule claim and exactly one execution claim may win.
+    const raceScheduleId = "66666666-6666-4666-8666-666666666666";
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: raceScheduleId,
+      name: "bsc-autonomous-race",
+      strategyType: "BSC_AGENT_TRADE",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: { id: "race-entry" },
+    });
+    const rivalWorkerStore = new AgentMemoryStore(TEST_DATABASE_URL);
+    try {
+      await rivalWorkerStore.initialize();
+      const raceRounds = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+        (index % 2 === 0 ? store : rivalWorkerStore).claimDueAutonomousAgentSchedules(now, 20)));
+      const raceWinners = raceRounds.flat().filter(row => row.scheduleId === raceScheduleId);
+      assert.equal(raceWinners.length, 1, "a due schedule must be claimed by exactly one worker");
+
+      const raceRunKey = "integration-race-run-" + randomUUID();
+      const executionRace = await Promise.allSettled([store, rivalWorkerStore, store, rivalWorkerStore].map(worker =>
+        worker.claimExecution({
+          claimId: randomUUID(),
+          scheduleId: raceScheduleId,
+          ownerAddress: ownerA,
+          runKey: raceRunKey,
+          policyHash: schedulePolicyHash,
+          createdAt: now + 500,
+        })));
+      const executionWinners = executionRace.filter(outcome => outcome.status === "fulfilled" && typeof outcome.value?.claimId === "string");
+      assert.equal(executionWinners.length, 1, "a run must produce exactly one execution claim");
+      const [raceClaims] = await (async () => {
+        const reader = (await import("postgres")).default(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
+        try {
+          return [await reader`SELECT count(*)::int AS n FROM wolv_agent_execution_claims WHERE run_key = ${raceRunKey}`];
+        } finally {
+          await reader.end();
+        }
+      })();
+      assert.equal(raceClaims[0].n, 1, "exactly one execution claim row per run");
+      await store.setScheduleEnabled(ownerA, raceScheduleId, false, now + 600);
+      await store.updateExecutionClaim(executionWinners[0].value.claimId, ownerA, { status: "CONFIRMED", at: now + 700 });
+      const afterPause = await store.claimDueAutonomousAgentSchedules(now + 60 * 60_000, 20);
+      assert.equal(afterPause.filter(row => row.scheduleId === raceScheduleId).length, 0, "a paused schedule must not be claimed");
+      const otherRows = afterPause.filter(row => row.scheduleId !== raceScheduleId);
+      for (const row of otherRows) await store.rescheduleAutonomousAgentSchedule(row.ownerAddress, row.scheduleId, now);
+    } finally {
+      await rivalWorkerStore.close();
+    }
+
+    const activeClaimId = randomUUID();
+    await store.claimExecution({
+      claimId: activeClaimId,
+      scheduleId: autonomousScheduleId,
+      ownerAddress: ownerA,
+      runKey: "integration-active-run-" + randomUUID(),
+      policyHash: schedulePolicyHash,
+      createdAt: now + 1_000,
+    });
+    const activeSchedule = (await store.listSchedules(ownerA, 50)).find(row => row.scheduleId === autonomousScheduleId);
+    assert.equal(activeSchedule?.hasActiveExecutionClaim, true);
+    assert.equal((await store.claimDueAutonomousAgentSchedules(now + 70_000, 20)).length, 0);
+
+    await store.updateExecutionClaim(activeClaimId, ownerA, {
+      status: "CONFIRMED",
+      at: now + 70_000,
+      evidence: { transactionHash: "0x" + "ab".repeat(32), receivedAmount: "450041711401365" },
+    });
+    const evidenceReader = (await import("postgres")).default(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
+    let storedEvidence;
+    try {
+      [storedEvidence] = await evidenceReader`
+        SELECT jsonb_typeof(execution_evidence) AS kind, execution_evidence->>'transactionHash' AS tx,
+          execution_evidence->>'receivedAmount' AS received
+        FROM wolv_agent_execution_claims WHERE claim_id = ${activeClaimId}`;
+    } finally {
+      await evidenceReader.end();
+    }
+    assert.deepEqual(
+      { ...storedEvidence },
+      { kind: "object", tx: "0x" + "ab".repeat(32), received: "450041711401365" },
+      "execution evidence must be stored as a queryable JSON object",
+    );
+    const claimedAfterSettlement = await store.claimDueAutonomousAgentSchedules(now + 70_000, 20);
+    assert.equal(claimedAfterSettlement.length, 1);
+    assert.equal(claimedAfterSettlement[0].scheduleId, autonomousScheduleId);
+
+    const workerId = "integration-" + randomUUID();
+    await store.recordWorkerHeartbeat({
+      workerId,
+      workerMode: "PERSISTENT_AUTONOMOUS",
+      chainId: 97,
+      lastSeenAt: now,
+      metadata: { executionGateEnabled: true },
+    });
+    const freshHeartbeat = await store.getLatestWorkerHeartbeat(now + 5_000, 20_000);
+    assert.equal(freshHeartbeat?.workerId, workerId);
+    assert.equal(freshHeartbeat?.workerMode, "PERSISTENT_AUTONOMOUS");
+    assert.equal(freshHeartbeat?.chainId, 97);
+    assert.equal((await store.getLatestWorkerHeartbeat(now + 5_000, 20_000, 56)), null);
+    assert.equal((await store.getLatestWorkerHeartbeat(now + 60_000, 20_000)), null);
 
     const sessionPlan = createAgentSessionPlan({ ownerAddress: ownerA });
     const sessionId = randomUUID();

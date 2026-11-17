@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Trace files from the project folder (works on the phone and on Vercel)
   outputFileTracingRoot: process.cwd(),
-  serverExternalPackages: ["@bnbagent/sdk"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "onchainos.bnbstatic.com" },

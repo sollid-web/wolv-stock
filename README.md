@@ -74,30 +74,23 @@ The following screenshots were captured from the live application on **9 October
 
 `/wallet` provides a read-only holdings and portfolio surface for the connected address. It does not sign, approve, or execute transactions.
 
-### Agent strategy preview
+### Autonomous agent (BSC Testnet)
 
-`/agent` accepts a constrained natural-language buy rule or structured buy/sell parameters and can evaluate a local mock price trigger. Drafts are not persisted or scheduled. A matched mock rule only links back to the existing trade terminal; quotes, simulation, and explicit wallet confirmation are still required. The ZeroDev integration includes an in-memory session signer, a seven-day permission window, public bundler configuration, and a WBNB-to-configured-token route builder. That builder reads PancakeSwap V2 reserves, calculates fee-adjusted output and a slippage minimum, and rejects quotes above its configured price-impact ceiling. This spot-impact check is not a historical volatility oracle. The on-chain hook binds the target token during installation and enforces the route, recipient, minimum output, selector, and volume caps. Account revocation is owner-controlled; the guardian can pause all accounts.
+`/agent` is the control surface for one policy-constrained autonomous runtime. The full design, security boundaries and failure handling are in [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md); the audit and current status are in [docs/AUDIT.md](./docs/AUDIT.md).
 
-The `/agent` page also exposes owner-authorized Kernel policy setup, on-chain policy status, and revocation on BSC mainnet or testnet. A connected owner wallet and the matching public RPC are sufficient to derive and display the smart-account address; loading policy state also requires the deployed validator, while policy changes additionally require the matching bundler. Kernel UserOperation EIP-1559 fees are estimated through the configured public RPC so compatible third-party bundlers do not need to implement ZeroDev-specific gas-price methods. Hook installation and policy configuration are separate single-call UserOperations; the UI waits for each receipt and verifies the resulting hook and policy state. Configure `NEXT_PUBLIC_VALIDATOR_ADDRESS` with the deployed validator, `NEXT_PUBLIC_AGENT_SIGNER_ADDRESS` with the authorized intent signer, and `NEXT_PUBLIC_CHAIN_ID` as `56` (mainnet) or `97` (testnet); `NEXT_PUBLIC_BSC_CHAIN_ID` can override that value for the agent page. Also configure the matching public RPC and bundler URLs (`NEXT_PUBLIC_BSC_RPC_URL` / `NEXT_PUBLIC_BSC_BUNDLER_RPC_URL` or `NEXT_PUBLIC_BSC_TESTNET_RPC_URL` / `NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL`). Bundler URL query parameters are accepted, but these `NEXT_PUBLIC_` values are browser-visible; do not put secrets in them. The policy panel does not submit market-triggered trades or connect the worker/executor to unattended execution. Binance-backed spot trading remains mainnet-only.
+1. **Authorize once.** The owner's Kernel v3.1 smart account installs the `TradingAgentPolicyValidatorV2` hook and writes an on-chain policy (delegated signer, target token, per-trade cap, expiry, entry-price ceiling, slippage and price-impact limits). The owner then signs Kernel's `Enable` typed data once, authorizing the delegated agent validator. This is not a per-trade approval.
+2. **Persist.** The schedules API verifies the policy and the enable signature against on-chain state (including the account's ECDSA owner) and stores a `BSC_AGENT_TRADE` schedule in PostgreSQL.
+3. **Execute without the owner.** The persistent worker (`pnpm agent:worker`, [`Dockerfile.agent-worker`](./Dockerfile.agent-worker), [deployment guide](./docs/agent-worker-deployment.md)) claims due schedules atomically, reads the same Chainlink feed the hook enforces plus live PancakeSwap reserves, signs an EIP-712 trade intent with the delegated key, and submits a UserOperation. The V2 hook re-checks every restriction on-chain and verifies actual token delivery.
+4. **Verify.** A trade is recorded as `CONFIRMED` only when the receipt contains the hook's success event, target-token transfers to the account cover the signed minimum, and the on-chain balance increased accordingly. Otherwise the schedule is stopped and an alert is raised.
 
-The standalone [`AgentWorker`](./services/agentWorker.ts) evaluates configured price thresholds on an interval, reads the validator’s effective (unexpired) rolling volume and pause/revocation state, and emits structured pass/fail telemetry. It creates a bounded execution intent only after all preflight checks pass, prevents duplicate pending intents, and panic-stops with a high-priority alert after repeated policy/RPC failures. [`AgentExecutor`](./services/agentExecutor.ts) provides the UserOperation dispatcher: it revalidates the intent and validator state, requotes the route, allocates a persistent atomic Redis nonce per smart account, signs through the supplied owner-validator/delegated-signer authorization, submits through the configured ZeroDev bundler client, and polls the receipt. Nonces are never reset or reused, including when a signature or UserOperation later fails.
-
-Run the persistent process with `npm run agent:worker`. The command loads `.env`, `.env.local`, and optional `.env.worker`; `.env.worker` may use `CHAIN_ID` and, on testnet, `RPC_URL`, which are mapped to the smart-account configuration when its corresponding `NEXT_PUBLIC_` values are absent. It requires `AGENT_PRIVATE_KEY` to be a dedicated delegated intent signer (never an owner-wallet key), `AGENT_STRATEGIES_JSON`, and the usual server-side account/RPC/bundler/Redis configuration. The on-chain policy must authorize that signer. Without `AGENT_MARKET_DATA_MODULE`, the process produces mock quotes and explicitly does not submit UserOperations; live data requires a module exporting `fetchMarketData(strategy, { config, client })`. Live execution also requires `AGENT_OWNER_VALIDATOR_MODULE`, a module exporting `getOwnerValidator(account, config)`. Each must return the types represented by `MarketSnapshot` and `KernelValidator` in the corresponding service/SDK APIs. The 15-second quote-age limit is measured from local market-data receipt and is enforced again by the executor before dispatch. Submission remains disabled by default; mainnet requires the separate `ENABLE_MAINNET_AGENT_TRADING=true` and `MAINNET_AGENT_TRADING_ACK=I_ACCEPT_AUTONOMOUS_MAINNET_RISK` gates.
-
-The authenticated `/api/agent/simulation` endpoint and Agent terminal perform read-only BSC testnet transaction simulation for the configured router and target token. They check the calldata route, wallet balance, estimated gas, and EVM call result; they never request a signature or broadcast a transaction. Persisted ZeroDev session plans bind a single configured router/token scope, explicitly require human approval and successful simulation, and remain `not-granted`. The server-generated ephemeral session-key helper has been removed; the separate, explicitly feature-flagged UserOperation dispatcher is not enabled by this simulation workflow.
-
-Durable agent policies also cap proposal generation to 1–12 proposals per hour. The proposal transaction rechecks the active policy, permission expiry, global emergency stop, and hourly cap while holding database locks, so concurrent runs cannot bypass those checks. This is a proposal-frequency limit, not a trade-execution quota; signing and submission remain disabled.
-
-The executor does not create an unapproved session key per operation. Its authorization resolver must provide the owner validator and the in-memory session signer previously granted to that smart account; session-key persistence/recovery and session grant UX remain separate. Bundler errors, receipt timeouts, and on-chain reverts are structured and can feed `worker.reportExecutionFailure()` through `createWorkerFailureReporter()`. Mock tests cover dispatch and receipts. No testnet or mainnet UserOperation has been submitted, and production scheduling, durable strategy storage, and production alerting are not configured.
-
-The validator emits attempt/success events for executions that reach successful transaction completion. Logs in a reverted transaction are rolled back; the TypeScript execution helper records structured local attempt, submit, success, and rejection records. The guardian is the validator deployer (`msg.sender`) and can pause all accounts; account policy changes and revocation require the smart account itself. The worker and executor are not connected to `/agent`; ERC-8004 registration, ERC-8183 jobs, x402 settlement, and unattended trigger scheduling remain unavailable.
+The owner can pause or resume a schedule, revoke the agent on-chain, and the guardian can pause every account. All execution gates (`WOLV_AUTONOMOUS_TRADING_ENABLED`, `ENABLE_LIVE_USEROP_SUBMISSION`, and separately for mainnet `ENABLE_MAINNET_AGENT_TRADING` + `MAINNET_AGENT_TRADING_ACK`) are off by default. Mainnet autonomous trading is not enabled or supported until the testnet end-to-end acceptance in the deployment guide has passed.
 
 ## Product routes
 
 | Route | Purpose |
 |---|---|
 | `/` | Data-led homepage with executable-price comparison, freshness/session context, WOLV AI entry points, and opportunity discovery |
-| `/agent` | Owner-authorized on-chain policy setup/status/revocation, local strategy drafts, mock trigger evaluation, and agent capability telemetry; no automated execution |
+| `/agent` | Owner-authorized on-chain policy setup/status/revocation, persistent autonomous BSC strategy registration, schedule pause/resume, and agent capability telemetry; the separate local strategy preview remains mock-only |
 | `/gap` | Reference-versus-executable cross-venue monitor with reliability exclusions and market-status context |
 | `/markets` | Searchable BSC spot-eligible tokenized-stock directory |
 | `/stock/:address` | Asset detail, issuer/reference information, chart data when available, executable quote, and trade entry |
@@ -149,7 +142,7 @@ The following are not represented as fully solved:
 - Static official router/spender allowlisting remains a separate hardening topic and must be verified against current official contract data before public mainnet use.
 - Immediate pre-signing swap-calldata refresh remains a separate hardening item for the normal `SWAP` path.
 - WOLV does not independently recover the signer for Binance-supplied RFQ typed data.
-- The BNB Agent SDK and Binance agentic-wallet skill are installed for integration work, but the live Altana/TWAK session providers, ERC-8004 registration, ERC-8183 job lifecycle, and x402 settlement are not enabled. The `/agent` route only validates local drafts and mock trigger evaluations.
+- The BNB Agent SDK and Binance agentic-wallet skill are installed for separate integrations; live Altana/TWAK session providers, ERC-8004 registration, ERC-8183 job lifecycle, and x402 settlement are not enabled. The autonomous BSC agent path is separate from Binance-backed spot trading and uses a delegated Kernel session key, Chainlink USD feeds, and PancakeSwap V2 pool reserves.
 - `BNB_AGENT_KEY` is intentionally unused. Do not configure a server-wide private key; live agent execution needs per-user session authorization, bounded permissions, and a durable worker.
 - The app does not geofence or determine legal eligibility; users and participants must review current official terms and applicable laws.
 
@@ -278,7 +271,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The development and production build scripts use Webpack for compatibility with environments such as Proot where Turbopack may not run. WalletConnect/AppKit providers are scoped to the agent, wallet, and trade-detail routes, keeping the initial homepage and market-list compilation lighter. The app uses system-font fallbacks, so production compilation does not need a Google Fonts network request.
+The development and production build scripts use Turbopack for faster compilation. WalletConnect/AppKit providers are scoped to the agent, wallet, and trade-detail routes, keeping the initial homepage and market-list compilation lighter. The app uses system-font fallbacks, so production compilation does not need a Google Fonts network request.
 
 ## Checks
 
@@ -328,7 +321,7 @@ WOLV is focused on the main tokenized-stocks track:
 - User-authorized, non-custodial wallet execution
 - Clear distinction between reference prices and executable quotes
 - No perpetuals
-- Agent strategy previews only; no autonomous trade execution
+- Owner-authorized autonomous BSC spot-agent execution through a delegated session key and on-chain policy validator; execution remains disabled until configured and verified
 
 Eligibility, restricted-region rules, and submission requirements are the participant’s responsibility. Review the [official hackathon rules](https://www.bnbchain.org/en/hackathons/tokenized-stocks) and current Binance terms before submission.
 
