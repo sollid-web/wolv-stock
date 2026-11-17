@@ -9,6 +9,7 @@ import {
     type Hex,
     createPublicClient,
     encodeFunctionData,
+    fallback,
     getAddress,
     http,
     isAddress,
@@ -134,6 +135,9 @@ export type AgentSmartAccountConfig = {
     chain: AgentChain
     rpcUrl: string
     bundlerRpcUrl: string
+    /** Server-only secondary endpoints, tried in order when the primary fails. */
+    rpcFallbackUrls?: string[]
+    bundlerFallbackUrls?: string[]
     routerAddress: Address
     policyHookAddress: Address
     targetTokenAddress: Address
@@ -193,14 +197,38 @@ export function getAgentSmartAccountConfig(): AgentSmartAccountConfig {
             "NEXT_PUBLIC_POLICY_HOOK_ADDRESS"
         ),
         targetTokenAddress,
-        wrappedNativeAddress
+        wrappedNativeAddress,
+        rpcFallbackUrls: parseServerUrlList(process.env.AGENT_RPC_FALLBACK_URLS, "AGENT_RPC_FALLBACK_URLS"),
+        bundlerFallbackUrls: parseServerUrlList(process.env.AGENT_BUNDLER_FALLBACK_URLS, "AGENT_BUNDLER_FALLBACK_URLS"),
     }
+}
+
+/** Primary endpoint, then fallbacks; viem retries the next transport on transport/RPC errors. */
+export function createFailoverTransport(primaryUrl: string, fallbackUrls: readonly string[] = []) {
+    const urls = [primaryUrl, ...fallbackUrls.filter(url => url !== primaryUrl)]
+    return urls.length === 1 ? http(urls[0]) : fallback(urls.map(url => http(url)))
+}
+
+function parseServerUrlList(value: string | undefined, variableName: string): string[] {
+    if (!value?.trim()) return []
+    return value.split(",").map(item => item.trim()).filter(Boolean).map(item => {
+        let url: URL
+        try {
+            url = new URL(item)
+        } catch {
+            throw new Error(`${variableName} entries must be valid HTTPS URLs.`)
+        }
+        if (url.protocol !== "https:" || url.username || url.password || url.hash) {
+            throw new Error(`${variableName} entries must be HTTPS URLs without embedded credentials or fragments.`)
+        }
+        return url.toString()
+    })
 }
 
 export function createAgentPublicClient(config = getAgentSmartAccountConfig()) {
     return createPublicClient({
         chain: config.chain,
-        transport: http(config.rpcUrl)
+        transport: createFailoverTransport(config.rpcUrl, config.rpcFallbackUrls)
     })
 }
 
@@ -504,7 +532,7 @@ export async function createAgentSmartAccountClient(
         account,
         chain: config.chain,
         client: publicClient,
-        bundlerTransport: http(config.bundlerRpcUrl),
+        bundlerTransport: createFailoverTransport(config.bundlerRpcUrl, config.bundlerFallbackUrls),
         // The SDK's default fee source is ZeroDev's `zd_getUserOperationGasPrice`, which
         // standard ERC-4337 bundlers (e.g. Pimlico) do not implement. Use chain EIP-1559 fees,
         // exactly as the owner's browser client does.
