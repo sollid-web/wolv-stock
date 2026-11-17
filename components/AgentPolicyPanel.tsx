@@ -30,6 +30,7 @@ type RuntimeSchedule = {
     name: string
     enabled: boolean
     hasActiveClaim: boolean
+    strategyConfig?: Record<string, unknown>
 }
 
 function getWorkerPauseState(data: Record<string, unknown>): { globallyPaused: boolean; pauseReason: string | null } {
@@ -318,6 +319,9 @@ export default function AgentPolicyPanel() {
                     name: selected.name,
                     enabled: selected.enabled === true,
                     hasActiveClaim: selected.hasActiveExecutionClaim === true,
+                    ...(typeof selected.strategyConfig === "object" && selected.strategyConfig !== null && !Array.isArray(selected.strategyConfig)
+                        ? { strategyConfig: selected.strategyConfig as Record<string, unknown> }
+                        : {}),
                 }
                 : null)
             setRuntimeError("")
@@ -376,13 +380,40 @@ export default function AgentPolicyPanel() {
         }
     }
 
-    async function enableAutonomousSchedule() {
-        if (!pendingStrategy) return
+    // Rebuilds the saved strategy from the persisted schedule and the CURRENT on-chain policy, so
+    // the owner can re-sign the one-time agent authorization without re-running policy setup.
+    function strategyFromSavedSchedule(): AgentConfiguredStrategy | null {
+        const config = runtimeSchedule?.strategyConfig
+        const policy = currentSnapshot
+        if (!config || !policy || !policy.configured) return null
+        const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = config
+        if (typeof id !== "string" || typeof ownerAddress !== "string" || !isAddress(ownerAddress) ||
+            typeof account !== "string" || !isAddress(account) || typeof targetToken !== "string" || !isAddress(targetToken) ||
+            typeof amountBnb !== "string" || typeof entryPriceMicros !== "string" ||
+            typeof slippageBps !== "number" || typeof maxPriceImpactBps !== "number") return null
+        return {
+            strategyId: id,
+            ownerAddress: getAddress(ownerAddress),
+            account: getAddress(account),
+            targetToken: getAddress(targetToken),
+            amountBnb,
+            entryPriceMicros,
+            slippageBps,
+            maxPriceImpactBps,
+            maxTradeValueWei: policy.maxTradeValue.toString(),
+            expiresAt: policy.expiresAt.toString(),
+            intentSigner: getAddress(policy.intentSigner),
+            policyHash: policy.policyHash
+        }
+    }
+
+    async function enableAutonomousSchedule(strategyOverride?: AgentConfiguredStrategy) {
+        const strategy = strategyOverride ?? pendingStrategy
+        if (!strategy) return
         setRuntimeBusy(true)
         setRuntimeError("")
         try {
             if (!runtimeSessionAuthenticated && !(await authenticateRuntimeSession())) return
-            const strategy = pendingStrategy
             if (!walletClient || !validatorAddress || !routerAddress) {
                 throw new Error("Owner wallet, policy hook and router configuration are required to authorize the agent.")
             }
@@ -393,7 +424,9 @@ export default function AgentPolicyPanel() {
                 targets: {
                     routerAddress,
                     policyHookAddress: validatorAddress,
-                    targetTokenAddress: strategy.targetToken
+                    targetTokenAddress: strategy.targetToken,
+                    // The agent key's validator-level expiry is the on-chain policy expiry.
+                    permissionValidUntil: BigInt(strategy.expiresAt)
                 }
             })
             const response = await fetch("/api/agent/schedules", {
@@ -663,7 +696,11 @@ export default function AgentPolicyPanel() {
                                     {runtimeWorkerReadiness.executionGateReason ? "Execution gate: " + runtimeWorkerReadiness.executionGateReason : ""}
                                 </p>
                             )}
-                            <button type="button" disabled={runtimeBusy} onClick={() => void setAutonomousScheduleEnabled(false)} className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-bold text-amber-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Pause autonomous worker"}</button>
+                            <div className="mt-4 flex flex-wrap gap-3">
+                                <button type="button" disabled={runtimeBusy} onClick={() => void setAutonomousScheduleEnabled(false)} className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-bold text-amber-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Pause autonomous worker"}</button>
+                                <button type="button" disabled={runtimeBusy || !strategyFromSavedSchedule()} onClick={() => { const saved = strategyFromSavedSchedule(); if (saved) void enableAutonomousSchedule(saved) }} className="rounded-xl border border-slate-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{runtimeBusy ? "Signing..." : "Re-authorize agent"}</button>
+                            </div>
+                            <p className="mt-2 text-xs text-slate-500">Re-authorize re-signs the one-time agent permission for the current on-chain policy. It is not a trade approval.</p>
                         </>
                     ) : runtimeSchedule && !runtimeSchedule.enabled ? (
                         <>

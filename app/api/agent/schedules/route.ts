@@ -194,7 +194,7 @@ export async function POST(request: Request) {
         account,
         ownerAddress,
         agentSignerAddress: configuredSigner,
-        targets: config,
+        targets: { ...config, permissionValidUntil: expiresAt },
         signature: sessionEnableSignature as Hex | undefined,
       });
       if (!sessionCheck.ok) throw new Error(sessionCheck.reason);

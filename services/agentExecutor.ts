@@ -8,6 +8,7 @@ import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
 import { verifySwapReceiptOutput } from "../lib/swapOutcomeVerification.ts"
 import {
     buildAgentBuyCall,
+    createAgentPublicClient,
     createAgentSmartAccountClient,
     encodeAgentBuyCall,
     AGENT_SWAP_DEADLINE_SECONDS,
@@ -377,6 +378,17 @@ export class AgentExecutor {
             this.validateIntent(intent, config)
 
             const authorization = await this.dependencies.resolveAuthorization(intent)
+            // Read on-chain policy state first: its expiry is the agent validator's
+            // TimestampPolicy bound and must match what the owner signed.
+            const validator = await (
+                this.dependencies.readValidator ?? readAgentValidatorState
+            )(createAgentPublicClient(config), getAddress(intent.account))
+            if (validator.expiresAt === undefined) {
+                throw new AgentExecutorError(
+                    "VALIDATOR_PREFLIGHT_FAILED",
+                    "On-chain policy expiry is unavailable."
+                )
+            }
             const { account, client } = await (
                 this.dependencies.createAccountClient ?? createAgentSmartAccountClient
             )(
@@ -386,7 +398,8 @@ export class AgentExecutor {
                 {
                     accountAddress: getAddress(intent.account),
                     ownerAddress: getAddress(intent.ownerAddress),
-                    pluginEnableSignature: authorization.pluginEnableSignature
+                    pluginEnableSignature: authorization.pluginEnableSignature,
+                    permissionValidUntil: validator.expiresAt
                 }
             )
             if (getAddress(account.address) !== getAddress(intent.account)) {
@@ -396,9 +409,6 @@ export class AgentExecutor {
                 )
             }
 
-            const validator = await (
-                this.dependencies.readValidator ?? readAgentValidatorState
-            )(client.client, account.address)
             const delegatedSigner = this.dependencies.createIntentSigner
                 ? await this.dependencies.createIntentSigner(authorization.sessionKeySigner)
                 : await toECDSASigner({ signer: authorization.sessionKeySigner })

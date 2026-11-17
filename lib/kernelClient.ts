@@ -21,7 +21,7 @@ import {
 import { estimateFeesPerGas } from "viem/actions"
 import { toAccount } from "viem/accounts"
 import { getBscRpcUrl, getConfiguredBscChain } from "./bscChain.ts"
-import { getAgentSessionEnableTypedData, readKernelEcdsaOwner, type AgentPermissionTargets } from "./agentPermission.ts"
+import { getAgentSessionEnableTypedData, readKernelEcdsaOwner, type AgentPermissionTerms } from "./agentPermission.ts"
 
 const BSC_ENTRY_POINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 const ENTRY_POINT = getEntryPoint("0.7")
@@ -136,7 +136,7 @@ export type AgentKernelClient = Awaited<ReturnType<typeof getKernelClient>>
  */
 export async function signAgentSessionAuthorization(
     signer: WalletClient,
-    input: { account: Address; agentSignerAddress: Address; targets: AgentPermissionTargets }
+    input: { account: Address; agentSignerAddress: Address; targets: AgentPermissionTerms }
 ): Promise<Hex | undefined> {
     const signerAccount = signer.account
     if (!signerAccount) throw new Error("Connect the owner wallet before authorizing the agent.")

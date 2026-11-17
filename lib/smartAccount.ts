@@ -458,7 +458,7 @@ export async function buildAgentKernelPluginManager(
     return createAgentPluginManager(publicClient, {
         ownerValidator,
         agentSigner: sessionKeySigner,
-        targets: config,
+        targets: { ...config, permissionValidUntil: authorization.permissionValidUntil },
         pluginEnableSignature: authorization.pluginEnableSignature
     })
 }
@@ -470,6 +470,8 @@ export type AgentAccountAuthorization = {
     ownerAddress: Address
     /** Owner's one-time Kernel enable signature; only needed until the agent validator is enabled. */
     pluginEnableSignature?: Hex
+    /** On-chain policy expiry (Unix seconds); the agent validator's TimestampPolicy bound. */
+    permissionValidUntil: bigint
 }
 
 export async function createAgentSmartAccountClient(

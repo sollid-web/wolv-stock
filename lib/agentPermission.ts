@@ -1,7 +1,7 @@
 // Single source of truth for the delegated agent's Kernel permission validator.
 //
 // The owner authorizes the agent ONCE by signing Kernel's `Enable` typed data for this exact
-// validator (agent signer + CallPolicy + V2 policy hook). The browser (to request that
+// validator (agent signer + TimestampPolicy + V2 policy hook). The browser (to request that
 // signature), the schedule API (to verify it) and the worker (to submit the first, enabling
 // UserOperation) must all derive byte-identical enable data, so every party builds the
 // validator here. Changing anything in this module changes the enable data and invalidates
@@ -14,7 +14,7 @@ import { KERNEL_V3_1, getEntryPoint } from "@zerodev/sdk/constants"
 import type { Signer } from "@zerodev/sdk/types"
 import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator"
 import { toPermissionValidator } from "@zerodev/permissions"
-import { CallPolicyVersion, CallType, toCallPolicy } from "@zerodev/permissions/policies"
+import { toTimestampPolicy } from "@zerodev/permissions/policies"
 import { toECDSASigner } from "@zerodev/permissions/signers"
 import {
     concatHex,
@@ -40,6 +40,17 @@ export type AgentPermissionTargets = {
     targetTokenAddress: Address
 }
 
+/**
+ * Targets plus the agent key's validator-level expiry. `permissionValidUntil` MUST equal the
+ * on-chain policy expiry (`getAccountPolicy(account).expiresAt`) so the browser, API and worker
+ * derive byte-identical enable data.
+ */
+export type AgentPermissionTerms = AgentPermissionTargets & {
+    permissionValidUntil: bigint
+}
+
+const UINT48_MAX = (BigInt(1) << BigInt(48)) - BigInt(1)
+
 /** The V2 hook paired with the agent validator. Enable data = 0x00 ‖ abi.encode(targetToken). */
 export function createAgentPolicyHook(targets: AgentPermissionTargets): KernelValidatorHook {
     const hookAddress = getAddress(targets.policyHookAddress)
@@ -54,30 +65,33 @@ export function createAgentPolicyHook(targets: AgentPermissionTargets): KernelVa
 }
 
 /**
- * The agent session validator: the agent key may only CALL the approved router's
- * swapExactETHForTokens with at most 0.5 BNB. Every other restriction (token, recipient,
- * caps, oracle floor, expiry, signed intent) is enforced by the paired V2 hook.
+ * The agent session validator: the agent key signs; the PAIRED V2 HOOK is the call allowlist,
+ * and a ZeroDev TimestampPolicy invalidates the key at validator level after the policy expiry.
+ *
+ * Kernel v3.1 forces every UserOperation validated by a hooked validator through
+ * `executeUserOp`, i.e. through the hook's preCheck/postCheck (a plain `execute` reverts with
+ * InvalidValidator), and this validator is only enabled for the `execute` selector. ZeroDev's
+ * CallPolicy (every version up to V0_0_5) cannot parse the `executeUserOp` wrapper and reverts
+ * on every call, so it cannot be combined with a hook. The V2 hook enforces strictly more than
+ * CallPolicy did: single-call mode only, exact calldata length, approved router,
+ * `swapExactETHForTokens`, WBNB->target path, recipient = account, value > 0 and <= the owner's
+ * cap (<= 0.5 BNB), plus signed intent, nonce, deadline, rolling caps, Chainlink oracle floor
+ * and actually delivered amount.
  */
 export async function createAgentSessionValidator(
     client: Client,
     agentSigner: Signer,
-    targets: AgentPermissionTargets
+    terms: AgentPermissionTerms
 ): Promise<KernelValidator> {
+    const validUntil = terms.permissionValidUntil
+    if (validUntil <= BigInt(0) || validUntil > UINT48_MAX) {
+        throw new RangeError("Agent permission expiry must be a positive uint48 Unix timestamp.")
+    }
     return toPermissionValidator(client, {
         entryPoint: AGENT_ENTRY_POINT,
         kernelVersion: AGENT_KERNEL_VERSION,
         signer: await toECDSASigner({ signer: agentSigner }),
-        policies: [
-            toCallPolicy({
-                policyVersion: CallPolicyVersion.V0_0_5,
-                permissions: [{
-                    callType: CallType.CALL,
-                    target: getAddress(targets.routerAddress),
-                    selector: AGENT_BUY_SELECTOR,
-                    valueLimit: AGENT_MAX_TRADE_VALUE_WEI
-                }]
-            })
-        ]
+        policies: [toTimestampPolicy({ validAfter: 0, validUntil: Number(validUntil) })]
     })
 }
 
@@ -100,7 +114,7 @@ export async function createAgentPluginManager(
     input: {
         ownerValidator: KernelValidator
         agentSigner: Signer
-        targets: AgentPermissionTargets
+        targets: AgentPermissionTerms
         pluginEnableSignature?: Hex
     }
 ) {
@@ -121,7 +135,7 @@ export async function getAgentSessionEnableTypedData(
         account: Address
         ownerAddress: Address
         agentSignerAddress: Address
-        targets: AgentPermissionTargets
+        targets: AgentPermissionTerms
     }
 ) {
     const plugins = await createAgentPluginManager(client, {
@@ -177,7 +191,7 @@ export async function verifyAgentSessionEnableSignature(
         account: Address
         ownerAddress: Address
         agentSignerAddress: Address
-        targets: AgentPermissionTargets
+        targets: AgentPermissionTerms
         signature: Hex | undefined
     }
 ): Promise<AgentSessionAuthorizationCheck> {
