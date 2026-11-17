@@ -21,7 +21,7 @@ import {
 import { estimateFeesPerGas } from "viem/actions"
 import { toAccount } from "viem/accounts"
 import { getBscRpcUrl, getConfiguredBscChain } from "./bscChain.ts"
-import { getAgentSessionEnableTypedData, type AgentPermissionTargets } from "./agentPermission.ts"
+import { getAgentSessionEnableTypedData, readKernelEcdsaOwner, type AgentPermissionTargets } from "./agentPermission.ts"
 
 const BSC_ENTRY_POINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 const ENTRY_POINT = getEntryPoint("0.7")
@@ -82,6 +82,16 @@ export async function getKernelAccountContext(signer: WalletClient) {
         entryPoint: ENTRY_POINT,
         kernelVersion: KERNEL_V3_1
     })
+
+    // A deployed account is configured only by its actual on-chain ECDSA owner. This rejects a
+    // connected wallet that merely derives the same address under a different validator setup.
+    const deployedCode = await publicClient.getCode({ address: account.address })
+    if (deployedCode && deployedCode !== "0x") {
+        const onChainOwner = await readKernelEcdsaOwner(publicClient, account.address)
+        if (onChainOwner !== getAddress(signerAccount.address)) {
+            throw new Error(`Connected wallet ${signerAccount.address} is not the on-chain owner (${onChainOwner}) of smart account ${account.address}.`)
+        }
+    }
 
     return { account, chain, publicClient }
 }

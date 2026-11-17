@@ -82,6 +82,8 @@ const routerAddress = routerEnv && isAddress(routerEnv)
     ? getAddress(routerEnv)
     : null
 
+const GLOBAL_CONTROL_LEASE_MS = 30 * 60_000
+
 function formatExpiration(timestamp: bigint): string {
     return new Date(Number(timestamp) * 1000).toLocaleString()
 }
@@ -472,6 +474,37 @@ export default function AgentPolicyPanel() {
         }
     }
 
+    // Global agent control (server-side emergency stop). Releasing it is a time-boxed lease
+    // capped by the control API; the on-chain policy, caps and expiry remain authoritative.
+    async function setGlobalAgentControl(action: "ENABLE" | "STOP") {
+        setRuntimeBusy(true)
+        setRuntimeError("")
+        try {
+            if (!runtimeSessionAuthenticated && !(await authenticateRuntimeSession())) return
+            const response = await fetch("/api/agent/control", {
+                method: "POST",
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(action === "ENABLE"
+                    ? { action, reason: "Owner released the global stop from /agent.", permissionTtlMs: GLOBAL_CONTROL_LEASE_MS }
+                    : { action, reason: "Owner activated the global emergency stop from /agent." })
+            })
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Global agent control could not be changed.")
+            }
+            setNotice(action === "ENABLE"
+                ? "Global stop released for 30 minutes. The worker may claim eligible cycles within the on-chain policy."
+                : "Global emergency stop activated. The worker will not claim new autonomous trades.")
+            await refreshRuntimeSchedule()
+        } catch (cause) {
+            setRuntimeError(cause instanceof Error ? cause.message : "Global agent control could not be changed.")
+        } finally {
+            setRuntimeBusy(false)
+        }
+    }
+
     async function revokeAgent() {
         if (!activeKernelClient || !activePublicClient || !currentSnapshot || !validatorAddress || !address) return
         setBusy(true)
@@ -640,6 +673,16 @@ export default function AgentPolicyPanel() {
                         </>
                     ) : (
                         <p className="mt-2 text-sm text-slate-400">No autonomous strategy is registered for this smart account. Configure a strategy below to save one.</p>
+                    )}
+                    {runtimeSessionAuthenticated && runtimeWorkerReadiness && (
+                        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-4">
+                            {runtimeWorkerReadiness.globallyPaused ? (
+                                <button type="button" disabled={runtimeBusy} onClick={() => void setGlobalAgentControl("ENABLE")} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Release global stop (30 min)"}</button>
+                            ) : (
+                                <button type="button" disabled={runtimeBusy} onClick={() => void setGlobalAgentControl("STOP")} className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Global emergency stop"}</button>
+                            )}
+                            <span className="text-xs text-slate-500">{runtimeWorkerReadiness.globallyPaused ? "Global control is stopped; no trades are claimed." : "Global control is released; eligible cycles may execute."}</span>
+                        </div>
                     )}
                     <p className="mt-3 text-xs text-slate-500">The server worker must be deployed and running. Execution remains disabled until the master autonomous-trading and live-submission gates are enabled; mainnet has additional authorization gates.</p>
                 </div>
