@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto"
 import postgres, { type Sql } from "postgres"
 import { BSC_USDT_ADDRESS, EVM_ADDRESS_PATTERN, isValidBinanceQuoteId } from "../lib/apiValidation.ts"
+import { postgresTlsOptions } from "../lib/postgresTls.ts"
 
 export const BROWSER_TRADE_STATES = [
     "CREATED",
@@ -114,7 +115,7 @@ export class BrowserTradeIntentStore implements BrowserTradeIntentStorePort {
             connect_timeout: 5,
             max_lifetime: 300,
             prepare: false,
-            ssl: isLocalDevelopmentUrl(databaseUrl) ? false : "verify-full",
+            ssl: postgresTlsOptions(databaseUrl, isLocalDevelopmentUrl(databaseUrl)),
         })
         this.ready = this.runMigrations()
     }

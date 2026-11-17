@@ -18,6 +18,7 @@ import {
   AGENT_SESSION_TESTNET_CHAIN_ID,
   AGENT_SESSION_VALIDITY_SECONDS,
 } from "../lib/agentSessionPlan.ts";
+import { postgresTlsOptions } from "../lib/postgresTls.ts";
 
 const MIGRATIONS = [{
   version: 1,
@@ -917,7 +918,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       connect_timeout: 5,
       max_lifetime: 300,
       prepare: false,
-      ssl: isLocalDevelopmentUrl(databaseUrl) ? false : "verify-full",
+      ssl: postgresTlsOptions(databaseUrl, isLocalDevelopmentUrl(databaseUrl)),
     });
     this.ready = this.runMigrations();
   }

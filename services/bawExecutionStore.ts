@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto"
 import postgres, { type Sql } from "postgres"
+import { postgresTlsOptions } from "../lib/postgresTls.ts"
 
 export type BawExecutionState =
     | "APPROVAL_REQUIRED"
@@ -133,7 +134,7 @@ export class BawExecutionStore implements BawExecutionStorePort {
             connect_timeout: 5,
             max_lifetime: 300,
             prepare: false,
-            ssl: isLocalDevelopmentUrl(databaseUrl) ? false : "verify-full",
+            ssl: postgresTlsOptions(databaseUrl, isLocalDevelopmentUrl(databaseUrl)),
         })
         this.ready = this.runMigrations()
     }
