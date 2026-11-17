@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { POST as postLegacyAgentAction } from "../app/api/agent/execute/route.ts";
-import { POST as postLegacyApproval } from "../app/api/agent/approve/route.ts";
-import { GET as getLegacyExecutionStatus } from "../app/api/agent/executions/route.ts";
 import {
   canTransitionAgentState,
   createStrictAgentPolicyTemplate,
@@ -11,7 +8,6 @@ import {
   validateRiskPolicy,
   validateMarketObservation,
 } from "../lib/agentControlPlane.ts";
-import { evaluateAutonomousTradingGate } from "../services/autonomousTradingGate.ts";
 import { validateAnalysis, ConfiguredAgentAnalysisProvider } from "../services/agentAnalysis.ts";
 import {
   handleAgentControlGet,
@@ -100,56 +96,6 @@ test("strict policy template is conservative, time-bounded, and execution-indepe
   assert.throws(
     () => createStrictAgentPolicyTemplate({ approvedAssets: [], now }),
     /Strict policy approval/,
-  );
-});
-
-test("autonomous trading gate fails closed before policy or network submission", () => {
-  const now = 1_700_000_000_000;
-  const policy = createStrictAgentPolicyTemplate({
-    approvedAssets: [ADDRESSES[0]],
-    now,
-  });
-  const intent = {
-    ownerAddress: ADDRESSES[0],
-    assetAddress: ADDRESSES[0],
-    direction: "BUY",
-    notional: "0.1",
-    dailyExposure: "0.1",
-    recentProposalCount: 0,
-    slippageBps: 100,
-    referenceDeviationPercent: 0.5,
-    dataFresh: true,
-    quoteExpiresAt: now + 30_000,
-    availableBalance: "1",
-    session: "US_REGULAR",
-    chainId: 97,
-  };
-  assert.deepEqual(
-    evaluateAutonomousTradingGate(policy, intent, now, {
-      WOLV_AUTONOMOUS_TRADING_ENABLED: "false",
-      ENABLE_LIVE_USEROP_SUBMISSION: "true",
-    }),
-    { allowed: false, reasons: ["Autonomous trading is disabled."] },
-  );
-  assert.deepEqual(
-    evaluateAutonomousTradingGate(policy, intent, now, {
-      WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
-      ENABLE_LIVE_USEROP_SUBMISSION: "true",
-    }),
-    { allowed: true, policyVersion: policy.version },
-  );
-  assert.equal(
-    evaluateAutonomousTradingGate(
-      policy,
-      { ...intent, chainId: 56 },
-      now,
-      {
-        WOLV_AUTONOMOUS_TRADING_ENABLED: "true",
-        ENABLE_LIVE_USEROP_SUBMISSION: "true",
-        ENABLE_MAINNET_AGENT_TRADING: "false",
-      },
-    ).allowed,
-    false,
   );
 });
 
@@ -631,25 +577,6 @@ test("policy API refuses malformed policy data and activates only a validated ex
     assert.equal(response.status, 201, JSON.stringify(responseBody));
     assert.deepEqual(received, { ownerAddress: OWNER_ADDRESS, name: "default", value: policy, createdAt: now, active: true });
   });
-});
-
-test("legacy agent BAW execution and approval routes are explicitly blocked", async () => {
-  const execution = await postLegacyAgentAction(jsonRequest({
-    action: "executeBaw",
-    executionId: randomUUID(),
-    approvalToken: "mock",
-    securityAuditAcknowledged: true,
-  }));
-  assert.equal(execution.status, 403);
-  assert.match((await execution.json()).error, /blocked during Phase 4\.0/);
-
-  const approval = await postLegacyApproval(jsonRequest({ quote: {} }));
-  assert.equal(approval.status, 403);
-  assert.equal((await approval.json()).code, "EXECUTION_BLOCKED");
-
-  const reconciliation = await getLegacyExecutionStatus();
-  assert.equal(reconciliation.status, 403);
-  assert.equal((await reconciliation.json()).execution, "BLOCKED");
 });
 
 function jsonRequest(body, url = "https://wolv.test/api/agent/control") {

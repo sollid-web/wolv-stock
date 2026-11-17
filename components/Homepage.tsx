@@ -8,7 +8,6 @@ import { QUOTE_AMOUNT_USDT } from "@/lib/opportunityMonitor";
 import MarketAnalysis from "@/components/MarketAnalysis";
 import AIInsightStrip from "@/components/AIInsightStrip";
 import ParticleCanvas from "@/components/ParticleCanvas";
-import Web3StrategyShowcase from "@/components/Web3StrategyShowcase";
 type HomepageProps = {
   rows: OpportunityRow[];
   assetCount: number;
@@ -87,7 +86,7 @@ function Navigation() {
         <div className="hidden items-center gap-7 md:flex">
           <Link href="/markets" className="text-xs font-semibold text-slate-400 transition hover:text-white">Markets</Link>
           <a href="#opportunities" className="text-xs font-semibold text-slate-400 transition hover:text-white">Opportunities</a>
-          <a href="#strategy-center" className="text-xs font-semibold text-slate-400 transition hover:text-white">Strategies</a>
+          <a href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Strategies</a>
           <Link href="/trade" className="text-xs font-semibold text-slate-400 transition hover:text-white">Trade</Link>
           <Link href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Agent</Link>
           <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
@@ -388,15 +387,15 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
               How WOLV works
             </a>
           </div>
-          <a href="#strategy-center" className="group mt-5 flex max-w-xl items-center justify-between gap-4 rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.045] p-3.5 transition hover:border-[#d9a80a]/40 hover:bg-[#d9a80a]/[0.075]">
+          <a href="/agent" className="group mt-5 flex max-w-xl items-center justify-between gap-4 rounded-xl border border-[#d9a80a]/20 bg-[#d9a80a]/[0.045] p-3.5 transition hover:border-[#d9a80a]/40 hover:bg-[#d9a80a]/[0.075]">
             <span className="flex items-start gap-3">
               <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-[#d9a80a]/20 bg-[#d9a80a]/[0.08] text-[#f2c94c]" aria-hidden="true">✦</span>
               <span>
                 <span className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#f2c94c]">
-                  New · Strategy toolkit
-                  <span className="rounded-full border border-white/[0.09] px-1.5 py-0.5 text-[8px] tracking-wide text-slate-400">Preview</span>
+                  New · Autonomous agent
+                  <span className="rounded-full border border-white/[0.09] px-1.5 py-0.5 text-[8px] tracking-wide text-slate-400">Testnet</span>
                 </span>
-                <span className="mt-1 block text-[11px] leading-4 text-slate-300">Explore exposure controls, weekend yield checks, and an RFQ review ticket.</span>
+                <span className="mt-1 block text-[11px] leading-4 text-slate-300">Authorize a policy once on-chain; the agent trades within enforced limits. Pause or revoke at any time.</span>
               </span>
             </span>
             <span className="shrink-0 text-sm text-[#f2c94c] transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
@@ -420,10 +419,6 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
           </div>
         </div>
       )}
-
-      <div id="strategy-center" className="scroll-mt-24">
-        <Web3StrategyShowcase />
-      </div>
 
       <Ticker rows={rows} />
 
