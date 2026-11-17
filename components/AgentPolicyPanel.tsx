@@ -12,6 +12,7 @@ import {
 } from "viem"
 import { useAccount, useSignMessage, useWalletClient } from "wagmi"
 import AgentSetupForm, { type AgentConfiguredStrategy } from "@/components/AgentSetupForm"
+import AgentExecutionHistory from "@/components/AgentExecutionHistory"
 import { assertOfficialPolicyHookFeed } from "@/lib/agentPermission"
 import {
     AGENT_POLICY_HOOK_ABI
@@ -733,6 +734,7 @@ export default function AgentPolicyPanel() {
                             <span className="text-xs text-slate-500">{runtimeWorkerReadiness.globallyPaused ? "Global control is stopped; no trades are claimed." : "Global control is released; eligible cycles may execute."}</span>
                         </div>
                     )}
+                    {runtimeSessionAuthenticated && <AgentExecutionHistory chainId={configuredChainId} />}
                     <p className="mt-3 text-xs text-slate-500">The server worker must be deployed and running. Execution remains disabled until the master autonomous-trading and live-submission gates are enabled; mainnet has additional authorization gates.</p>
                 </div>
             )}

@@ -575,6 +575,13 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
       { kind: "object", tx: "0x" + "ab".repeat(32), received: "450041711401365" },
       "execution evidence must be stored as a queryable JSON object",
     );
+    const history = await store.listExecutionHistory(ownerA, 50);
+    const historyRow = history.find(row => row.claimId === activeClaimId);
+    assert.equal(historyRow?.status, "CONFIRMED");
+    assert.equal(historyRow?.transactionHash, "0x" + "ab".repeat(32));
+    assert.equal(historyRow?.receivedAmount, "450041711401365");
+    assert.equal((await store.listExecutionHistory(ownerB, 50)).some(row => row.claimId === activeClaimId), false,
+      "execution history must never include another owner's claims");
     const claimedAfterSettlement = await store.claimDueAutonomousAgentSchedules(now + 70_000, 20);
     assert.equal(claimedAfterSettlement.length, 1);
     assert.equal(claimedAfterSettlement[0].scheduleId, autonomousScheduleId);
