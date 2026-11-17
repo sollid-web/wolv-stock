@@ -1,5 +1,7 @@
 # Chainlink-enforced policy validator V2
 
+> V2 is the only supported policy contract; V1 has been removed from the repository. The V2 deployment previously configured at `0xed2fb17badc2bf45293c7cfd17996361c02db465` was constructed with a self-deployed `BNB / USD (TESTNET MOCK)` feed (always-fresh, guardian-controlled price) and predates the hardened hook (no policy-management pass-through; on-chain verification of delivered tokens). Redeploy before use.
+
 ## What changes
 
 V2 is a new hook deployment. It does not modify the already deployed V1 contract. Every autonomous account must be migrated by its owner to V2 and its policy must be configured again.
@@ -17,7 +19,7 @@ Any missing, stale, negative, zero, incomplete, or unsupported oracle response r
 ## BSC Testnet rollout
 
 1. Verify the official Chainlink BNB/USD feed address for BSC Testnet from Chainlink's feed directory. Do not copy a mainnet feed address into testnet configuration.
-2. Set `BSC_TESTNET_BNB_USD_FEED` to that verified address and deploy with `npm run deploy:testnet-policy`. The deployer becomes guardian. The deployment script validates the feed description as BNB/USD, its decimals, and a positive, complete, non-future round no older than one hour before deploying.
+2. Deploy with `pnpm deploy:testnet-policy` (defaults to the official proxy `0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526`). The deployer becomes guardian. The script accepts only feeds pinned in `scripts/chainlinkFeeds.mjs` (a description string is not proof of authenticity), then validates decimals and a positive, complete, non-future round no older than one hour.
 3. Record the deployed V2 address. Verify the contract bytecode, constructor feed, guardian, router, and EntryPoint on the explorer.
 4. Set the application's `NEXT_PUBLIC_POLICY_HOOK_ADDRESS` to the new V2 deployment for the intended chain, then restart/redeploy the app. For each target token, configure its official Chainlink USD feed as guardian using:
    `npm run configure:testnet-token-feed -- <validator> <token> <chainlink-usd-feed> <max-age-seconds>`
