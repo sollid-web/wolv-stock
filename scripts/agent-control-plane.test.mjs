@@ -505,6 +505,26 @@ test("operator control enablement is explicitly time-limited and stop persists a
   }
 });
 
+test("operator release accepts windows up to 24 hours and rejects longer ones", async () => {
+  const originalEnabled = process.env.WOLV_AGENT_CONTROL_PLANE_ENABLED;
+  process.env.WOLV_AGENT_CONTROL_PLANE_ENABLED = "true";
+  const now = 1_700_000_000_000;
+  const store = createFakeStore(now);
+  const deps = { authorize: async () => "authorized", getOwnerAddress: async () => OWNER_ADDRESS, createStore: () => store, now: () => now };
+  try {
+    const day = 24 * 60 * 60_000;
+    const accepted = await handleAgentControlPost(jsonRequest({ action: "ENABLE", reason: "unattended day", permissionTtlMs: day }), deps);
+    assert.equal(accepted.status, 200);
+    assert.equal(store.control.permissionExpiresAt, now + day);
+    const rejected = await handleAgentControlPost(jsonRequest({ action: "ENABLE", reason: "too long", permissionTtlMs: day + 1 }), deps);
+    assert.notEqual(rejected.status, 200);
+    assert.equal(store.control.permissionExpiresAt, now + day, "a rejected release must not change the active window");
+  } finally {
+    if (originalEnabled === undefined) delete process.env.WOLV_AGENT_CONTROL_PLANE_ENABLED;
+    else process.env.WOLV_AGENT_CONTROL_PLANE_ENABLED = originalEnabled;
+  }
+});
+
 test("proposal decision endpoint validates the payload and reports blocked execution", async () => {
   const proposalId = randomUUID();
   const runId = randomUUID();

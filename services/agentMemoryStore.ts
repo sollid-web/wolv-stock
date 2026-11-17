@@ -662,7 +662,8 @@ const MIGRATIONS = [{
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
 const MAX_PAGE_SIZE = 100;
-const MAX_PERMISSION_TTL_MS = 30 * 60_000;
+// Owner-selected unattended window; on-chain caps and policy expiry remain authoritative.
+const MAX_PERMISSION_TTL_MS = 24 * 60 * 60_000;
 export type ProposalStatus =
   | "AWAITING_USER_APPROVAL"
   | "USER_REJECTED"

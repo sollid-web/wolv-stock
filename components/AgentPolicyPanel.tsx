@@ -85,7 +85,11 @@ const routerAddress = routerEnv && isAddress(routerEnv)
     ? getAddress(routerEnv)
     : null
 
-const GLOBAL_CONTROL_LEASE_MS = 30 * 60_000
+const GLOBAL_CONTROL_LEASE_OPTIONS = [
+    { label: "30 min", ms: 30 * 60_000 },
+    { label: "4 hours", ms: 4 * 60 * 60_000 },
+    { label: "24 hours", ms: 24 * 60 * 60_000 },
+] as const
 
 function formatExpiration(timestamp: bigint): string {
     return new Date(Number(timestamp) * 1000).toLocaleString()
@@ -517,7 +521,7 @@ export default function AgentPolicyPanel() {
 
     // Global agent control (server-side emergency stop). Releasing it is a time-boxed lease
     // capped by the control API; the on-chain policy, caps and expiry remain authoritative.
-    async function setGlobalAgentControl(action: "ENABLE" | "STOP") {
+    async function setGlobalAgentControl(action: "ENABLE" | "STOP", leaseMs: number = GLOBAL_CONTROL_LEASE_OPTIONS[0].ms) {
         setRuntimeBusy(true)
         setRuntimeError("")
         try {
@@ -528,7 +532,7 @@ export default function AgentPolicyPanel() {
                 credentials: "same-origin",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(action === "ENABLE"
-                    ? { action, reason: "Owner released the global stop from /agent.", permissionTtlMs: GLOBAL_CONTROL_LEASE_MS }
+                    ? { action, reason: "Owner released the global stop from /agent.", permissionTtlMs: leaseMs }
                     : { action, reason: "Owner activated the global emergency stop from /agent." })
             })
             const data = await response.json()
@@ -536,7 +540,7 @@ export default function AgentPolicyPanel() {
                 throw new Error(typeof data.error === "string" ? data.error : "Global agent control could not be changed.")
             }
             setNotice(action === "ENABLE"
-                ? "Global stop released for 30 minutes. The worker may claim eligible cycles within the on-chain policy."
+                ? `Global stop released for ${GLOBAL_CONTROL_LEASE_OPTIONS.find(option => option.ms === leaseMs)?.label ?? "the selected window"}. The worker may claim eligible cycles within the on-chain policy.`
                 : "Global emergency stop activated. The worker will not claim new autonomous trades.")
             await refreshRuntimeSchedule()
         } catch (cause) {
@@ -727,7 +731,9 @@ export default function AgentPolicyPanel() {
                     {runtimeSessionAuthenticated && runtimeWorkerReadiness && (
                         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-4">
                             {runtimeWorkerReadiness.globallyPaused ? (
-                                <button type="button" disabled={runtimeBusy} onClick={() => void setGlobalAgentControl("ENABLE")} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Release global stop (30 min)"}</button>
+                                GLOBAL_CONTROL_LEASE_OPTIONS.map(option => (
+                                    <button key={option.ms} type="button" disabled={runtimeBusy} onClick={() => void setGlobalAgentControl("ENABLE", option.ms)} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : `Release global stop (${option.label})`}</button>
+                                ))
                             ) : (
                                 <button type="button" disabled={runtimeBusy} onClick={() => void setGlobalAgentControl("STOP")} className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-200 disabled:opacity-50">{runtimeBusy ? "Updating..." : "Global emergency stop"}</button>
                             )}
