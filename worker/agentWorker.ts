@@ -590,16 +590,41 @@ async function main() {
     await mainPersistent()
 }
 
+export async function startWithRetry(
+    start: () => Promise<void>,
+    options: { baseDelayMs?: number; maxDelayMs?: number; sleep?: (ms: number) => Promise<void>; maxAttempts?: number } = {},
+): Promise<void> {
+    const baseDelayMs = options.baseDelayMs ?? 5_000
+    const maxDelayMs = options.maxDelayMs ?? 5 * 60_000
+    const sleep = options.sleep ?? ((ms: number) => new Promise<void>(done => setTimeout(done, ms)))
+    for (let attempt = 1; ; attempt++) {
+        try {
+            await start()
+            return
+        } catch (error) {
+            const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** Math.min(attempt - 1, 16))
+            console.error(`Agent worker failed to start (attempt ${attempt}); retrying in ${Math.round(delay / 1000)}s:`,
+                error instanceof Error ? error.message : String(error))
+            if (options.maxAttempts !== undefined && attempt >= options.maxAttempts) throw error
+            await sleep(delay)
+        }
+    }
+}
+
 const isDirectExecution = process.argv[1] !== undefined
     && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 
 if (isDirectExecution) {
     try {
         loadWorkerEnvironment()
-        void main().catch(error => {
-            console.error("Agent worker failed to start:", error instanceof Error ? error.message : String(error))
-            process.exitCode = 1
+        // Self-healing without relying on the host's restart policy: a failed start (database,
+        // RPC, or configuration temporarily unavailable) is retried with capped backoff, and a
+        // stray rejected promise is logged instead of terminating the process. Durable execution
+        // claims make a restarted cycle safe; the global stop and on-chain policy still apply.
+        process.on("unhandledRejection", reason => {
+            console.error("Unhandled rejection in agent worker (continuing):", reason instanceof Error ? reason.message : String(reason))
         })
+        void startWithRetry(main)
     } catch (error) {
         console.error("Agent worker failed to load environment:", error instanceof Error ? error.message : String(error))
         process.exitCode = 1

@@ -354,3 +354,20 @@ test("rejects on-chain V2 risk limits that drift from the owner-authorized strat
   assert.equal(harness.telemetry[0].reasonCode, "POLICY_HASH_MISMATCH");
   assert.equal(harness.intents.length, 0);
 });
+
+test("worker start is retried with capped exponential backoff instead of exiting", async () => {
+  const { startWithRetry } = await import("../worker/agentWorker.ts");
+  const delays = [];
+  let calls = 0;
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await startWithRetry(async () => { calls++; if (calls < 5) throw new Error("database unavailable"); }, {
+      baseDelayMs: 1_000, maxDelayMs: 4_000, sleep: async (ms) => { delays.push(ms); },
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(calls, 5);
+  assert.deepEqual(delays, [1_000, 2_000, 4_000, 4_000]);
+});
