@@ -7,6 +7,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
+import { requirePinnedChainlinkFeed } from "./chainlinkFeeds.mjs";
 
 const [validatorArg, tokenArg, feedArg, maxAgeArg] = process.argv.slice(2);
 if (!validatorArg || !tokenArg || !feedArg || !maxAgeArg) {
@@ -25,7 +26,7 @@ const privateKey = /^0x/i.test(rawKey) ? rawKey : `0x${rawKey}`;
 if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) throw new Error("PRIVATE_KEY must be a 32-byte hex value.");
 const account = privateKeyToAccount(privateKey);
 const publicClient = createPublicClient({ chain: bscTestnet, transport: http(process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545") });
-const walletClient = createWalletClient({ account, chain: bscTestnet, transport: publicClient.transport });
+const walletClient = createWalletClient({ account, chain: bscTestnet, transport: http(process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545") });
 const feedAbi = parseAbi([
   "function decimals() view returns (uint8)",
   "function description() view returns (string)",
@@ -36,6 +37,10 @@ const validatorAbi = parseAbi([
   "function tokenUsdFeeds(address token) view returns (address)",
 ]);
 if (await publicClient.getChainId() !== 97) throw new Error("This setup script only supports BSC Testnet.");
+const pinnedFeed = await requirePinnedChainlinkFeed(publicClient, feed);
+if (maxAge < pinnedFeed.heartbeatSeconds && maxAge !== 86_400) {
+  console.warn(`Warning: max age ${maxAge}s is below the ${pinnedFeed.pair} heartbeat of ${pinnedFeed.heartbeatSeconds}s; trades will be rejected between updates.`);
+}
 const [validatorCode, tokenCode, feedCode, decimals, description, round] = await Promise.all([
   publicClient.getBytecode({ address: validator }),
   publicClient.getBytecode({ address: token }),

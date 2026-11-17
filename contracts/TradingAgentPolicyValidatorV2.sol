@@ -6,6 +6,7 @@ interface IChainlinkAggregatorV3 {
     function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80);
 }
 interface IERC20Decimals { function decimals() external view returns (uint8); }
+interface IERC20Balance { function balanceOf(address account) external view returns (uint256); }
 interface IERC7579Hook {
     function onInstall(bytes calldata data) external payable;
     function onUninstall(bytes calldata data) external payable;
@@ -31,12 +32,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
 
     bytes4 private constant EXECUTE_SELECTOR = bytes4(keccak256("execute(bytes32,bytes)"));
     bytes4 private constant FACTORY_SELECTOR = 0xc45a0155;
-    bytes4 private constant SET_ACCOUNT_POLICY_SELECTOR =
-        bytes4(keccak256("setAccountPolicy(address,address,bytes32,uint192,uint64,uint64,uint16,uint16)"));
-    bytes4 private constant CLEAR_ACCOUNT_POLICY_SELECTOR =
-        bytes4(keccak256("clearAccountPolicy(address)"));
-    bytes4 private constant REVOKE_ACCOUNT_SELECTOR =
-        bytes4(keccak256("revokeAccount(address)"));
+    uint256 private constant HOOK_DATA_LENGTH = 160;
     uint256 private constant ROUTER_BUY_CALL_LENGTH = 228;
     uint256 private constant INTENT_ENVELOPE_LENGTH = 320;
     uint256 private constant BPS_DENOMINATOR = 10_000;
@@ -166,6 +162,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
     error OraclePriceImpactExceeded(uint256 minimumOut, uint256 oracleMinimumOut);
     error PolicyRiskParametersInvalid();
     error TradeRiskLimitExceeded();
+    error SwapOutputBelowMinimum(uint256 received, uint256 minimum);
 
     event CircuitBreakerUpdated(bool paused, address indexed guardian);
     event AgentAccountRevoked(address indexed smartAccount);
@@ -179,6 +176,7 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         address indexed smartAccount,
         address indexed targetToken,
         uint256 value,
+        uint256 amountOut,
         uint256 timestamp
     );
     event AccountPolicyConfigured(
@@ -376,13 +374,11 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         if (!state.installed) revert NotInitialized(msg.sender);
         if (state.revoked) revert AccountRevoked(msg.sender);
 
+        // This hook is paired only with the delegated agent validator. Owner policy
+        // management runs through the root validator and never reaches this hook, so
+        // every call on this path must be an authorized router buy; there is no
+        // pass-through that would let the agent signer rewrite its own policy.
         DecodedTrade memory trade = _decodeTrade(msgData);
-        if (
-            trade.target == address(this) && trade.value == 0
-                && _isPolicyManagementSelector(trade.selector)
-        ) {
-            return bytes("");
-        }
         if (trade.target != approvedRouter) revert WrongTarget(trade.target);
         if (trade.selector != BUY_SELECTOR) revert UnsupportedSelector(trade.selector);
         if (
@@ -409,25 +405,30 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         state.tail += 1;
         state.rollingVolume = attemptedVolume;
         state.consumedIntentNonces[trade.intentNonce] = true;
+        uint256 balanceBefore = IERC20Balance(state.targetToken).balanceOf(msg.sender);
         emit AgentExecutionAttempt(msg.sender, state.targetToken, trade.value, block.timestamp);
-        return abi.encode(state.targetToken, trade.value, trade.intentNonce);
+        return abi.encode(state.targetToken, trade.value, trade.intentNonce, balanceBefore, trade.amountOutMin);
     }
 
     function postCheck(bytes calldata hookData) external payable {
         if (msg.value != 0) revert UnexpectedHookValue(msg.value);
-        if (hookData.length == 0) return;
-        if (hookData.length != 96) revert InvalidHookData();
+        if (hookData.length != HOOK_DATA_LENGTH) revert InvalidHookData();
         AccountState storage state = accountStates[msg.sender];
         if (!state.installed) {
             revert NotInitialized(msg.sender);
         }
-        (address targetToken, uint256 value, bytes32 nonce) =
-            abi.decode(hookData, (address, uint256, bytes32));
+        (address targetToken, uint256 value, bytes32 nonce, uint256 balanceBefore, uint256 amountOutMin) =
+            abi.decode(hookData, (address, uint256, bytes32, uint256, uint256));
         if (
             targetToken != state.targetToken || value == 0
                 || !state.consumedIntentNonces[nonce]
         ) revert InvalidHookData();
-        emit AgentExecutionSucceeded(msg.sender, targetToken, value, block.timestamp);
+        // Verify the actual token delivery, not the router's computed amounts: a
+        // fee-on-transfer or malicious token cannot satisfy the policy minimum.
+        uint256 balanceAfter = IERC20Balance(targetToken).balanceOf(msg.sender);
+        uint256 received = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0;
+        if (received < amountOutMin) revert SwapOutputBelowMinimum(received, amountOutMin);
+        emit AgentExecutionSucceeded(msg.sender, targetToken, value, received, block.timestamp);
     }
 
     function getRollingVolume(address account) external view returns (uint256) {
@@ -782,11 +783,6 @@ contract TradingAgentPolicyValidatorV2 is IERC7579Hook {
         return factory != address(0) && factory.code.length > 0;
     }
 
-    function _isPolicyManagementSelector(bytes4 selector) private pure returns (bool) {
-        return selector == SET_ACCOUNT_POLICY_SELECTOR
-            || selector == CLEAR_ACCOUNT_POLICY_SELECTOR
-            || selector == REVOKE_ACCOUNT_SELECTOR;
-    }
 
     function _selectorAt(bytes calldata data, uint256 offset) private pure returns (bytes4 selector) {
         assembly {

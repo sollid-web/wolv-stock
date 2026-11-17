@@ -20,7 +20,9 @@ contract V2Router {
 }
 contract V2EntryPoint {}
 contract V2Token {
+    mapping(address => uint256) public balanceOf;
     function decimals() external pure returns (uint8) { return 18; }
+    function mint(address to, uint256 amount) external { balanceOf[to] += amount; }
 }
 contract V2Feed is IChainlinkAggregatorV3 {
     uint8 public immutable override decimals = 8;
@@ -157,10 +159,41 @@ contract TradingAgentPolicyValidatorV2Test {
         );
         vm.prank(ACCOUNT);
         bytes memory hookData = validator.preCheck(address(entryPoint), 0, callData);
-        require(hookData.length == 96, "hook receipt data missing");
+        require(hookData.length == 160, "hook receipt data missing");
         require(validator.getRollingVolume(ACCOUNT) == 0.1 ether, "rolling volume not recorded");
+        token.mint(ACCOUNT, 59_400_000_000_000_000_000);
         vm.prank(ACCOUNT);
         validator.postCheck(hookData);
+    }
+
+    function testPostCheckRejectsSwapThatDeliversLessThanMinimum() public {
+        bytes memory callData = _buildSignedTrade(59_400_000_000_000_000_000, 2_000_000, 100, 150, 100_000_000);
+        vm.prank(ACCOUNT);
+        bytes memory hookData = validator.preCheck(address(entryPoint), 0, callData);
+        token.mint(ACCOUNT, 59_399_999_999_999_999_999);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.SwapOutputBelowMinimum.selector);
+        vm.prank(ACCOUNT);
+        validator.postCheck(hookData);
+    }
+
+    function testPostCheckRejectsEmptyHookData() public {
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.InvalidHookData.selector);
+        vm.prank(ACCOUNT);
+        validator.postCheck(bytes(""));
+    }
+
+    function testAgentPathCannotRewriteItsOwnPolicy() public {
+        vm.prank(ACCOUNT);
+        validator.setAccountPolicy(ACCOUNT, SIGNER, POLICY, 0.1 ether, uint64(block.timestamp + 1 days), 125_000_000, 75, 150);
+        bytes memory policyCall = abi.encodeWithSelector(
+            TradingAgentPolicyValidatorV2.setAccountPolicy.selector,
+            ACCOUNT, address(0xBAD), POLICY, uint192(0.5 ether), uint64(block.timestamp + 30 days), uint64(type(uint64).max), uint16(500), uint16(300)
+        );
+        bytes memory execution = abi.encodePacked(address(validator), uint256(0), policyCall);
+        bytes memory callData = abi.encodeWithSelector(bytes4(keccak256("execute(bytes32,bytes)")), bytes32(0), execution);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.WrongTarget.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
     }
 
     function testRejectsOraclePriceAboveOwnerEntryCeiling() public {

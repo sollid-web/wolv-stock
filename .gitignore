@@ -42,3 +42,9 @@ yarn-error.log*
 next-env.d.ts
 *.bak
 data/logger.log
+
+# Foundry build artifacts and local broadcast logs
+/cache/
+/broadcast/
+# Local testnet mocks must never be compiled into the deployable project
+/contracts/test/

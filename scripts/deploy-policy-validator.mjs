@@ -10,10 +10,12 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
+import { BSC_TESTNET_BNB_USD_FEED, requirePinnedChainlinkFeed } from "./chainlinkFeeds.mjs";
 
 const ROUTER = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
 const ENTRY_POINT = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
-const BNB_USD_FEED = process.env.BSC_TESTNET_BNB_USD_FEED;
+// Pinned to the official Chainlink proxy; an override must still pass requirePinnedChainlinkFeed.
+const BNB_USD_FEED = process.env.BSC_TESTNET_BNB_USD_FEED || BSC_TESTNET_BNB_USD_FEED;
 const BNB_FEED_ABI = parseAbi([
   "function decimals() view returns (uint8)",
   "function description() view returns (string)",
@@ -130,6 +132,7 @@ async function main() {
     throw new Error("Router factory address has no bytecode.");
   }
 
+  await requirePinnedChainlinkFeed(publicClient, BNB_USD_FEED, "BNB / USD");
   const [bnbFeedCode, bnbFeedDecimals, bnbFeedDescription, bnbFeedRound] = await Promise.all([
     publicClient.getBytecode({ address: BNB_USD_FEED }),
     publicClient.readContract({ address: BNB_USD_FEED, abi: BNB_FEED_ABI, functionName: "decimals" }),
