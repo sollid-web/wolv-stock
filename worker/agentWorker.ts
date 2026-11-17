@@ -1,3 +1,4 @@
+import { createAlertNotifier } from "../lib/alertNotifier.ts"
 import { pathToFileURL } from "node:url"
 import { createHash, randomUUID } from "node:crypto"
 import { resolve } from "node:path"
@@ -247,6 +248,13 @@ async function createPersistentWorkerRuntime() {
     const store = new AgentMemoryStore()
     await store.initialize()
     const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || `persistent-bsc-agent-worker-${config.chain.id}`
+    const alertNotifier = createAlertNotifier({ webhookUrl: process.env.WOLV_ALERT_WEBHOOK_URL, workerId })
+    const persistAlert = store.recordAlert.bind(store)
+    store.recordAlert = async (input) => {
+        const alertId = await persistAlert(input)
+        void alertNotifier.notify(input)
+        return alertId
+    }
     const runtimes = new Map<string, PersistentScheduleRuntime>()
 
     function createScheduleRuntime(schedule: Record<string, unknown>, stored: StoredStrategy): PersistentScheduleRuntime {
