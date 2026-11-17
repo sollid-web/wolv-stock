@@ -1,3 +1,4 @@
+import { startMarketPulseRefresher } from "../lib/marketPulseRefresher.ts"
 import { createAlertNotifier } from "../lib/alertNotifier.ts"
 import { pathToFileURL } from "node:url"
 import { createHash, randomUUID } from "node:crypto"
@@ -561,6 +562,10 @@ async function mainPersistent() {
         }).finally(() => { activePoll = undefined })
         await activePoll
     }
+    const marketPulseRefresher = startMarketPulseRefresher({
+        url: process.env.MARKET_PULSE_REFRESH_URL,
+        cronSecret: process.env.CRON_SECRET,
+    })
     const timer = setInterval(() => { void pollSchedules() }, POLL_INTERVAL_MS)
     const heartbeatTimer = setInterval(() => { void pulseHeartbeat() }, POLL_INTERVAL_MS)
     void pulseHeartbeat()
@@ -571,6 +576,7 @@ async function mainPersistent() {
         console.info("Received " + signal + "; stopping persistent autonomous worker.")
         clearInterval(timer)
         clearInterval(heartbeatTimer)
+        marketPulseRefresher?.stop()
         await activePoll
         await activeHeartbeat
         await runtime.close()

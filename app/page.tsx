@@ -7,7 +7,7 @@ import BrandMark from "@/components/BrandMark";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
 import { parseRwaAssetRecords } from "@/lib/spotAssets";
-import { getMarketPulseRows } from "@/lib/marketPulse";
+import { getMarketPulseSnapshot } from "@/lib/marketPulse";
 
 export const dynamic = "force-dynamic";
 
@@ -124,20 +124,19 @@ async function HomeData() {
     feedUnavailable = true;
   }
 
-  let rows: Awaited<ReturnType<typeof getMarketPulseRows>> = [];
-  if (!feedUnavailable) {
-    try {
-      rows = await getMarketPulseRows();
-      if (!rows.length) feedUnavailable = true;
-    } catch (error) {
-      console.error("Homepage market pulse unavailable:", error);
-      feedUnavailable = true;
-    }
+  const liveFeedAvailable = !feedUnavailable;
+  let rows: Awaited<ReturnType<typeof getMarketPulseSnapshot>>["rows"] = [];
+  let savedAt: number | null = null;
+  try {
+    ({ rows, savedAt } = await getMarketPulseSnapshot());
+  } catch (error) {
+    console.error("Homepage market pulse unavailable:", error);
   }
+  feedUnavailable = rows.length === 0;
 
   return (
     <>
-      <Homepage rows={rows} assetCount={tokens.length} feedUnavailable={feedUnavailable} />
+      <Homepage rows={rows} assetCount={tokens.length} feedUnavailable={feedUnavailable} savedAt={savedAt} liveFeedAvailable={liveFeedAvailable} />
       <GlobalNav />
     </>
   );
