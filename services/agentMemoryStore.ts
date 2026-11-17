@@ -662,7 +662,8 @@ const MIGRATIONS = [{
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
 const MAX_PAGE_SIZE = 100;
-const MAX_PERMISSION_TTL_MS = 30 * 60_000;
+// Owner-selected unattended window; on-chain caps and policy expiry remain authoritative.
+const MAX_PERMISSION_TTL_MS = 24 * 60 * 60_000;
 export type ProposalStatus =
   | "AWAITING_USER_APPROVAL"
   | "USER_REJECTED"
@@ -848,6 +849,7 @@ export interface AgentMemoryStorePort {
     updatedAt?: number;
   }): Promise<{ scheduleId: string }>;
   listSchedules(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
+  listExecutionHistory(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
@@ -2424,6 +2426,41 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       RETURNING schedule_id
     `;
     return { scheduleId: String(rows[0].schedule_id) };
+  }
+
+  async listExecutionHistory(ownerAddress: string, limit = 25): Promise<Array<Record<string, unknown>>> {
+    await this.ready;
+    const owner = requireOwnerAddress(ownerAddress);
+    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const rows = await this.sql`
+      SELECT c.claim_id, c.schedule_id, s.name AS schedule_name, c.status, c.failure_code,
+        c.provider_reference, c.execution_evidence, c.created_at, c.submitted_at, c.confirmed_at, c.failed_at
+      FROM wolv_agent_execution_claims c
+      LEFT JOIN wolv_agent_schedules s ON s.schedule_id = c.schedule_id AND s.owner_address = c.owner_address
+      WHERE c.owner_address = ${owner}
+      ORDER BY c.created_at DESC
+      LIMIT ${safeLimit}
+    `;
+    const time = (value: unknown) => value === null || value === undefined ? null : new Date(String(value)).getTime();
+    return rows.map((row) => {
+      const evidence = row.execution_evidence && typeof row.execution_evidence === "object"
+        ? row.execution_evidence as Record<string, unknown>
+        : null;
+      return {
+        claimId: String(row.claim_id),
+        scheduleId: String(row.schedule_id),
+        scheduleName: row.schedule_name === null ? null : String(row.schedule_name),
+        status: String(row.status),
+        failureCode: row.failure_code === null ? null : String(row.failure_code),
+        userOperationHash: row.provider_reference === null ? null : String(row.provider_reference),
+        transactionHash: typeof evidence?.transactionHash === "string" ? evidence.transactionHash : null,
+        blockNumber: typeof evidence?.blockNumber === "string" ? evidence.blockNumber : null,
+        amountIn: typeof evidence?.amountIn === "string" ? evidence.amountIn : null,
+        receivedAmount: typeof evidence?.receivedAmount === "string" ? evidence.receivedAmount : null,
+        createdAt: time(row.created_at),
+        settledAt: time(row.confirmed_at) ?? time(row.failed_at),
+      };
+    });
   }
 
   async listSchedules(ownerAddress: string, limit = 20): Promise<Array<Record<string, unknown>>> {

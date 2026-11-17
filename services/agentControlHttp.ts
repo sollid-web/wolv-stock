@@ -13,7 +13,8 @@ import { MarketCollectorError, MarketDataCollector } from "./marketDataCollector
 
 const HEADERS = { "Cache-Control": "no-store" };
 const MAX_BODY_BYTES = 8_192;
-const MAX_PERMISSION_TTL_MS = 30 * 60_000;
+// Owner-selected unattended window; on-chain caps and policy expiry remain authoritative.
+const MAX_PERMISSION_TTL_MS = 24 * 60 * 60_000;
 
 export type AgentControlHttpDependencies = {
   authorize?: (request: Request) => Promise<"authorized" | "unauthorized" | "not_configured" | "storage_unavailable">;

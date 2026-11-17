@@ -4,6 +4,7 @@ import {
   createAgentPublicClient,
   calculateDynamicQuote,
   encodeAgentBuyCall,
+  createFailoverTransport,
   getAgentSmartAccountConfig,
 } from "../lib/smartAccount.ts";
 import { decodeFunctionData, parseEther } from "viem";
@@ -18,6 +19,8 @@ const publicEnvKeys = [
   "NEXT_PUBLIC_ROUTER_ADDRESS",
   "NEXT_PUBLIC_POLICY_HOOK_ADDRESS",
   "NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS",
+  "AGENT_RPC_FALLBACK_URLS",
+  "AGENT_BUNDLER_FALLBACK_URLS",
 ];
 const previousEnv = new Map(
   publicEnvKeys.map((key) => [key, process.env[key]]),
@@ -286,4 +289,55 @@ test("rejects empty pools, excessive price impact, and invalid slippage", () => 
     ),
     /slippageBps must be an integer between 1 and 500/,
   );
+});
+
+function setTestnetEnv() {
+  process.env.NEXT_PUBLIC_CHAIN_ID = "97";
+  process.env.NEXT_PUBLIC_BSC_TESTNET_RPC_URL = "https://data-seed-prebsc-1-s1.bnbchain.org:8545";
+  process.env.NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL = "https://bundler.example.test/rpc";
+  process.env.NEXT_PUBLIC_ROUTER_ADDRESS = "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3";
+  process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS = "0x0000000000000000000000000000000000000123";
+  process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000456";
+}
+
+test("parses server-only RPC and bundler fallback lists", () => {
+  setTestnetEnv();
+  process.env.AGENT_RPC_FALLBACK_URLS = " https://rpc-a.example.test , https://rpc-b.example.test/v1?key=abc ";
+  process.env.AGENT_BUNDLER_FALLBACK_URLS = "https://bundler-b.example.test/rpc?apikey=xyz";
+  const config = getAgentSmartAccountConfig();
+  assert.deepEqual(config.rpcFallbackUrls, ["https://rpc-a.example.test/", "https://rpc-b.example.test/v1?key=abc"]);
+  assert.deepEqual(config.bundlerFallbackUrls, ["https://bundler-b.example.test/rpc?apikey=xyz"]);
+  delete process.env.AGENT_RPC_FALLBACK_URLS;
+  delete process.env.AGENT_BUNDLER_FALLBACK_URLS;
+  assert.deepEqual(getAgentSmartAccountConfig().rpcFallbackUrls, []);
+});
+
+test("rejects insecure or credentialed fallback URLs", () => {
+  setTestnetEnv();
+  for (const value of ["http://rpc.example.test", "https://user:pass@rpc.example.test", "https://rpc.example.test/#x", "nope"]) {
+    process.env.AGENT_RPC_FALLBACK_URLS = value;
+    assert.throws(() => getAgentSmartAccountConfig(), /AGENT_RPC_FALLBACK_URLS/);
+  }
+});
+
+test("failover transport uses the next endpoint when the primary fails", async () => {
+  const { createServer } = await import("node:http");
+  const { createPublicClient } = await import("viem");
+  const hits = { down: 0, up: 0 };
+  const down = createServer((_req, res) => { hits.down++; res.writeHead(503).end("unavailable"); });
+  const up = createServer((req, res) => {
+    let body = ""; req.on("data", c => body += c).on("end", () => {
+      hits.up++; const { id } = JSON.parse(body);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ jsonrpc: "2.0", id, result: "0x61" }));
+    });
+  });
+  await Promise.all([down, up].map(server => new Promise(done => server.listen(0, "127.0.0.1", done))));
+  try {
+    const url = server => `http://127.0.0.1:${server.address().port}`;
+    const client = createPublicClient({ transport: createFailoverTransport(url(down), [url(up)]) });
+    assert.equal(await client.getChainId(), 97);
+    assert.ok(hits.down >= 1 && hits.up === 1);
+  } finally {
+    down.close(); up.close();
+  }
 });
