@@ -505,7 +505,26 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     assert.equal(activeSchedule?.hasActiveExecutionClaim, true);
     assert.equal((await store.claimDueAutonomousAgentSchedules(now + 70_000, 20)).length, 0);
 
-    await store.updateExecutionClaim(activeClaimId, ownerA, { status: "CONFIRMED", at: now + 70_000 });
+    await store.updateExecutionClaim(activeClaimId, ownerA, {
+      status: "CONFIRMED",
+      at: now + 70_000,
+      evidence: { transactionHash: "0x" + "ab".repeat(32), receivedAmount: "450041711401365" },
+    });
+    const evidenceReader = (await import("postgres")).default(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
+    let storedEvidence;
+    try {
+      [storedEvidence] = await evidenceReader`
+        SELECT jsonb_typeof(execution_evidence) AS kind, execution_evidence->>'transactionHash' AS tx,
+          execution_evidence->>'receivedAmount' AS received
+        FROM wolv_agent_execution_claims WHERE claim_id = ${activeClaimId}`;
+    } finally {
+      await evidenceReader.end();
+    }
+    assert.deepEqual(
+      { ...storedEvidence },
+      { kind: "object", tx: "0x" + "ab".repeat(32), received: "450041711401365" },
+      "execution evidence must be stored as a queryable JSON object",
+    );
     const claimedAfterSettlement = await store.claimDueAutonomousAgentSchedules(now + 70_000, 20);
     assert.equal(claimedAfterSettlement.length, 1);
     assert.equal(claimedAfterSettlement[0].scheduleId, autonomousScheduleId);

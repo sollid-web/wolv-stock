@@ -649,6 +649,14 @@ const MIGRATIONS = [{
     `ALTER TABLE wolv_agent_execution_claims
       ADD COLUMN IF NOT EXISTS execution_evidence jsonb`,
   ],
+}, {
+  version: 13,
+  statements: [
+    // Evidence was briefly written as a JSON string inside jsonb; unwrap it (idempotent).
+    `UPDATE wolv_agent_execution_claims
+      SET execution_evidence = (execution_evidence #>> '{}')::jsonb
+      WHERE jsonb_typeof(execution_evidence) = 'string'`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -2691,7 +2699,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         provider_reference = COALESCE(${providerReference}, provider_reference),
         failure_code = COALESCE(${update.failureCode ?? null}, failure_code),
         failure_detail = COALESCE(${update.failureDetail ?? null}, failure_detail),
-        execution_evidence = COALESCE(${update.evidence ? JSON.stringify(update.evidence) : null}::jsonb, execution_evidence),
+        execution_evidence = COALESCE(${update.evidence ? this.sql.json(jsonValue(update.evidence)) : null}, execution_evidence),
         simulated_at = CASE WHEN ${update.status} = 'SIMULATED' THEN ${new Date(update.at)} ELSE simulated_at END,
         submitted_at = CASE WHEN ${update.status} = 'SUBMITTED' THEN ${new Date(update.at)} ELSE submitted_at END,
         confirmed_at = CASE WHEN ${update.status} = 'CONFIRMED' THEN ${new Date(update.at)} ELSE confirmed_at END,
