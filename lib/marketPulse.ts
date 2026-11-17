@@ -157,16 +157,28 @@ export async function updateMarketPulse(): Promise<{ updated: string[]; missing:
 export async function getMarketPulseRows(
   tickers: readonly string[] = MARKET_PULSE_TICKERS,
 ): Promise<OpportunityRow[]> {
-  if (!tickers.length) return [];
+  return (await getMarketPulseSnapshot(tickers)).rows;
+}
+
+/**
+ * Last saved comparison per ticker plus the time of the oldest saved row. Served independently of
+ * the live Binance list so a temporary upstream failure shows the labelled saved snapshot instead
+ * of an empty page.
+ */
+export async function getMarketPulseSnapshot(
+  tickers: readonly string[] = MARKET_PULSE_TICKERS,
+): Promise<{ rows: OpportunityRow[]; savedAt: number | null }> {
+  if (!tickers.length) return { rows: [], savedAt: null };
 
   const { data, error } = await getSupabaseClient()
     .from(MARKET_PULSE_TABLE)
-    .select("ticker,payload")
+    .select("ticker,payload,updated_at")
     .in("ticker", [...tickers]);
   if (error) throw new Error(`Supabase market pulse read failed: ${error.message}`);
   if (!data) throw new Error("Supabase returned no market pulse query result.");
 
   const byTicker = new Map<string, OpportunityRow>();
+  let savedAt: number | null = null;
   for (const record of data) {
     if (!isRecord(record) || typeof record.ticker !== "string") {
       throw new Error("Supabase returned a malformed market pulse record.");
@@ -176,9 +188,14 @@ export async function getMarketPulseRows(
       throw new Error("Supabase market pulse ticker does not match its stored payload.");
     }
     byTicker.set(row.ticker, row);
+    const updatedAt = typeof record.updated_at === "string" ? Date.parse(record.updated_at) : NaN;
+    if (Number.isFinite(updatedAt)) savedAt = savedAt === null ? updatedAt : Math.min(savedAt, updatedAt);
   }
-  return tickers.flatMap((ticker) => {
-    const row = byTicker.get(ticker);
-    return row ? [row] : [];
-  });
+  return {
+    rows: tickers.flatMap((ticker) => {
+      const row = byTicker.get(ticker);
+      return row ? [row] : [];
+    }),
+    savedAt,
+  };
 }

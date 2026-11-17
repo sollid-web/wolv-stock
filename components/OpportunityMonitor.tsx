@@ -12,7 +12,8 @@ import {
   MAX_RELIABLE_GAP_PERCENT,
   positiveNumberValue,
 } from "@/lib/opportunityMath";
-import { getMarketPulseRows, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
+import { getMarketPulseSnapshot, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
+import SavedSnapshotNotice from "@/components/SavedSnapshotNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -100,16 +101,17 @@ async function OpportunityMonitorData({ searchParams }: { searchParams: SearchPa
     feedUnavailable = true;
   }
 
-  let rows: Awaited<ReturnType<typeof getMarketPulseRows>> = [];
-  if (!feedUnavailable) {
-    try {
-      rows = (await getMarketPulseRows()).slice(0, limit);
-      if (!rows.length) feedUnavailable = true;
-    } catch (error) {
-      console.error("Opportunity monitor market pulse unavailable:", error);
-      feedUnavailable = true;
-    }
+  const liveFeedAvailable = !feedUnavailable;
+  let rows: Awaited<ReturnType<typeof getMarketPulseSnapshot>>["rows"] = [];
+  let savedAt: number | null = null;
+  try {
+    const snapshot = await getMarketPulseSnapshot();
+    rows = snapshot.rows.slice(0, limit);
+    savedAt = snapshot.savedAt;
+  } catch (error) {
+    console.error("Opportunity monitor market pulse unavailable:", error);
   }
+  feedUnavailable = rows.length === 0;
   const unusual = tokens
     .filter((token) => {
       const multiplier = positiveNumberValue(token.tokenToShareRatio);
@@ -131,9 +133,10 @@ async function OpportunityMonitorData({ searchParams }: { searchParams: SearchPa
             ? "Live comparison unavailable"
             : `Showing ${rows.length} of ${MARKET_PULSE_TICKERS.length} tracked tickers`}
         </span>
-        <span>{feedUnavailable ? "No price or opportunity inferred" : `${tokens.length} eligible BSC asset records`}</span>
+        <span>{feedUnavailable ? "No price or opportunity inferred" : liveFeedAvailable ? `${tokens.length} eligible BSC asset records` : "Saved snapshot"}</span>
       </div>
 
+      {!feedUnavailable && <SavedSnapshotNotice savedAt={savedAt} liveFeedAvailable={liveFeedAvailable} />}
       {feedUnavailable ? (
         <div role="alert" className="mb-6 rounded-xl border border-yellow-800/50 bg-yellow-900/10 p-4 text-sm leading-relaxed text-yellow-200">
           <div className="font-bold">Live RWA data feed unavailable</div>

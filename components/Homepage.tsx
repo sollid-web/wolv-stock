@@ -1,3 +1,4 @@
+import SavedSnapshotNotice from "@/components/SavedSnapshotNotice";
 import Image from "next/image";
 import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
@@ -12,6 +13,8 @@ type HomepageProps = {
   rows: OpportunityRow[];
   assetCount: number;
   feedUnavailable: boolean;
+  savedAt?: number | null;
+  liveFeedAvailable?: boolean;
 };
 
 function price(value: number | null): string {
@@ -353,7 +356,7 @@ function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) 
   );
 }
 
-export default function Homepage({ rows, assetCount, feedUnavailable }: HomepageProps) {
+export default function Homepage({ rows, assetCount, feedUnavailable, savedAt = null, liveFeedAvailable = true }: HomepageProps) {
   const featured = rows[0];
   const spreadCount = rows.filter((row) => row.crossVenueSpread != null).length;
 
@@ -420,6 +423,11 @@ export default function Homepage({ rows, assetCount, feedUnavailable }: Homepage
         </div>
       )}
 
+      {!feedUnavailable && (
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <SavedSnapshotNotice savedAt={savedAt} liveFeedAvailable={liveFeedAvailable} />
+        </div>
+      )}
       <Ticker rows={rows} />
 
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:space-y-16 sm:px-6 sm:py-14">
