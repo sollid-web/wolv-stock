@@ -12,6 +12,7 @@ import {
 } from "viem"
 import { useAccount, useSignMessage, useWalletClient } from "wagmi"
 import AgentSetupForm, { type AgentConfiguredStrategy } from "@/components/AgentSetupForm"
+import { assertOfficialPolicyHookFeed } from "@/lib/agentPermission"
 import {
     AGENT_POLICY_HOOK_ABI
 } from "@/lib/setupAgentPolicy"
@@ -98,6 +99,9 @@ function StatusIndicator({ label, active }: { label: string; active: boolean }) 
 }
 
 function getFriendlyError(error: unknown): string {
+    if (error instanceof Error && error.message.startsWith("UNOFFICIAL_FEED: ")) {
+        return error.message.slice("UNOFFICIAL_FEED: ".length)
+    }
     const message = error instanceof Error ? error.message.toLowerCase() : ""
     if (/user rejected|user denied|rejected the request|code.?4001/.test(message)) {
         return "Wallet approval was declined. No policy change was completed."
@@ -158,6 +162,9 @@ export default function AgentPolicyPanel() {
         if (!validatorAddress) {
             throw new Error("Configure NEXT_PUBLIC_POLICY_HOOK_ADDRESS with the deployed validator address.")
         }
+        // Refuse a policy hook wired to anything other than the official Chainlink BNB/USD proxy
+        // (e.g. a retired deployment that used a self-deployed mock feed).
+        await assertOfficialPolicyHookFeed(currentPublicClient, validatorAddress, currentChainId)
         const [installed, revoked, policy, targetToken, paused] = await Promise.all([
             currentPublicClient.readContract({
                 address: validatorAddress,

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getAddress, isAddress, parseEther, type Address, type Hex } from "viem";
 import { hashAgentPolicy } from "@/lib/agentPolicyHash";
-import { verifyAgentSessionEnableSignature } from "@/lib/agentPermission";
+import { assertOfficialPolicyHookFeed, verifyAgentSessionEnableSignature } from "@/lib/agentPermission";
 import { createAgentPublicClient, getAgentSmartAccountConfig } from "@/lib/smartAccount";
 import { createViemValidatorReader } from "@/services/agentWorker";
 import { resolveAgentExecutionNetwork } from "@/services/agentExecutor";
@@ -173,6 +173,7 @@ export async function POST(request: Request) {
         slippageBps: strategyConfig.slippageBps,
         maxPriceImpactBps: strategyConfig.maxPriceImpactBps,
       };
+      await assertOfficialPolicyHookFeed(createAgentPublicClient(config), config.policyHookAddress, config.chain.id);
       const validator = await createViemValidatorReader(
         createAgentPublicClient(config),
         config.policyHookAddress,

@@ -196,3 +196,29 @@ export async function verifyAgentSessionEnableSignature(
     }
     return { ok: true, alreadyEnabled: false }
 }
+
+/** Official Chainlink BNB/USD proxies a production policy hook must be wired to. */
+export const OFFICIAL_BNB_USD_FEEDS: Readonly<Record<number, Address>> = {
+    97: getAddress("0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526"),
+    56: getAddress("0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE"),
+}
+
+const hookFeedAbi = [{
+    type: "function",
+    name: "bnbUsdFeed",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }]
+}] as const
+
+/**
+ * Rejects a policy hook whose immutable BNB/USD feed is not the official Chainlink proxy for
+ * the chain (for example a retired deployment that used a self-deployed mock feed).
+ */
+export async function assertOfficialPolicyHookFeed(client: Client, hook: Address, chainId: number): Promise<void> {
+    const feed = await readContract(client, { address: getAddress(hook), abi: hookFeedAbi, functionName: "bnbUsdFeed" })
+    const expected = OFFICIAL_BNB_USD_FEEDS[chainId]
+    if (!expected || getAddress(feed) !== expected) {
+        throw new Error(`UNOFFICIAL_FEED: Policy hook ${getAddress(hook)} uses BNB/USD feed ${getAddress(feed)}, not the official Chainlink proxy for chain ${chainId}. Set NEXT_PUBLIC_POLICY_HOOK_ADDRESS to the current V2 deployment (exported shell variables override .env files) and restart.`)
+    }
+}
