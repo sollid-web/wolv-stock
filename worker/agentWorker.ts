@@ -476,8 +476,15 @@ async function createPersistentWorkerRuntime() {
     async function heartbeat() {
         const now = Date.now()
         const network = resolveAgentExecutionNetwork(config.chain.id)
-        const control = await store.getControlState()
-        const globallyPaused = control.emergency_stop === true || control.stop_monitoring === true || control.reject_new_opportunities === true
+        const control = await store.getControlState(now)
+        const explicitlyStopped = control.emergency_stop === true || control.stop_monitoring === true || control.reject_new_opportunities === true
+        // An owner release of the global stop is a time-boxed lease: once it lapses the worker
+        // fails closed until the owner releases it again.
+        const leaseExpired = !explicitlyStopped && control.permission_active !== true
+        const globallyPaused = explicitlyStopped || leaseExpired
+        const pauseReason = leaseExpired
+            ? "The owner's global control release has expired. Release the global stop again from /agent."
+            : String(control.stop_reason ?? "Global agent control is paused.")
         await store.recordWorkerHeartbeat({
             workerId,
             workerMode: "PERSISTENT_AUTONOMOUS",
@@ -487,11 +494,11 @@ async function createPersistentWorkerRuntime() {
                 executionGateEnabled: network.allowed,
                 executionGateReason: network.allowed ? null : network.reason,
                 globallyPaused,
-                pauseReason: globallyPaused ? control.stop_reason ?? "Global agent control is paused." : null,
+                pauseReason: globallyPaused ? pauseReason : null,
                 processId: process.pid,
             },
         })
-        return { network, globallyPaused, pauseReason: control.stop_reason ?? "Global agent control is paused." }
+        return { network, globallyPaused, pauseReason }
     }
 
     async function poll() {
