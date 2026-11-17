@@ -33,6 +33,21 @@ Required worker environment:
 
 The worker refuses to start without a database URL; there is no static or in-memory mode.
 
+### Reference testnet run (verified 2026-11-17)
+
+The verified testnet worker runs against a local, non-production Postgres and a minimal, gitignored env file containing only the keys listed above (no production DB URL, no deployer key):
+
+```bash
+docker run -d --name wolv-testnet-pg --restart unless-stopped -e POSTGRES_USER=wolv_test \
+  -e POSTGRES_PASSWORD=<random> -e POSTGRES_DB=wolv_testnet -p 127.0.0.1:55432:5432 \
+  -v wolv-testnet-pg:/var/lib/postgresql/data postgres:16-alpine
+docker build -f Dockerfile.agent-worker -t wolv-agent-worker:$(git rev-parse --short HEAD) .
+docker run -d --name wolv-agent-worker-testnet --restart unless-stopped --network host \
+  --env-file .env.worker.testnet.docker wolv-agent-worker:$(git rev-parse --short HEAD)
+```
+
+`NODE_ENV=test` is set in that env file only because the local test DB has no TLS; production images keep `NODE_ENV=production`, which enforces `verify-full` TLS. Trading also requires the owner's global-stop release from `/agent` (time-boxed; the worker fails closed when it lapses). Rehearse changes first with `scripts/fork-agent-e2e.mjs` on an anvil fork.
+
 The database must be reachable from the worker host. Use a dedicated restricted database role and TLS where supported. Keep the delegated signer key in the host's secret store, restrict access to worker operators, and fund it only as required for the testnet session.
 
 ## Web application configuration

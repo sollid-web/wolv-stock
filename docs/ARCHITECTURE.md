@@ -22,7 +22,7 @@ flowchart LR
     end
     subgraph Chain["BNB Smart Chain (97 first)"]
         K[Kernel v3.1 smart account<br/>root: ZeroDev ECDSA validator]
-        PV[Agent permission validator<br/>CallPolicy: router.swapExactETHForTokens ≤0.5 BNB]
+        PV[Agent permission validator<br/>agent ECDSA signer + TimestampPolicy (policy expiry)]
         H[TradingAgentPolicyValidatorV2 hook]
         CL[Chainlink BNB/USD + token/USD]
         R[PancakeSwap V2 router]
@@ -68,20 +68,20 @@ Off-chain checks (worker, executor, API) give early, explainable rejections. The
 1. **Account.** Kernel v3.1 (`kernel.advanced.v0.3.1`, implementation `0xBAC849bB…4b4D`), EntryPoint v0.7, root validator = ZeroDev ECDSA validator `0x845ADb2C…4cE57` (validation type `0x01`). The owner is read from `ecdsaValidatorStorage(account)`. It is never inferred from a deployer address or a locally derived address. The configured testnet account `0x08c35E16…502De` was verified to be exactly `KERNEL_V3_1` + ECDSA + owner `0xd9E7A9D6…eef0` + index 0.
 2. **Hook install** (owner UserOp): `installModule(4, V2, 0x00‖abi(targetToken))`, which initializes hook state for the account.
 3. **Policy** (owner UserOp): `setAccountPolicy(account, intentSigner, policyHash, maxTradeValue, expiresAt, entryPriceMicros, maxSlippageBps, maxPriceImpactBps)`. The UI reads it back and compares it.
-4. **Agent authorization** (owner signature, once): Kernel `Enable` typed data for the agent permission validator (agent signer + CallPolicy) paired with the V2 hook. It is bound to the account, chain and Kernel validator nonce.
+4. **Agent authorization** (owner signature, once): Kernel `Enable` typed data for the agent permission validator (agent signer + TimestampPolicy bound to the on-chain policy expiry) paired with the V2 hook. It is bound to the account, chain and Kernel validator nonce.
 5. **First autonomous trade** runs in Kernel enable mode and installs the agent validator using that signature. Every later trade uses the installed validator. No owner involvement.
 6. **Revocation:** owner `revokeAccount` (terminal for the hook) or uninstall; guardian `setPaused(true)` stops every account; schedule pause stops future cycles.
 
 ## Execution lifecycle (per due schedule)
 
-1. Worker heartbeat; abort if gates are off or the global control is stopped.
+1. Worker heartbeat; abort if gates are off, the global control is stopped, or the owner's time-boxed release has expired.
 2. Expire `CLAIMED` leases older than 5 minutes (never-submitted runs only).
 3. Atomically claim due `BSC_AGENT_TRADE` schedules with no active claim (`FOR UPDATE SKIP LOCKED`), plus a unique `(owner, run_key)` claim row.
 4. Validate the stored strategy and V4 policy hash against on-chain policy state.
 5. Market data: guardian-allowlisted Chainlink token/USD feed (freshness, completeness, decimals) and live PancakeSwap V2 reserves.
 6. Evaluate trigger (oracle price ≤ entry ceiling), price impact, slippage and rolling caps.
 7. Executor: gates → validator preflight (installed, not revoked/paused, policy hash, signer, risk limits, expiry, rolling volume) → re-quote → random 256-bit intent nonce → agent signs EIP-712 `TradeIntent` → UserOp via bundler.
-8. On-chain: permission validator (agent key, CallPolicy) → hook `preCheck` (route, recipient, signed intent, nonce replay, deadline ≤15 s, caps, Chainlink oracle floor) → swap → `postCheck` (actual balance delta ≥ `amountOutMin`).
+8. On-chain: permission validator (agent key, TimestampPolicy; Kernel forces `executeUserOp` for hooked validators) → hook `preCheck` (route, recipient, signed intent, nonce replay, deadline ≤15 s, caps, Chainlink oracle floor) → swap → `postCheck` (actual balance delta ≥ `amountOutMin`).
 9. Verify: hook `AgentExecutionSucceeded` for this account, target-token `Transfer` logs to the account ≥ minimum, balance increase ≥ minimum. Persist `CONFIRMED` with evidence.
 10. Any failure after submission is **uncertain**: the claim becomes `STOPPED`, the schedule is disabled, and a CRITICAL alert is raised. Nothing resubmits automatically.
 
@@ -95,7 +95,7 @@ Not enforced on-chain (off-chain only): strategy evaluation interval, the "buy b
 
 - The owner key never leaves the owner's wallet. The worker builds the owner validator from a public address; it cannot sign.
 - `AGENT_PRIVATE_KEY` exists only in the worker's secret store. The web tier verifies against `NEXT_PUBLIC_AGENT_SIGNER_ADDRESS`.
-- The agent key can only call one router selector with ≤0.5 BNB (CallPolicy), and every such call passes the hook. The hook has no pass-through for policy management.
+- Kernel restricts the agent validator to `execute` and forces every agent UserOperation through `executeUserOp`, i.e. through the V2 hook, which allows only single-call `swapExactETHForTokens` on the approved router, WBNB→target, recipient = account, ≤ the owner's cap (≤0.5 BNB). ZeroDev CallPolicy is not used because it cannot parse `executeUserOp`. The hook has no pass-through for policy management.
 - The guardian (V2 deployer) can only pause globally and manage the Chainlink feed allowlist. It cannot move funds or change account policies. Feed changes are a trust assumption: guardian scripts accept only pinned official Chainlink proxies (`scripts/chainlinkFeeds.mjs`).
 - Mainnet requires two additional explicit flags; the deploy and feed scripts are testnet-only.
 
