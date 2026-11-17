@@ -129,6 +129,9 @@ export type ConfigureAgentPolicyResult = {
     policyUserOperationHash: Hex
 }
 
+const NONCE_SYNC_TIMEOUT_MS = 60_000
+const NONCE_SYNC_POLL_MS = 1_500
+
 export async function configureAgentPolicy(
     input: ConfigureAgentPolicyInput
 ): Promise<ConfigureAgentPolicyResult> {
@@ -170,6 +173,18 @@ export async function configureAgentPolicy(
         slippageBps: input.slippageBps,
         maxPriceImpactBps: input.maxPriceImpactBps
     })
+    // Public BSC RPCs are load-balanced and can lag the bundler by several blocks. Every owner
+    // UserOperation below is followed by waiting until the EntryPoint nonce visibly advances, so
+    // the next operation never reuses a stale nonce and readbacks see post-operation state.
+    const waitForNonceAbove = async (previous: bigint) => {
+        const deadline = Date.now() + NONCE_SYNC_TIMEOUT_MS
+        while (Date.now() < deadline) {
+            if (await input.ownerKernelClient.account.getNonce() > previous) return
+            await new Promise(resolve => setTimeout(resolve, NONCE_SYNC_POLL_MS))
+        }
+        throw new Error("The RPC node did not observe the confirmed UserOperation in time. Retry the setup; completed steps are skipped.")
+    }
+
     let installed = await input.publicClient.readContract({
         address: validatorAddress,
         abi: AGENT_POLICY_HOOK_ABI,
@@ -187,7 +202,9 @@ export async function configureAgentPolicy(
             functionName: "installModule",
             args: [HOOK_MODULE_TYPE, validatorAddress, hookData]
         })
+        const nonceBeforeInstall = await input.ownerKernelClient.account.getNonce()
         installUserOperationHash = await input.ownerKernelClient.sendUserOperation({
+            nonce: nonceBeforeInstall,
             calls: [{ to: account, value: BigInt(0), data: installCall }]
         })
         input.onUserOperationSubmitted?.("install", installUserOperationHash)
@@ -197,6 +214,7 @@ export async function configureAgentPolicy(
         if (!installReceipt.success) {
             throw new Error(`Hook installation UserOperation reverted: ${installUserOperationHash}`)
         }
+        await waitForNonceAbove(nonceBeforeInstall)
         installed = await input.publicClient.readContract({
             address: validatorAddress,
             abi: AGENT_POLICY_HOOK_ABI,
@@ -223,7 +241,9 @@ export async function configureAgentPolicy(
         functionName: "setAccountPolicy",
         args: [account, intentSigner, policyHash, input.maxTradeValue, input.expiresAt, input.entryPriceMicros, input.slippageBps, input.maxPriceImpactBps]
     })
+    const nonceBeforePolicy = await input.ownerKernelClient.account.getNonce()
     const policyUserOperationHash = await input.ownerKernelClient.sendUserOperation({
+        nonce: nonceBeforePolicy,
         calls: [{ to: validatorAddress, value: BigInt(0), data: policyCall }]
     })
     input.onUserOperationSubmitted?.("policy", policyUserOperationHash)
@@ -233,6 +253,7 @@ export async function configureAgentPolicy(
     if (!policyReceipt.success) {
         throw new Error(`Policy configuration UserOperation reverted: ${policyUserOperationHash}`)
     }
+    await waitForNonceAbove(nonceBeforePolicy)
     const policyState = await input.publicClient.readContract({
         address: validatorAddress,
         abi: AGENT_POLICY_HOOK_ABI,

@@ -585,6 +585,11 @@ export default function AgentPolicyPanel() {
                         Smart account (chain {configuredChainId}): {currentDerivedAccount}
                     </p>
                 )}
+                {validatorAddress && (
+                    <p className="mt-1 break-all text-xs text-slate-500">
+                        Policy hook: {validatorAddress}
+                    </p>
+                )}
             </div>
 
             {!isConnected && <p className="mb-5 text-sm text-slate-400">Connect your owner wallet to load or configure its on-chain policy.</p>}
