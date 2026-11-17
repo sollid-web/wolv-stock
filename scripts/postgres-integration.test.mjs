@@ -492,6 +492,56 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     const rescheduled = (await store.listSchedules(ownerA, 50)).find(row => row.scheduleId === autonomousScheduleId);
     assert.ok(Number(rescheduled?.nextRunAt) >= now + 61_000);
 
+    // Two independent workers (separate connection pools) race for the same due schedule and
+    // the same run: exactly one schedule claim and exactly one execution claim may win.
+    const raceScheduleId = "66666666-6666-4666-8666-666666666666";
+    await store.saveSchedule({
+      ...scheduleBase,
+      scheduleId: raceScheduleId,
+      name: "bsc-autonomous-race",
+      strategyType: "BSC_AGENT_TRADE",
+      executionMode: "AUTONOMOUS",
+      strategyConfig: { id: "race-entry" },
+    });
+    const rivalWorkerStore = new AgentMemoryStore(TEST_DATABASE_URL);
+    try {
+      await rivalWorkerStore.initialize();
+      const raceRounds = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+        (index % 2 === 0 ? store : rivalWorkerStore).claimDueAutonomousAgentSchedules(now, 20)));
+      const raceWinners = raceRounds.flat().filter(row => row.scheduleId === raceScheduleId);
+      assert.equal(raceWinners.length, 1, "a due schedule must be claimed by exactly one worker");
+
+      const raceRunKey = "integration-race-run-" + randomUUID();
+      const executionRace = await Promise.allSettled([store, rivalWorkerStore, store, rivalWorkerStore].map(worker =>
+        worker.claimExecution({
+          claimId: randomUUID(),
+          scheduleId: raceScheduleId,
+          ownerAddress: ownerA,
+          runKey: raceRunKey,
+          policyHash: schedulePolicyHash,
+          createdAt: now + 500,
+        })));
+      const executionWinners = executionRace.filter(outcome => outcome.status === "fulfilled" && typeof outcome.value?.claimId === "string");
+      assert.equal(executionWinners.length, 1, "a run must produce exactly one execution claim");
+      const [raceClaims] = await (async () => {
+        const reader = (await import("postgres")).default(TEST_DATABASE_URL, { max: 1, idle_timeout: 5, connect_timeout: 3, prepare: false });
+        try {
+          return [await reader`SELECT count(*)::int AS n FROM wolv_agent_execution_claims WHERE run_key = ${raceRunKey}`];
+        } finally {
+          await reader.end();
+        }
+      })();
+      assert.equal(raceClaims[0].n, 1, "exactly one execution claim row per run");
+      await store.setScheduleEnabled(ownerA, raceScheduleId, false, now + 600);
+      await store.updateExecutionClaim(executionWinners[0].value.claimId, ownerA, { status: "CONFIRMED", at: now + 700 });
+      const afterPause = await store.claimDueAutonomousAgentSchedules(now + 60 * 60_000, 20);
+      assert.equal(afterPause.filter(row => row.scheduleId === raceScheduleId).length, 0, "a paused schedule must not be claimed");
+      const otherRows = afterPause.filter(row => row.scheduleId !== raceScheduleId);
+      for (const row of otherRows) await store.rescheduleAutonomousAgentSchedule(row.ownerAddress, row.scheduleId, now);
+    } finally {
+      await rivalWorkerStore.close();
+    }
+
     const activeClaimId = randomUUID();
     await store.claimExecution({
       claimId: activeClaimId,

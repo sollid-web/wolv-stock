@@ -235,6 +235,81 @@ contract TradingAgentPolicyValidatorV2Test {
         validator.preCheck(address(entryPoint), 0, callData);
     }
 
+    // ---- Negative-path acceptance: the hook must refuse each unauthorized execution. ----
+
+    function _reconfigurePolicy(address signer, uint192 maxTradeValue, uint64 expiresAt) private {
+        vm.prank(ACCOUNT);
+        validator.setAccountPolicy(ACCOUNT, signer, POLICY, maxTradeValue, expiresAt, 2_000_000, 100, 150);
+    }
+
+    function _validTradeCallData() private returns (bytes memory) {
+        return _buildSignedTrade(59_400_000_000_000_000_000, 2_000_000, 100, 150, 100_000_000);
+    }
+
+    function testRejectsIntentFromUnauthorizedSigner() public {
+        bytes memory callData = _validTradeCallData();
+        _reconfigurePolicy(address(0xBEEF), 0.5 ether, uint64(block.timestamp + 1 days));
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.PolicyIntentSignatureInvalid.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsTradeAbovePolicyCap() public {
+        bytes memory callData = _validTradeCallData();
+        _reconfigurePolicy(SIGNER, 0.05 ether, uint64(block.timestamp + 1 days));
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.TradeValueTooHigh.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsTradeAfterPolicyExpiry() public {
+        bytes memory callData = _validTradeCallData();
+        _reconfigurePolicy(SIGNER, 0.5 ether, uint64(block.timestamp + 5));
+        vm.warp(block.timestamp + 6);
+        bnbFeed.setRound(60_000_000_000, block.timestamp, 2);
+        tokenFeed.setRound(100_000_000, block.timestamp, 2);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.PolicyExpired.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testGuardianPauseBlocksExecution() public {
+        bytes memory callData = _validTradeCallData();
+        validator.setPaused(true);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.AgentPaused.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRevokedAccountCannotExecute() public {
+        bytes memory callData = _validTradeCallData();
+        vm.prank(ACCOUNT);
+        validator.revokeAccount(ACCOUNT);
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.AccountRevoked.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsSwapIntoUnapprovedToken() public {
+        bytes memory callData = _validTradeCallData();
+        V2Token approvedToken = new V2Token();
+        vm.prank(ACCOUNT);
+        validator.onUninstall(bytes(""));
+        vm.prank(ACCOUNT);
+        validator.onInstall(abi.encodePacked(bytes1(0), abi.encode(address(approvedToken))));
+        _reconfigurePolicy(SIGNER, 0.5 ether, uint64(block.timestamp + 1 days));
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.InvalidSwapRoute.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(entryPoint), 0, callData);
+    }
+
+    function testRejectsCallsNotFromEntryPoint() public {
+        bytes memory callData = _validTradeCallData();
+        vm.expectPartialRevert(TradingAgentPolicyValidatorV2.OnlyEntryPoint.selector);
+        vm.prank(ACCOUNT);
+        validator.preCheck(address(0xBAD), 0, callData);
+    }
+
     function _buildSignedTrade(
         uint256 amountOutMin,
         uint64 entryPriceMicros,
