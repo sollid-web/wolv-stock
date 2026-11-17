@@ -14,7 +14,7 @@ import {
     isAddress,
     parseEther
 } from "viem"
-import { getBytecode, getChainId, readContract } from "viem/actions"
+import { estimateFeesPerGas, getBytecode, getChainId, readContract } from "viem/actions"
 import { bsc, bscTestnet } from "viem/chains"
 import {
     AGENT_ENTRY_POINT,
@@ -502,7 +502,13 @@ export async function createAgentSmartAccountClient(
         account,
         chain: config.chain,
         client: publicClient,
-        bundlerTransport: http(config.bundlerRpcUrl)
+        bundlerTransport: http(config.bundlerRpcUrl),
+        // The SDK's default fee source is ZeroDev's `zd_getUserOperationGasPrice`, which
+        // standard ERC-4337 bundlers (e.g. Pimlico) do not implement. Use chain EIP-1559 fees,
+        // exactly as the owner's browser client does.
+        userOperation: {
+            estimateFeesPerGas: async () => estimateFeesPerGas(publicClient, { type: "eip1559" })
+        }
     })
 
     return { account, client }
