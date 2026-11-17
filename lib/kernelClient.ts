@@ -12,12 +12,16 @@ import {
 import { createKernelAccountClient } from "@zerodev/sdk/clients"
 import {
     createPublicClient,
+    getAddress,
     http,
+    type Address,
+    type Hex,
     type WalletClient
 } from "viem"
 import { estimateFeesPerGas } from "viem/actions"
 import { toAccount } from "viem/accounts"
 import { getBscRpcUrl, getConfiguredBscChain } from "./bscChain.ts"
+import { getAgentSessionEnableTypedData, type AgentPermissionTargets } from "./agentPermission.ts"
 
 const BSC_ENTRY_POINT_ADDRESS = "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
 const ENTRY_POINT = getEntryPoint("0.7")
@@ -112,3 +116,32 @@ export async function getKernelClient(signer: WalletClient) {
 }
 
 export type AgentKernelClient = Awaited<ReturnType<typeof getKernelClient>>
+
+/**
+ * The owner's ONE-TIME authorization of the delegated agent: a signature over Kernel's
+ * `Enable` typed data for the exact agent validator (agent signer, router CallPolicy, V2
+ * hook, target token). It is not a trade approval. The worker presents it once, in the first
+ * autonomous UserOperation, which installs the validator; later trades need no owner action.
+ * Returns undefined when the validator is already enabled on-chain.
+ */
+export async function signAgentSessionAuthorization(
+    signer: WalletClient,
+    input: { account: Address; agentSignerAddress: Address; targets: AgentPermissionTargets }
+): Promise<Hex | undefined> {
+    const signerAccount = signer.account
+    if (!signerAccount) throw new Error("Connect the owner wallet before authorizing the agent.")
+    const { alreadyEnabled, typedData } = await getAgentSessionEnableTypedData(getAgentPublicClient(), {
+        account: getAddress(input.account),
+        ownerAddress: getAddress(signerAccount.address),
+        agentSignerAddress: getAddress(input.agentSignerAddress),
+        targets: input.targets
+    })
+    if (alreadyEnabled || !typedData) return undefined
+    return signer.signTypedData({
+        account: signerAccount,
+        domain: typedData.domain,
+        types: typedData.types,
+        primaryType: typedData.primaryType,
+        message: typedData.message
+    })
+}

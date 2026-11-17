@@ -2,9 +2,10 @@ import type { KernelValidator } from "@zerodev/sdk"
 import type { Signer } from "@zerodev/sdk/types"
 import { toECDSASigner } from "@zerodev/permissions/signers"
 import type { Address, Client, Hex } from "viem"
-import { concatHex, encodeAbiParameters, getAddress } from "viem"
+import { concatHex, decodeEventLog, encodeAbiParameters, getAddress, parseAbi, parseAbiItem } from "viem"
 import { readContract } from "viem/actions"
 import { hashAgentPolicy } from "../lib/agentPolicyHash.ts"
+import { verifySwapReceiptOutput } from "../lib/swapOutcomeVerification.ts"
 import {
     buildAgentBuyCall,
     createAgentSmartAccountClient,
@@ -33,6 +34,7 @@ export type AgentExecutorErrorCode =
     | "BUNDLER_MEMPOOL_REJECTED"
     | "ONCHAIN_EXECUTION_REVERTED"
     | "USEROP_RECEIPT_TIMEOUT"
+    | "SWAP_OUTCOME_UNVERIFIED"
     | "RPC_FAILURE"
 
 export class AgentExecutorError extends Error {
@@ -70,6 +72,21 @@ export type AgentExecutorTelemetry = {
 export type AgentAuthorization = {
     ownerValidator: KernelValidator
     sessionKeySigner: Signer
+    /** Owner's one-time Kernel enable signature for the agent validator (see lib/agentPermission.ts). */
+    pluginEnableSignature?: Hex
+}
+
+/** Verified on-chain evidence for a completed autonomous trade. */
+export type AgentExecutionEvidence = {
+    userOperationHash: Hex
+    transactionHash: Hex
+    blockNumber: string
+    amountIn: string
+    amountOutMin: string
+    receivedAmount: string
+    hookReportedAmountOut: string
+    tokenBalanceBefore: string
+    tokenBalanceAfter: string
 }
 
 type AgentIntentSigner = Awaited<ReturnType<typeof toECDSASigner>>
@@ -107,6 +124,7 @@ export type AgentExecutorDependencies = {
     ) => void
     now?: () => number
     getNextIntentNonce?: (smartAccount: Address) => Promise<Hex>
+    readTokenBalance?: (client: Client, token: Address, account: Address, blockNumber?: bigint) => Promise<bigint>
     maxIntentAgeMs?: number
     receiptTimeoutMs?: number
     receiptPollingIntervalMs?: number
@@ -184,6 +202,21 @@ const TRADE_INTENT_TYPES = {
         { name: "nonce", type: "bytes32" }
     ]
 } as const
+
+const HOOK_SUCCESS_EVENT = parseAbiItem(
+    "event AgentExecutionSucceeded(address indexed smartAccount, address indexed targetToken, uint256 value, uint256 amountOut, uint256 timestamp)"
+)
+const ERC20_BALANCE_ABI = parseAbi(["function balanceOf(address) view returns (uint256)"])
+
+async function readErc20Balance(client: Client, token: Address, account: Address, blockNumber?: bigint) {
+    return readContract(client, {
+        address: token,
+        abi: ERC20_BALANCE_ABI,
+        functionName: "balanceOf",
+        args: [account],
+        ...(blockNumber === undefined ? {} : { blockNumber })
+    })
+}
 
 const DEFAULT_MAX_INTENT_AGE_MS = 20_000
 const INTENT_VALIDITY_SECONDS = 20
@@ -349,7 +382,12 @@ export class AgentExecutor {
             )(
                 authorization.ownerValidator,
                 authorization.sessionKeySigner,
-                config
+                config,
+                {
+                    accountAddress: getAddress(intent.account),
+                    ownerAddress: getAddress(intent.ownerAddress),
+                    pluginEnableSignature: authorization.pluginEnableSignature
+                }
             )
             if (getAddress(account.address) !== getAddress(intent.account)) {
                 throw new AgentExecutorError(
@@ -505,6 +543,13 @@ export class AgentExecutor {
                 data: concatHex([safeCall.data, intentEnvelope])
             }
 
+            const readBalance = this.dependencies.readTokenBalance ?? readErc20Balance
+            const tokenBalanceBefore = await readBalance(
+                client.client,
+                getAddress(intent.targetToken),
+                account.address
+            )
+
             log({
                 event: "userop_prepared",
                 ...metadata,
@@ -566,12 +611,26 @@ export class AgentExecutor {
                 )
             }
 
+            // A receipt is not proof of a trade. Require (1) the V2 policy hook's success event
+            // for this account, proving on-chain enforcement ran, and (2) target-token Transfer
+            // logs to the account covering the signed minimum output.
+            const evidence = await this.verifyOutcome({
+                client: client.client,
+                receipt,
+                intent,
+                accountAddress: account.address,
+                policyHookAddress: config.policyHookAddress,
+                amountOutMin: safeCall.quote.amountOutMin,
+                tokenBalanceBefore,
+                readBalance
+            })
             const result = {
                 userOperationHash,
                 transactionHash: receipt.receipt.transactionHash,
                 receipt,
                 gasUsed: receipt.actualGasUsed,
                 gasCostWei: receipt.actualGasCost,
+                evidence,
                 status: "success" as const
             }
             log({
@@ -604,6 +663,66 @@ export class AgentExecutor {
                 this.dependencies.onFailure?.(intent, executorError.code, executorError)
             }
             throw executorError
+        }
+    }
+
+    private async verifyOutcome(input: {
+        client: Client
+        receipt: AgentReceipt
+        intent: AgentExecutionIntent
+        accountAddress: Address
+        policyHookAddress: Address
+        amountOutMin: bigint
+        tokenBalanceBefore: bigint
+        readBalance: (client: Client, token: Address, account: Address, blockNumber?: bigint) => Promise<bigint>
+    }): Promise<AgentExecutionEvidence> {
+        const account = getAddress(input.accountAddress)
+        const token = getAddress(input.intent.targetToken)
+        const logs = input.receipt.logs ?? []
+        let hookAmountOut: bigint | null = null
+        for (const entry of logs) {
+            if (getAddress(entry.address) !== getAddress(input.policyHookAddress)) continue
+            try {
+                const decoded = decodeEventLog({ abi: [HOOK_SUCCESS_EVENT], data: entry.data, topics: entry.topics })
+                if (getAddress(decoded.args.smartAccount) === account && getAddress(decoded.args.targetToken) === token) {
+                    hookAmountOut = decoded.args.amountOut
+                }
+            } catch {
+                continue
+            }
+        }
+        if (hookAmountOut === null) {
+            throw new AgentExecutorError(
+                "SWAP_OUTCOME_UNVERIFIED",
+                "UserOperation succeeded but the V2 policy hook did not report a verified execution for this account."
+            )
+        }
+        const outcome = verifySwapReceiptOutput({
+            receipt: { status: "success", logs },
+            tokenAddress: token,
+            recipientAddress: account,
+            minimumOutputAmount: input.amountOutMin.toString()
+        })
+        if (outcome.state !== "OUTPUT_VERIFIED") {
+            throw new AgentExecutionOutcomeError(outcome.reason ?? "Swap output could not be verified.")
+        }
+        const blockNumber = input.receipt.receipt.blockNumber
+        const tokenBalanceAfter = await input.readBalance(input.client, token, account, blockNumber)
+        if (tokenBalanceAfter < input.tokenBalanceBefore + input.amountOutMin) {
+            throw new AgentExecutionOutcomeError(
+                `Token balance increased by less than the signed minimum (before ${input.tokenBalanceBefore}, after ${tokenBalanceAfter}).`
+            )
+        }
+        return {
+            userOperationHash: input.receipt.userOpHash,
+            transactionHash: input.receipt.receipt.transactionHash,
+            blockNumber: blockNumber.toString(),
+            amountIn: input.intent.amountBnb.toString(),
+            amountOutMin: input.amountOutMin.toString(),
+            receivedAmount: outcome.receivedAmount,
+            hookReportedAmountOut: hookAmountOut.toString(),
+            tokenBalanceBefore: input.tokenBalanceBefore.toString(),
+            tokenBalanceAfter: tokenBalanceAfter.toString()
         }
     }
 
@@ -781,6 +900,12 @@ export function createWorkerFailureReporter(
                 error.message
             )
         }
+    }
+}
+
+class AgentExecutionOutcomeError extends AgentExecutorError {
+    constructor(message: string) {
+        super("SWAP_OUTCOME_UNVERIFIED", message)
     }
 }
 

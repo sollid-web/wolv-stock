@@ -118,7 +118,7 @@ export default function AgentSetupForm({
                 throw new Error("The connected wallet is not ready for agent policy setup.")
             }
             if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(strategyId)) {
-                throw new AgentPolicyValidationError("Enter the exact strategy ID configured in AGENT_STRATEGIES_JSON (1-64 letters, numbers, dots, underscores, or hyphens).")
+                throw new AgentPolicyValidationError("Enter a strategy ID of 1-64 letters, numbers, dots, underscores, or hyphens.")
             }
             if (!isAddress(targetToken)) {
                 throw new AgentPolicyValidationError("Enter a valid target token address.")
@@ -250,7 +250,7 @@ export default function AgentSetupForm({
                     maxLength={64}
                     required
                 />
-                <span className="block text-xs text-slate-500">Must exactly match the strategy ID in the autonomous worker configuration. Unregistered labels will fail the on-chain policy hash check.</span>
+                <span className="block text-xs text-slate-500">The strategy ID is committed in the on-chain policy hash and becomes the persisted schedule name.</span>
             </label>
 
             <label className="block space-y-1.5 text-sm text-slate-300">

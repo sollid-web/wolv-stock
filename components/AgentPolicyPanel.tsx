@@ -19,6 +19,7 @@ import {
     getAgentPublicClient,
     createKernelClientFromContext,
     getKernelAccountContext,
+    signAgentSessionAuthorization,
     type AgentKernelClient
 } from "@/lib/kernelClient"
 import { isBscNetworkAllowedOnPath, isSupportedBscChainId } from "@/lib/bscChain"
@@ -71,10 +72,14 @@ const configuredChainId = Number(
     ?? process.env.NEXT_PUBLIC_BSC_CHAIN_ID
     ?? "56"
 )
+// Only the V2 policy hook is supported; the retired V1 validator alias is intentionally ignored.
 const validatorEnv = process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS
-    || process.env.NEXT_PUBLIC_VALIDATOR_ADDRESS
 const validatorAddress = validatorEnv && isAddress(validatorEnv)
     ? getAddress(validatorEnv)
+    : null
+const routerEnv = process.env.NEXT_PUBLIC_ROUTER_ADDRESS
+const routerAddress = routerEnv && isAddress(routerEnv)
+    ? getAddress(routerEnv)
     : null
 
 function formatExpiration(timestamp: bigint): string {
@@ -369,6 +374,19 @@ export default function AgentPolicyPanel() {
         try {
             if (!runtimeSessionAuthenticated && !(await authenticateRuntimeSession())) return
             const strategy = pendingStrategy
+            if (!walletClient || !validatorAddress || !routerAddress) {
+                throw new Error("Owner wallet, policy hook and router configuration are required to authorize the agent.")
+            }
+            // One-time owner authorization of the agent session validator (not a trade approval).
+            const sessionEnableSignature = await signAgentSessionAuthorization(walletClient, {
+                account: strategy.account,
+                agentSignerAddress: strategy.intentSigner,
+                targets: {
+                    routerAddress,
+                    policyHookAddress: validatorAddress,
+                    targetTokenAddress: strategy.targetToken
+                }
+            })
             const response = await fetch("/api/agent/schedules", {
                 method: "POST",
                 cache: "no-store",
@@ -394,7 +412,8 @@ export default function AgentPolicyPanel() {
                         amountBnb: strategy.amountBnb,
                         entryPriceMicros: strategy.entryPriceMicros,
                         slippageBps: strategy.slippageBps,
-                        maxPriceImpactBps: strategy.maxPriceImpactBps
+                        maxPriceImpactBps: strategy.maxPriceImpactBps,
+                        ...(sessionEnableSignature ? { sessionEnableSignature } : {})
                     }
                 })
             })
@@ -543,7 +562,7 @@ export default function AgentPolicyPanel() {
             )}
             {!chainConfigured && <p className="mb-5 text-sm text-rose-300">NEXT_PUBLIC_CHAIN_ID or NEXT_PUBLIC_BSC_CHAIN_ID must be 56 (BSC mainnet) or 97 (BSC testnet).</p>}
             {isConnected && !validatorAddress && (
-                <p className="mb-5 text-sm text-rose-300">Set NEXT_PUBLIC_VALIDATOR_ADDRESS to the deployed validator address.</p>
+                <p className="mb-5 text-sm text-rose-300">Set NEXT_PUBLIC_POLICY_HOOK_ADDRESS to the deployed TradingAgentPolicyValidatorV2 address.</p>
             )}
             {error && <p role="alert" className="mb-5 text-sm text-rose-300">{error}</p>}
             {notice && <p role="status" className="mb-5 text-sm text-emerald-300">{notice}</p>}

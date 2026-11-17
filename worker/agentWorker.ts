@@ -1,15 +1,13 @@
 import { pathToFileURL } from "node:url"
 import { createHash, randomUUID } from "node:crypto"
 import { resolve } from "node:path"
-import { addressToEmptyAccount, type KernelValidator } from "@zerodev/sdk"
-import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator"
-import { getEntryPoint, KERNEL_V3_1 } from "@zerodev/sdk/constants"
 import type { AgentSmartAccountConfig } from "../lib/smartAccount.ts"
 import {
     buildAgentBuyCall,
     createAgentPublicClient,
     getAgentSmartAccountConfig
 } from "../lib/smartAccount.ts"
+import { createOwnerValidatorFromAddress } from "../lib/agentPermission.ts"
 import {
     AgentExecutor,
     createWorkerFailureReporter,
@@ -30,7 +28,6 @@ import {
     getAddress,
     isAddress,
     parseEther,
-    type Address,
     type Hex
 } from "viem"
 import { readContract } from "viem/actions"
@@ -39,20 +36,8 @@ import type { PublicClient } from "viem"
 
 const POLL_INTERVAL_MS = 5_000
 const QUOTE_SUBMISSION_BUDGET_MS = 15_000
-type MarketDataProvider = {
-    fetchMarketData: (
-        strategy: AgentStrategy,
-        context: { config: AgentSmartAccountConfig; client: PublicClient }
-    ) => Promise<MarketSnapshot>
-}
-
-type OwnerValidatorProvider = {
-    getOwnerValidator: (
-        account: Address,
-        config: AgentSmartAccountConfig,
-        ownerAddress: Address
-    ) => Promise<KernelValidator>
-}
+/** A CLAIMED (never submitted) schedule run older than this is released as LEASE_EXPIRED. */
+const EXECUTION_LEASE_MS = 5 * 60_000
 
 const policyFeedAbi = [
     {
@@ -106,85 +91,17 @@ function loadPrivateKey() {
     return privateKeyToAccount(key as `0x${string}`)
 }
 
-function readStrategies(config: AgentSmartAccountConfig): AgentStrategy[] {
-    const raw = process.env.AGENT_STRATEGIES_JSON
-    if (!raw) throw new Error("AGENT_STRATEGIES_JSON must contain the configured account strategies.")
-
-    let parsed: unknown
-    try {
-        parsed = JSON.parse(raw)
-    } catch {
-        throw new Error("AGENT_STRATEGIES_JSON must be valid JSON.")
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-        throw new Error("AGENT_STRATEGIES_JSON must be a non-empty array.")
-    }
-
-    return parsed.map((value, index): AgentStrategy => {
-        if (!isRecord(value)) throw new Error(`Strategy ${index} must be an object.`)
-        const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
-        if (
-            typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
-            || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
-            || typeof account !== "string" || !isAddress(account)
-            || typeof targetToken !== "string" || !isAddress(targetToken)
-            || typeof amountBnb !== "string"
-            || typeof entryPriceMicros !== "string" || !/^[0-9]+$/.test(entryPriceMicros)
-            || typeof slippageBps !== "number" || !Number.isInteger(slippageBps)
-            || slippageBps < 1 || slippageBps > 500
-            || typeof maxPriceImpactBps !== "number" || !Number.isInteger(maxPriceImpactBps)
-            || maxPriceImpactBps < 1 || maxPriceImpactBps > 300
-        ) {
-            throw new Error(`Strategy ${index} has invalid or missing fields.`)
-        }
-        if (BigInt(entryPriceMicros) <= BigInt(0)) {
-            throw new Error(`Strategy ${id} entryPriceMicros must be greater than zero.`)
-        }
-        const parsedAmount = parseEther(amountBnb)
-        if (parsedAmount <= BigInt(0) || parsedAmount > MAX_TRADE_BNB) {
-            throw new Error(`Strategy ${id} trade amount must be greater than zero and at most 0.5 BNB.`)
-        }
-        const normalizedTarget = getAddress(targetToken)
-        if (normalizedTarget !== config.targetTokenAddress) {
-            throw new Error(`Strategy ${id} target token must match NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS.`)
-        }
-        return {
-            id,
-            ownerAddress: getAddress(ownerAddress),
-            account: getAddress(account),
-            targetToken: normalizedTarget,
-            amountBnb: parsedAmount,
-            entryPriceMicros: BigInt(entryPriceMicros),
-            slippageBps,
-            maxPriceImpactBps
-        }
-    })
-}
-
-async function loadProvider<T>(
-    modulePath: string | undefined,
-    exportName: keyof T,
-    errorMessage: string
-): Promise<T[keyof T]> {
-    if (!modulePath) throw new Error(errorMessage)
-    const imported: unknown = await import(pathToFileURL(resolve(modulePath)).href)
-    if (!isRecord(imported)) throw new Error(`Module ${modulePath} has no named exports.`)
-    const provider = imported[exportName as string]
-    if (typeof provider !== "function") {
-        throw new Error(`Module ${modulePath} must export ${String(exportName)} as a function.`)
-    }
-    return provider as T[keyof T]
-}
-
+/**
+ * Market data comes from the same guardian-allowlisted Chainlink feed the V2 hook enforces
+ * on-chain, plus live PancakeSwap reserves. Off-chain evaluation therefore cannot disagree with
+ * the contract about price; the contract remains authoritative.
+ */
 export async function fetchMarketData(
     strategy: AgentStrategy,
     config: AgentSmartAccountConfig,
-    client: PublicClient,
-    marketProvider?: MarketDataProvider["fetchMarketData"]
+    client: PublicClient
 ): Promise<MarketSnapshot> {
-    const snapshot = marketProvider
-        ? await marketProvider(strategy, { config, client })
-        : await fetchChainlinkMarketData(strategy, config, client)
+    const snapshot = await fetchChainlinkMarketData(strategy, config, client)
     return { ...snapshot, receivedAt: Date.now() }
 }
 
@@ -255,108 +172,6 @@ async function fetchChainlinkMarketData(
     }
 }
 
-async function createOwnerValidator(
-    ownerAddress: Address,
-    config: AgentSmartAccountConfig
-): Promise<KernelValidator> {
-    const publicClient = createAgentPublicClient(config)
-    return signerToEcdsaValidator(publicClient, {
-        entryPoint: getEntryPoint("0.7"),
-        signer: addressToEmptyAccount(ownerAddress),
-        kernelVersion: KERNEL_V3_1
-    })
-}
-
-async function createWorkerRuntime() {
-    const config = getAgentSmartAccountConfig()
-    const agentAccount = loadPrivateKey()
-    const strategies = readStrategies(config)
-    const publicClient = createAgentPublicClient(config)
-    const validatorReader = createViemValidatorReader(publicClient, config.policyHookAddress)
-    const marketProvider = process.env.AGENT_MARKET_DATA_MODULE
-        ? await loadProvider<MarketDataProvider>(
-            process.env.AGENT_MARKET_DATA_MODULE,
-            "fetchMarketData",
-            "Configured market-data adapter could not be loaded."
-        )
-        : undefined
-    const getOwnerValidator: OwnerValidatorProvider["getOwnerValidator"] =
-        process.env.AGENT_OWNER_VALIDATOR_MODULE
-            ? await loadProvider<OwnerValidatorProvider>(
-                process.env.AGENT_OWNER_VALIDATOR_MODULE,
-                "getOwnerValidator",
-                "Configured owner-validator adapter could not be loaded."
-            )
-            : async (_account, ownerConfig, ownerAddress) =>
-                createOwnerValidator(ownerAddress, ownerConfig)
-
-    const workerReference: { current: AgentWorker | undefined } = { current: undefined }
-    const reportExecutionFailure = createWorkerFailureReporter({
-        reportExecutionFailure: (strategyId, reasonCode, detail) => {
-            workerReference.current?.reportExecutionFailure(strategyId, reasonCode, detail)
-        }
-    })
-    const executor = new AgentExecutor({
-        getConfig: () => config,
-        resolveAuthorization: async intent => ({
-            ownerValidator: await getOwnerValidator(intent.account, config, intent.ownerAddress),
-            sessionKeySigner: agentAccount
-        }),
-        maxIntentAgeMs: QUOTE_SUBMISSION_BUDGET_MS,
-        log: event => {
-            const write = event.event === "userop_failed" ? console.error : console.info
-            write(JSON.stringify(event))
-        },
-        onFailure: reportExecutionFailure
-    })
-
-    const worker = new AgentWorker({
-        strategies,
-        readMarket: strategy => fetchMarketData(
-            strategy,
-            config,
-            publicClient,
-            marketProvider
-        ),
-        readValidator: validatorReader,
-        log: event => console.info(JSON.stringify(event)),
-        alert: event => console.error(JSON.stringify(event)),
-        onIntent: async intent => {
-            const quoteReceivedAt = Date.parse(intent.createdAt)
-            if (
-                !Number.isFinite(quoteReceivedAt)
-                || Date.now() - quoteReceivedAt > QUOTE_SUBMISSION_BUDGET_MS
-            ) {
-                console.warn("Quote stale, aborting")
-                worker.acknowledgeIntent(intent.strategyId)
-                return
-            }
-            try {
-                const result = await executor.executeUserOperation(intent)
-                console.info(JSON.stringify({
-                    event: "agent_trade_submitted",
-                    userOpHash: result.userOperationHash,
-                    transactionHash: result.transactionHash
-                }))
-            } catch (error) {
-                console.error(JSON.stringify({
-                    event: "agent_trade_submission_failed",
-                    error: error instanceof Error ? error.message : "Unknown executor error"
-                }))
-            } finally {
-                worker.acknowledgeIntent(intent.strategyId)
-            }
-        }
-    }, {
-        intervalMs: POLL_INTERVAL_MS,
-        maxConsecutiveFailures: 3,
-        maxMarketAgeMs: 20_000
-    })
-    workerReference.current = worker
-
-    return worker
-}
-
 type ActiveScheduleClaim = {
     claimId: string
     scheduleId: string
@@ -382,9 +197,15 @@ function getLastTelemetry(context: PersistentScheduleContext): AgentCycleTelemet
     return context.lastTelemetry
 }
 
-function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, expectedOwnerAddress: string): AgentStrategy {
+type StoredStrategy = { strategy: AgentStrategy; sessionEnableSignature?: Hex }
+
+function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, expectedOwnerAddress: string): StoredStrategy {
     if (!isRecord(value)) throw new Error("Persisted strategy configuration must be an object.")
-    const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps } = value
+    const { id, ownerAddress, account, targetToken, amountBnb, entryPriceMicros, slippageBps, maxPriceImpactBps, sessionEnableSignature } = value
+    if (sessionEnableSignature !== undefined &&
+        (typeof sessionEnableSignature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(sessionEnableSignature))) {
+        throw new Error("Persisted agent session authorization signature is malformed.")
+    }
     if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(id)
         || typeof ownerAddress !== "string" || !isAddress(ownerAddress)
         || typeof account !== "string" || !isAddress(account)
@@ -404,14 +225,17 @@ function parseStoredStrategy(value: unknown, config: AgentSmartAccountConfig, ex
     const parsedEntry = BigInt(entryPriceMicros)
     if (parsedEntry <= BigInt(0)) throw new Error("Persisted strategy entry-price threshold must be positive.")
     return {
-        id,
-        ownerAddress: normalizedOwner,
-        account: getAddress(account),
-        targetToken: normalizedTarget,
-        amountBnb: parsedAmount,
-        entryPriceMicros: parsedEntry,
-        slippageBps,
-        maxPriceImpactBps
+        strategy: {
+            id,
+            ownerAddress: normalizedOwner,
+            account: getAddress(account),
+            targetToken: normalizedTarget,
+            amountBnb: parsedAmount,
+            entryPriceMicros: parsedEntry,
+            slippageBps,
+            maxPriceImpactBps
+        },
+        ...(typeof sessionEnableSignature === "string" ? { sessionEnableSignature: sessionEnableSignature as Hex } : {})
     }
 }
 
@@ -420,28 +244,13 @@ async function createPersistentWorkerRuntime() {
     const agentAccount = loadPrivateKey()
     const publicClient = createAgentPublicClient(config)
     const validatorReader = createViemValidatorReader(publicClient, config.policyHookAddress)
-    const marketProvider = process.env.AGENT_MARKET_DATA_MODULE
-        ? await loadProvider<MarketDataProvider>(
-            process.env.AGENT_MARKET_DATA_MODULE,
-            "fetchMarketData",
-            "Configured market-data adapter could not be loaded.",
-        )
-        : undefined
-    const getOwnerValidator: OwnerValidatorProvider["getOwnerValidator"] =
-        process.env.AGENT_OWNER_VALIDATOR_MODULE
-            ? await loadProvider<OwnerValidatorProvider>(
-                process.env.AGENT_OWNER_VALIDATOR_MODULE,
-                "getOwnerValidator",
-                "Configured owner-validator adapter could not be loaded.",
-            )
-            : async (_account, ownerConfig, ownerAddress) =>
-                createOwnerValidator(ownerAddress, ownerConfig)
     const store = new AgentMemoryStore()
     await store.initialize()
     const workerId = process.env.WOLV_AGENT_WORKER_ID?.trim() || `persistent-bsc-agent-worker-${config.chain.id}`
     const runtimes = new Map<string, PersistentScheduleRuntime>()
 
-    function createScheduleRuntime(schedule: Record<string, unknown>, strategy: AgentStrategy): PersistentScheduleRuntime {
+    function createScheduleRuntime(schedule: Record<string, unknown>, stored: StoredStrategy): PersistentScheduleRuntime {
+        const { strategy, sessionEnableSignature } = stored
         const scheduleId = String(schedule.scheduleId)
         const policyHash = String(schedule.policyHash).toLowerCase()
         const configHash = createHash("sha256").update(JSON.stringify({
@@ -456,9 +265,13 @@ async function createPersistentWorkerRuntime() {
         const workerReference: { current: AgentWorker | undefined } = { current: undefined }
         const executor = new AgentExecutor({
             getConfig: () => config,
+            // The owner validator is built from the owner's PUBLIC address and can never sign.
+            // The only owner authorization the worker holds is the one-time enable signature
+            // collected at policy setup; every trade is signed by the delegated agent key.
             resolveAuthorization: async intent => ({
-                ownerValidator: await getOwnerValidator(intent.account, config, intent.ownerAddress),
+                ownerValidator: await createOwnerValidatorFromAddress(publicClient, intent.ownerAddress),
                 sessionKeySigner: agentAccount,
+                pluginEnableSignature: sessionEnableSignature,
             }),
             maxIntentAgeMs: QUOTE_SUBMISSION_BUDGET_MS,
             log: event => {
@@ -481,7 +294,7 @@ async function createPersistentWorkerRuntime() {
         })
         const worker = new AgentWorker({
             strategies: [strategy],
-            readMarket: current => fetchMarketData(current, config, publicClient, marketProvider),
+            readMarket: current => fetchMarketData(current, config, publicClient),
             readValidator: async current => {
                 const snapshot = await validatorReader(current)
                 const scheduleHashMatches = schedule.policyVersion === "WOLV_AGENT_POLICY_V4"
@@ -535,9 +348,11 @@ async function createPersistentWorkerRuntime() {
                     }
                     await store.updateExecutionClaim(active.claimId, active.ownerAddress, {
                         status: "CONFIRMED", receiptHash: result.transactionHash,
-                        providerReference: result.userOperationHash, at: Date.now(),
+                        providerReference: result.userOperationHash,
+                        evidence: result.evidence, at: Date.now(),
                     })
                     active.status = "CONFIRMED"
+                    console.info(JSON.stringify({ event: "agent_trade_verified", claimId: active.claimId, ...result.evidence }))
                 } catch (error) {
                     await active.submissionUpdate?.catch(() => undefined)
                     const code = isRecord(error) && typeof error.code === "string" ? error.code : "AGENT_EXECUTION_FAILED"
@@ -587,7 +402,7 @@ async function createPersistentWorkerRuntime() {
                 message: "Autonomous schedule was disabled because its policy hash or version is invalid.", createdAt: Date.now() })
             return
         }
-        let strategy: AgentStrategy
+        let strategy: StoredStrategy
         try {
             strategy = parseStoredStrategy(schedule.strategyConfig, config, ownerAddress)
         } catch (error) {
@@ -690,6 +505,14 @@ async function createPersistentWorkerRuntime() {
             console.warn(JSON.stringify({ event: "autonomous_worker_paused", reason: state.pauseReason }))
             return
         }
+        for (const expired of await store.expireStaleExecutionClaims(now, EXECUTION_LEASE_MS)) {
+            console.warn(JSON.stringify({ event: "execution_lease_expired", ...expired }))
+            await store.recordAlert({
+                ownerAddress: expired.ownerAddress, claimId: expired.claimId, severity: "WARNING",
+                kind: "LEASE_EXPIRED", message: "A worker lease expired before submission; the schedule run was released.",
+                createdAt: now,
+            }).catch(() => undefined)
+        }
         const schedules = await store.claimDueAutonomousAgentSchedules(now, 20)
         for (const schedule of schedules) await processSchedule(schedule)
     }
@@ -744,55 +567,12 @@ async function mainPersistent() {
 }
 
 async function main() {
-    if (process.env.WOLV_AGENT_DATABASE_URL || process.env.WOLV_TRADING_DATABASE_URL) {
-        await mainPersistent()
-        return
+    // Persistent, database-backed operation is the only supported mode: durable claims are
+    // what prevent duplicate trades across restarts and concurrent workers.
+    if (!process.env.WOLV_AGENT_DATABASE_URL && !process.env.WOLV_TRADING_DATABASE_URL) {
+        throw new Error("WOLV_AGENT_DATABASE_URL is required; the autonomous worker never runs without durable execution claims.")
     }
-    await mainStatic()
-}
-async function mainStatic() {
-    const worker = await createWorkerRuntime()
-    let shuttingDown = false
-    let activePoll: Promise<void> | undefined
-    const pollMarkets = async () => {
-        if (shuttingDown || activePoll) return
-        activePoll = worker.evaluateOnce()
-            .catch(error => {
-                console.error("Agent market poll failed:", error instanceof Error ? error.message : String(error))
-            })
-            .finally(() => {
-                activePoll = undefined
-            })
-        await activePoll
-    }
-
-    const timer = setInterval(() => {
-        void pollMarkets()
-    }, POLL_INTERVAL_MS)
-    void pollMarkets()
-
-    const gracefulShutdown = async (signal: NodeJS.Signals) => {
-        if (shuttingDown) return
-        shuttingDown = true
-        console.info(`Received ${signal}; stopping agent worker.`)
-        clearInterval(timer)
-        worker.stop()
-        await activePoll
-        await closeIntentNonceTracker()
-        console.info("Agent worker stopped.")
-    }
-    process.once("SIGINT", () => {
-        void gracefulShutdown("SIGINT").catch(error => {
-            console.error("Agent worker shutdown failed:", error)
-            process.exitCode = 1
-        })
-    })
-    process.once("SIGTERM", () => {
-        void gracefulShutdown("SIGTERM").catch(error => {
-            console.error("Agent worker shutdown failed:", error)
-            process.exitCode = 1
-        })
-    })
+    await mainPersistent()
 }
 
 const isDirectExecution = process.argv[1] !== undefined

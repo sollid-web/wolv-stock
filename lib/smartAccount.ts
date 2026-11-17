@@ -1,35 +1,13 @@
 import "server-only"
-import {
-    KERNEL_V3_1,
-    getEntryPoint
-} from "@zerodev/sdk/constants"
-import {
-    createKernelAccount,
-    toKernelPluginManager
-} from "@zerodev/sdk/accounts"
+import { createKernelAccount } from "@zerodev/sdk/accounts"
 import { createKernelAccountClient } from "@zerodev/sdk/clients"
-import type {
-    KernelPluginManager,
-    KernelValidator,
-    KernelValidatorHook
-} from "@zerodev/sdk"
+import type { KernelValidator } from "@zerodev/sdk"
 import type { Signer } from "@zerodev/sdk/types"
-import {
-    toPermissionValidator
-} from "@zerodev/permissions"
-import {
-    CallPolicyVersion,
-    CallType,
-    toCallPolicy
-} from "@zerodev/permissions/policies"
-import { toECDSASigner } from "@zerodev/permissions/signers"
 import {
     type Address,
     type Client,
     type Hex,
-    concatHex,
     createPublicClient,
-    encodeAbiParameters,
     encodeFunctionData,
     getAddress,
     http,
@@ -38,12 +16,16 @@ import {
 } from "viem"
 import { getBytecode, getChainId, readContract } from "viem/actions"
 import { bsc, bscTestnet } from "viem/chains"
+import {
+    AGENT_ENTRY_POINT,
+    AGENT_KERNEL_VERSION,
+    createAgentPluginManager,
+    readKernelEcdsaOwner
+} from "./agentPermission.ts"
 import { resolvePublicRpcUrl } from "./publicRpcUrl.ts"
 
-const BUY_SELECTOR = "0x7ff36ab5" as const
-const ENTRY_POINT = getEntryPoint("0.7")
+const ENTRY_POINT = AGENT_ENTRY_POINT
 const MAX_TRADE_VALUE = parseEther("0.5")
-const SESSION_VALIDITY_SECONDS = 7 * 24 * 60 * 60
 export const AGENT_SWAP_DEADLINE_SECONDS = 15
 const SWAP_DEADLINE_SECONDS = AGENT_SWAP_DEADLINE_SECONDS
 const DEFAULT_SLIPPAGE_BPS = 100
@@ -182,6 +164,17 @@ export function getAgentSmartAccountConfig(): AgentSmartAccountConfig {
             ? process.env.NEXT_PUBLIC_BSC_BUNDLER_RPC_URL
             : process.env.NEXT_PUBLIC_BSC_TESTNET_BUNDLER_RPC_URL
 
+    const wrappedNativeAddress = chain.id === bsc.id ? MAINNET_WBNB : TESTNET_WBNB
+    const targetTokenAddress = requireAddress(
+        process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS,
+        "NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS"
+    )
+    if (targetTokenAddress === wrappedNativeAddress) {
+        throw new Error(
+            "NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS must not be WBNB: the agent buys the target token with BNB through a WBNB/token pool."
+        )
+    }
+
     return {
         chain,
         rpcUrl: resolvedRpcUrl,
@@ -199,11 +192,8 @@ export function getAgentSmartAccountConfig(): AgentSmartAccountConfig {
             process.env.NEXT_PUBLIC_POLICY_HOOK_ADDRESS,
             "NEXT_PUBLIC_POLICY_HOOK_ADDRESS"
         ),
-        targetTokenAddress: requireAddress(
-            process.env.NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS,
-            "NEXT_PUBLIC_AGENT_TARGET_TOKEN_ADDRESS"
-        ),
-        wrappedNativeAddress: chain.id === bsc.id ? MAINNET_WBNB : TESTNET_WBNB
+        targetTokenAddress,
+        wrappedNativeAddress
     }
 }
 
@@ -388,8 +378,9 @@ export async function buildAgentKernelPluginManager(
     publicClient: Client,
     ownerValidator: KernelValidator,
     sessionKeySigner: Signer,
-    config = getAgentSmartAccountConfig()
-): Promise<KernelPluginManager<"0.7">> {
+    config: AgentSmartAccountConfig,
+    authorization: AgentAccountAuthorization
+) {
     const actualChainId = await getChainId(publicClient)
     if (actualChainId !== config.chain.id) {
         throw new Error(
@@ -464,60 +455,48 @@ export async function buildAgentKernelPluginManager(
         )
     }
 
-    const signer = await toECDSASigner({ signer: sessionKeySigner })
-    const sessionValidator = await toPermissionValidator(publicClient, {
-        entryPoint: ENTRY_POINT,
-        kernelVersion: KERNEL_V3_1,
-        signer,
-        policies: [
-            toCallPolicy({
-                policyVersion: CallPolicyVersion.V0_0_5,
-                permissions: [
-                    {
-                        callType: CallType.CALL,
-                        target: config.routerAddress,
-                        selector: BUY_SELECTOR,
-                        valueLimit: MAX_TRADE_VALUE
-                    }
-                ]
-            })
-        ]
+    return createAgentPluginManager(publicClient, {
+        ownerValidator,
+        agentSigner: sessionKeySigner,
+        targets: config,
+        pluginEnableSignature: authorization.pluginEnableSignature
     })
+}
 
-    const executionHook: KernelValidatorHook = {
-        getIdentifier: () => config.policyHookAddress,
-        getEnableData: async () => concatHex([
-            "0x00",
-            encodeAbiParameters([{ type: "address" }], [config.targetTokenAddress])
-        ])
-    }
-
-    return toKernelPluginManager(publicClient, {
-        sudo: ownerValidator,
-        regular: sessionValidator,
-        hook: executionHook,
-        entryPoint: ENTRY_POINT,
-        kernelVersion: KERNEL_V3_1,
-        validUntil: Math.floor(Date.now() / 1000) + SESSION_VALIDITY_SECONDS
-    })
+export type AgentAccountAuthorization = {
+    /** The existing smart account. Never re-derived: an index/owner mismatch must not move funds. */
+    accountAddress: Address
+    /** On-chain owner the schedule was registered for. Re-checked before every client build. */
+    ownerAddress: Address
+    /** Owner's one-time Kernel enable signature; only needed until the agent validator is enabled. */
+    pluginEnableSignature?: Hex
 }
 
 export async function createAgentSmartAccountClient(
     ownerValidator: KernelValidator,
     sessionKeySigner: Signer,
-    config = getAgentSmartAccountConfig()
+    config: AgentSmartAccountConfig,
+    authorization: AgentAccountAuthorization
 ) {
     const publicClient = createAgentPublicClient(config)
+    const onChainOwner = await readKernelEcdsaOwner(publicClient, authorization.accountAddress)
+    if (onChainOwner !== getAddress(authorization.ownerAddress)) {
+        throw new Error(
+            `Smart account ${authorization.accountAddress} is owned by ${onChainOwner}, not schedule owner ${authorization.ownerAddress}.`
+        )
+    }
     const plugins = await buildAgentKernelPluginManager(
         publicClient,
         ownerValidator,
         sessionKeySigner,
-        config
+        config,
+        authorization
     )
     const account = await createKernelAccount(publicClient, {
         plugins,
         entryPoint: ENTRY_POINT,
-        kernelVersion: KERNEL_V3_1
+        kernelVersion: AGENT_KERNEL_VERSION,
+        address: getAddress(authorization.accountAddress)
     })
     const client = createKernelAccountClient({
         account,
@@ -527,163 +506,6 @@ export async function createAgentSmartAccountClient(
     })
 
     return { account, client }
-}
-
-export type AgentTelemetryRecord = {
-    event: "attempted" | "submitted" | "succeeded" | "rejected"
-    reasonCode?: string
-    account: Address
-    targetToken: Address
-    amountBnb: string
-    timestamp: string
-    userOperationHash?: Hex
-    transactionHash?: Hex
-    priceImpactBps?: number
-    slippageBps?: number
-    error?: string
-}
-
-export type AgentExecutionResult = {
-    userOperationHash: Hex
-    receipt: {
-        success: boolean
-        reason?: string
-        receipt: { transactionHash: Hex }
-    }
-    quote?: Pick<DynamicQuote, "priceImpactBps" | "slippageBps">
-}
-
-export async function runAgentExecutionWithTelemetry(
-    metadata: {
-        account: Address
-        targetToken: Address
-        amountBnb: bigint
-    },
-    run: (onSubmitted: (hash: Hex, quote?: AgentExecutionResult["quote"]) => void) =>
-        Promise<AgentExecutionResult>,
-    log: (record: AgentTelemetryRecord) => void = record => {
-        const method = record.event === "rejected" ? console.error : console.info
-        method(JSON.stringify(record))
-    }
-) {
-    const common = {
-        account: metadata.account,
-        targetToken: metadata.targetToken,
-        amountBnb: metadata.amountBnb.toString(),
-        timestamp: new Date().toISOString()
-    }
-    let submitted: { hash: Hex; quote?: AgentExecutionResult["quote"] } | undefined
-    log({ event: "attempted", ...common })
-
-    try {
-        const result = await run((hash, quote) => {
-            submitted = { hash, quote }
-            log({
-                event: "submitted",
-                ...common,
-                userOperationHash: hash,
-                priceImpactBps: quote?.priceImpactBps,
-                slippageBps: quote?.slippageBps
-            })
-        })
-        if (!result.receipt.success) {
-            throw new Error(result.receipt.reason || "UserOperation execution reverted")
-        }
-        log({
-            event: "succeeded",
-            ...common,
-            userOperationHash: result.userOperationHash,
-            transactionHash: result.receipt.receipt.transactionHash,
-            priceImpactBps: result.quote?.priceImpactBps,
-            slippageBps: result.quote?.slippageBps
-        })
-        return result
-    } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown execution error"
-        log({
-            event: "rejected",
-            reasonCode: classifyAgentError(message),
-            ...common,
-            userOperationHash: submitted?.hash,
-            priceImpactBps: submitted?.quote?.priceImpactBps,
-            slippageBps: submitted?.quote?.slippageBps,
-            error: message
-        })
-        throw error
-    }
-}
-
-export async function executeAgentBuy(
-    accountClient: Awaited<ReturnType<typeof createAgentSmartAccountClient>>["client"],
-    request: {
-        amountBnb: bigint
-        slippageBps?: number
-        maxPriceImpactBps?: number
-        deadline?: number
-    },
-    config = getAgentSmartAccountConfig(),
-    log: (record: AgentTelemetryRecord) => void = record => {
-        const method = record.event === "rejected" ? console.error : console.info
-        method(JSON.stringify(record))
-    }
-) {
-    if (process.env.ENABLE_LIVE_USEROP_SUBMISSION !== "true") {
-        throw new Error(
-            "Live UserOperation submission is disabled; set ENABLE_LIVE_USEROP_SUBMISSION=true to enable it"
-        )
-    }
-    if (config.chain.id !== 97 && config.chain.id !== bsc.id) {
-        throw new Error("Agent UserOperation submission supports only BSC Testnet or BSC Mainnet")
-    }
-    if (
-        config.chain.id === bsc.id &&
-        (
-            process.env.ENABLE_MAINNET_AGENT_TRADING !== "true"
-            || process.env.MAINNET_AGENT_TRADING_ACK !== "I_ACCEPT_AUTONOMOUS_MAINNET_RISK"
-        )
-    ) {
-        throw new Error("Mainnet autonomous trading is not separately authorized")
-    }
-    const account = accountClient.account
-    return runAgentExecutionWithTelemetry(
-        {
-            account: account.address,
-            targetToken: config.targetTokenAddress,
-            amountBnb: request.amountBnb
-        },
-        async onSubmitted => {
-        const call = await buildAgentBuyCall(
-            accountClient.client,
-            { ...request, accountAddress: account.address },
-            config
-        )
-        const userOperationHash = await accountClient.sendUserOperation({
-            calls: [{
-                to: call.to,
-                value: call.value,
-                data: call.data
-            }]
-        })
-        onSubmitted(userOperationHash, call.quote)
-        const result = await accountClient.waitForUserOperationReceipt({
-            hash: userOperationHash
-        })
-        return {
-            userOperationHash,
-            receipt: result,
-            quote: call.quote
-        }
-        },
-        log
-    )
-}
-
-function classifyAgentError(message: string) {
-    if (message.includes("Price impact")) return "PRICE_IMPACT_EXCEEDED"
-    if (message.includes("slippageBps")) return "SLIPPAGE_CONFIGURATION_INVALID"
-    if (message.includes("pool") || message.includes("Pool")) return "POOL_UNAVAILABLE"
-    if (message.includes("reverted")) return "USER_OPERATION_REVERTED"
-    return "EXECUTION_FAILED"
 }
 
 function validateBasisPoints(value: number, maximum: number, name: string) {

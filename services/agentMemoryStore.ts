@@ -642,6 +642,13 @@ const MIGRATIONS = [{
         END LOOP;
       END $$`,
   ],
+}, {
+  // Additive only: verified on-chain evidence for autonomous trades (hashes, amounts, balances).
+  version: 12,
+  statements: [
+    `ALTER TABLE wolv_agent_execution_claims
+      ADD COLUMN IF NOT EXISTS execution_evidence jsonb`,
+  ],
 }];
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
@@ -856,6 +863,7 @@ export interface AgentMemoryStorePort {
     failureCode?: string;
     failureDetail?: string;
     providerReference?: string;
+    evidence?: Record<string, string>;
     at: number;
   }): Promise<void>;
   consumeIntentNonce(input: {
@@ -2683,6 +2691,7 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
         provider_reference = COALESCE(${providerReference}, provider_reference),
         failure_code = COALESCE(${update.failureCode ?? null}, failure_code),
         failure_detail = COALESCE(${update.failureDetail ?? null}, failure_detail),
+        execution_evidence = COALESCE(${update.evidence ? JSON.stringify(update.evidence) : null}::jsonb, execution_evidence),
         simulated_at = CASE WHEN ${update.status} = 'SIMULATED' THEN ${new Date(update.at)} ELSE simulated_at END,
         submitted_at = CASE WHEN ${update.status} = 'SUBMITTED' THEN ${new Date(update.at)} ELSE submitted_at END,
         confirmed_at = CASE WHEN ${update.status} = 'CONFIRMED' THEN ${new Date(update.at)} ELSE confirmed_at END,
@@ -2691,6 +2700,32 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       WHERE claim_id = ${claimId} AND owner_address = ${owner}
     `;
     if (result.count !== 1) throw new AgentMemoryStoreError("NOT_FOUND");
+  }
+
+  /**
+   * Releases leases held by a crashed or hung worker. Only claims that never reached
+   * submission (CLAIMED, no provider reference) are expired: a SUBMITTED claim may have an
+   * on-chain effect and stays locked until reconciled by an operator.
+   */
+  async expireStaleExecutionClaims(now: number, leaseMs: number): Promise<Array<{ claimId: string; ownerAddress: string; scheduleId: string }>> {
+    await this.ready;
+    if (!Number.isSafeInteger(now) || now <= 0 || !Number.isSafeInteger(leaseMs) || leaseMs < 60_000) {
+      throw new TypeError("Execution lease expiry parameters are invalid.");
+    }
+    const rows = await this.sql`
+      UPDATE wolv_agent_execution_claims
+      SET status = 'FAILED', run_ledger_status = 'FAILED', failure_code = 'LEASE_EXPIRED',
+        failure_detail = 'Worker lease expired before UserOperation submission.',
+        failed_at = ${new Date(now)}, updated_at = ${new Date(now)}
+      WHERE status = 'CLAIMED' AND provider_reference IS NULL
+        AND updated_at < ${new Date(now - leaseMs)}
+      RETURNING claim_id, owner_address, schedule_id
+    `;
+    return rows.map((row) => ({
+      claimId: String(row.claim_id),
+      ownerAddress: String(row.owner_address),
+      scheduleId: String(row.schedule_id),
+    }));
   }
 
   async consumeIntentNonce(input: Parameters<AgentMemoryStorePort["consumeIntentNonce"]>[0]): Promise<{ consumed: boolean }> {

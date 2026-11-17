@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { getAddress, parseEther, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { getAddress, isAddress, parseEther, type Address, type Hex } from "viem";
 import { hashAgentPolicy } from "@/lib/agentPolicyHash";
+import { verifyAgentSessionEnableSignature } from "@/lib/agentPermission";
 import { createAgentPublicClient, getAgentSmartAccountConfig } from "@/lib/smartAccount";
 import { createViemValidatorReader } from "@/services/agentWorker";
 import { resolveAgentExecutionNetwork } from "@/services/agentExecutor";
@@ -13,9 +13,18 @@ export const runtime = "nodejs";
 
 const HEADERS = { "Cache-Control": "no-store" };
 
+/**
+ * The web tier only ever knows the delegated agent signer's PUBLIC address. The private key
+ * lives exclusively in the worker's secret store.
+ */
+function getAgentSignerAddress(): Address | null {
+  const value = process.env.NEXT_PUBLIC_AGENT_SIGNER_ADDRESS;
+  return value && isAddress(value) ? getAddress(value) : null;
+}
+
 function getWorkerReadiness() {
   const missing = [
-    !/^0x[0-9a-f]{64}$/i.test(process.env.AGENT_PRIVATE_KEY ?? "") ? "AGENT_PRIVATE_KEY" : null,
+    getAgentSignerAddress() ? null : "NEXT_PUBLIC_AGENT_SIGNER_ADDRESS",
     !process.env.WOLV_AGENT_DATABASE_URL && !process.env.WOLV_TRADING_DATABASE_URL
       ? "WOLV_AGENT_DATABASE_URL" : null,
     process.env.WOLV_AGENT_CONTROL_PLANE_ENABLED !== "true"
@@ -146,12 +155,14 @@ export async function POST(request: Request) {
       if (targetToken !== config.targetTokenAddress || policyTargetToken !== targetToken) {
         throw new Error("Strategy token does not match the configured BSC agent token.");
       }
-      const privateKey = process.env.AGENT_PRIVATE_KEY;
-      if (!privateKey || !/^0x[0-9a-f]{64}$/i.test(privateKey)) {
-        throw new Error("The autonomous delegated signer is not configured on the worker host.");
-      }
-      const configuredSigner = getAddress(privateKeyToAccount(privateKey as Hex).address);
+      const configuredSigner = getAgentSignerAddress();
+      if (!configuredSigner) throw new Error("NEXT_PUBLIC_AGENT_SIGNER_ADDRESS is not configured.");
       if (configuredSigner !== intentSigner) throw new Error("On-chain policy signer does not match the worker's delegated signer.");
+      const sessionEnableSignature = strategyConfig.sessionEnableSignature;
+      if (sessionEnableSignature !== undefined &&
+        (typeof sessionEnableSignature !== "string" || !/^0x[0-9a-fA-F]{130}$/.test(sessionEnableSignature))) {
+        throw new Error("Agent session authorization signature is malformed.");
+      }
       const strategy = {
         id: strategyConfig.id,
         ownerAddress,
@@ -176,6 +187,16 @@ export async function POST(request: Request) {
         validator.policyHash.toLowerCase() !== expectedPolicyHash.toLowerCase()) {
         throw new Error("Stored strategy does not exactly match the active on-chain policy.");
       }
+      // The owner's one-time authorization of the agent session validator. Verified against
+      // the on-chain ECDSA owner and the account's current Kernel validator nonce.
+      const sessionCheck = await verifyAgentSessionEnableSignature(createAgentPublicClient(config), {
+        account,
+        ownerAddress,
+        agentSignerAddress: configuredSigner,
+        targets: config,
+        signature: sessionEnableSignature as Hex | undefined,
+      });
+      if (!sessionCheck.ok) throw new Error(sessionCheck.reason);
       policyHash = expectedPolicyHash.slice(2).toLowerCase();
       normalizedStrategyConfig = {
         id: strategy.id,
@@ -186,6 +207,7 @@ export async function POST(request: Request) {
         entryPriceMicros: strategy.entryPriceMicros.toString(),
         slippageBps: strategy.slippageBps,
         maxPriceImpactBps: strategy.maxPriceImpactBps,
+        ...(sessionCheck.alreadyEnabled ? {} : { sessionEnableSignature }),
       };
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : "On-chain strategy policy verification failed." }, { status: 409, headers: HEADERS });
