@@ -1,3 +1,4 @@
+import SiteHeader from "@/components/SiteHeader";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
@@ -155,7 +156,8 @@ export default async function StockPage({ params }: { params: Promise<{ address:
 
   return (
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
+      <SiteHeader />
+      <nav aria-label="Asset" className="mx-auto flex w-full max-w-6xl items-center gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-6">
         <Link href="/" className="text-[#64748b] text-xl">←</Link>
   {token.tokenLogoUrl && <Image src={token.tokenLogoUrl} width={32} height={32} className="rounded-full" alt={token.underlyingTicker ?? "Asset"} />}
         <div className="min-w-0">

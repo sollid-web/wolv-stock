@@ -1,3 +1,4 @@
+import SiteHeader from "@/components/SiteHeader";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import { getRWATokenList } from "@/lib/binance";
@@ -42,7 +43,8 @@ export default async function TradePage({ params }: { params: Promise<{ address:
 
   return (
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
-      <nav className="sticky top-0 z-10 flex items-center gap-4 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
+      <SiteHeader />
+      <nav aria-label="Asset" className="mx-auto flex w-full max-w-6xl items-center gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-6">
         <BackButton fallbackHref="/trade" className="text-[#64748b] text-xl" />
         {token.tokenLogoUrl && (
           <Image

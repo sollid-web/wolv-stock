@@ -1,8 +1,8 @@
+import SiteHeader from "@/components/SiteHeader";
 import Link from "next/link";
 import { Suspense } from "react";
 import { getRWATokenList } from "@/lib/binance";
 import GlobalNav from "@/components/GlobalNav";
-import BrandMark from "@/components/BrandMark";
 import OpportunityCard from "@/components/OpportunityCard";
 import { filterSpotEligibleAssets } from "@/lib/compliance";
 import { isRwaAssetListResponse } from "@/lib/rwaAssetResponse";
@@ -22,11 +22,10 @@ type SearchParams = Promise<{ n?: string }>;
 function MonitorFrame({ children }: { children: React.ReactNode }) {
   return (
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
+      <SiteHeader />
+      <div className="border-b border-white/[0.06] px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
-            <BrandMark compact />
-            <div className="hidden h-7 w-px bg-white/10 sm:block" />
             <div className="min-w-0">
               <h1 className="break-words text-base font-black sm:text-lg">Listed vs Indicative Estimate</h1>
               <p className="break-words text-xs text-[#64748b]">
@@ -38,7 +37,7 @@ function MonitorFrame({ children }: { children: React.ReactNode }) {
             Browse markets
           </Link>
         </div>
-      </nav>
+      </div>
       {children}
       <GlobalNav />
     </main>

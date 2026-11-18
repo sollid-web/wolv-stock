@@ -1,5 +1,5 @@
+import SiteHeader from "@/components/SiteHeader";
 import Link from "next/link";
-import BrandMark from "@/components/BrandMark";
 import Image from "next/image";
 import { getRWATokenList, getRWAPlatforms } from "@/lib/binance";
 import StockList from "@/components/StockList";
@@ -43,21 +43,7 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
 
   return (
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
-      <nav className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-6">
-        <div className="flex items-center gap-3">
-          <BrandMark compact />
-          <span className="truncate font-bold text-sm tracking-wide sm:text-lg">WOLV Spot Lens</span>
-        </div>
-        <div className="flex items-center gap-2">
-            <Link href="/" className="text-xs text-[#64748b] hover:text-white sm:text-sm">
-            ← <span className="hidden sm:inline">Home</span>
-          </Link>
-          <span className="text-xs text-[#64748b]">/</span>
-            <Link href="/trade" className="text-xs font-bold text-[#d9a80a] sm:text-sm">
-            Trade
-          </Link>
-        </div>
-      </nav>
+      <SiteHeader />
 
       <div className="grid grid-cols-2 gap-3 px-4 py-4 sm:flex sm:flex-wrap sm:px-6">
         {platforms.map((p) => (
