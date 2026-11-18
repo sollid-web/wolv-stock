@@ -1,6 +1,39 @@
 "use client"
 
-import { AppKitConnectButton } from "@/components/WalletSelector"
+import dynamic from "next/dynamic"
+import { useConnect } from "wagmi"
+import { walletConnectProjectId } from "@/lib/wagmi"
+
+// AppKit is created only in the browser (app/providers.tsx), so its button must never render on
+// the server. Without a WalletConnect project ID, fall back to the injected browser wallet.
+const AppKitConnectButton = dynamic(
+    () => import("@/components/WalletSelector").then((module) => module.AppKitConnectButton),
+    { ssr: false, loading: () => <ConnectButtonShell label="Connect wallet" disabled /> },
+)
+
+function ConnectButtonShell({ label, disabled, onClick }: { label: string; disabled?: boolean; onClick?: () => void }) {
+    return (
+        <button type="button" onClick={onClick} disabled={disabled}
+            className="wolv-connect-button inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold disabled:cursor-wait disabled:opacity-60">
+            {label} <span aria-hidden="true">→</span>
+        </button>
+    )
+}
+
+function InjectedConnectButton() {
+    const { connect, connectors, isPending, error } = useConnect()
+    const injected = connectors[0]
+    return (
+        <div>
+            <ConnectButtonShell
+                label={isPending ? "Wallet connection pending..." : "Connect wallet"}
+                disabled={isPending || !injected}
+                onClick={() => injected && connect({ connector: injected })}
+            />
+            {error && <p role="alert" className="mt-3 text-sm text-rose-400">{error.message}</p>}
+        </div>
+    )
+}
 
 const STEPS = [
     { title: "Authorize once", body: "Your smart account installs the policy hook and sets limits: token, per-trade cap, entry price, slippage and expiry." },
@@ -21,7 +54,7 @@ export default function AgentConnectCard() {
                         Load your smart account&apos;s on-chain policy, or configure a new one. Connecting does not sign or send anything.
                     </p>
                     <div className="mt-5 max-w-xs">
-                        <AppKitConnectButton />
+                        {walletConnectProjectId ? <AppKitConnectButton /> : <InjectedConnectButton />}
                     </div>
                     <a href={VERIFIED_TX} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#d9a80a] transition hover:text-[#f2c94c]">
                         <span className="size-1.5 rounded-full bg-[#d9a80a]" aria-hidden="true" />
