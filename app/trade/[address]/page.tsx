@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { notFound } from "next/navigation";
 import Image from "next/image";
 import { getRWATokenList } from "@/lib/binance";
 import TradeButton from "@/components/TradeButton";
@@ -32,17 +32,7 @@ export default async function TradePage({ params }: { params: Promise<{ address:
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
   );
 
-  if (!token) {
-    return (
-      <main className="min-h-screen bg-[#07070f] text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">⚠️</div>
-          <p className="text-[#64748b]">Asset not found. Please check the asset address or return to the trade page to select an asset.</p>
-          <Link href="/trade" className="text-[#d9a80a] text-sm mt-4 block">← Back to Trade Page</Link>
-        </div>
-      </main>
-    );
-  }
+  if (!token) notFound();
 
   const tokenInfo = {
     address: token.tokenContractAddress,

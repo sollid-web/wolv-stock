@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
 import { marketQuoteUsd, type Q } from "@/lib/quotes";
 import { getMarketPulseRows, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
@@ -32,6 +34,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export async function generateMetadata({ params }: { params: Promise<{ address: string }> }): Promise<Metadata> {
+  const { address } = await params;
+  const tokens = await getRWATokenList().catch(() => null);
+  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
+  const token = rawTokens.filter(isRwaToken).find((t) => t.tokenContractAddress.toLowerCase() === address.toLowerCase());
+  if (!token) return { title: "Asset" };
+  const ticker = token.underlyingTicker ?? token.symbol ?? "Asset";
+  return {
+    title: `${ticker} tokenized stock`,
+    description: `${ticker} on BNB Chain: listed price, reference data, indicative estimate and market state, compared before you trade.`,
+  };
+}
+
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList().catch((error: unknown) => {
@@ -53,15 +68,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
   );
 
-  if (!token) return (
-    <div className="min-h-screen bg-[#07070f] text-white flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <p className="text-[#64748b]">Token not found</p>
-        <Link href="/" className="text-[#d9a80a] text-sm mt-4 block">← Back</Link>
-      </div>
-    </div>
-  );
+  if (!token) notFound();
 
   const errs: string[] = [];
   const ticker = (token.underlyingTicker ?? "").trim().toUpperCase();
