@@ -456,7 +456,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, savedAt = 
         <section id="how-it-works" className="scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <SectionHeading eyebrow="A transparent workflow" title="From market data to your decision" />
-            <p className="text-[10px] text-slate-500">Transaction preparation is user-controlled; your wallet reviews and approves each action.</p>
+            <p className="text-[11px] text-slate-400">Transaction preparation is user-controlled; your wallet reviews and approves each action.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
@@ -465,32 +465,42 @@ export default function Homepage({ rows, assetCount, feedUnavailable, savedAt = 
               { number: "03", title: "Analyze", text: "Read transparent checks for quote freshness, market session, and outliers." },
               { number: "04", title: "Execute", text: "Open a fresh quote, inspect preflight, and approve in your wallet." },
             ].map((step, index) => (
-              <article key={step.number} className="home-reveal rounded-xl border border-white/[0.08] bg-[#0b1017]/75 p-4" style={{ animationDelay: `${index * 75}ms` }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black tracking-[0.16em] text-[#d9a80a]">{step.number}</span>
-                  <span className="h-px flex-1 bg-white/[0.08] mx-3" />
-                  <span className="size-2 rounded-full border border-sky-300/50 bg-sky-300/10" />
+              <article key={step.number} className="home-reveal wolv-glass wolv-glass-hover group relative overflow-hidden rounded-xl p-5 transition duration-200 hover:-translate-y-0.5" style={{ animationDelay: `${index * 75}ms` }}>
+                <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#d9a80a]/35 to-transparent opacity-60 transition group-hover:opacity-100" />
+                <div className="flex items-center">
+                  <span className="grid h-7 min-w-7 place-items-center rounded-full border border-[#d9a80a]/35 bg-[#d9a80a]/[0.08] px-1.5 text-[10px] font-black tracking-[0.08em] text-[#f2c94c] shadow-[0_0_18px_rgba(217,168,10,0.12)]">{step.number}</span>
+                  <span aria-hidden="true" className="mx-3 h-px flex-1 bg-gradient-to-r from-[#d9a80a]/30 to-white/[0.04]" />
+                  <span aria-hidden="true" className="size-1.5 rounded-full bg-[#d9a80a]/60" />
                 </div>
-                <h3 className="mt-4 text-sm font-black text-white">{step.title}</h3>
-                <p className="mt-2 text-xs leading-5 text-slate-500">{step.text}</p>
+                <h3 className="mt-4 text-base font-black tracking-tight text-white">{step.title}</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-400">{step.text}</p>
               </article>
             ))}
           </div>
         </section>
 
-        <section className="relative overflow-hidden rounded-2xl border border-[#d9a80a]/15 bg-[#0b1017] p-5 sm:p-7">
-          <div className="pointer-events-none absolute -right-12 -top-16 size-64 rounded-full bg-sky-400/[0.06] blur-3xl" />
+        <section className="relative overflow-hidden rounded-2xl border border-[#d9a80a]/20 bg-gradient-to-br from-[#0e1016] via-[#0b1017] to-[#141006] p-6 shadow-[0_18px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-8">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#d9a80a]/45 to-transparent" />
+          <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 size-72 rounded-full bg-[#d9a80a]/[0.07] blur-3xl" />
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="max-w-2xl">
               <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">Built for BNB Chain</p>
               <h2 className="mt-2 text-xl font-black tracking-tight text-white sm:text-2xl">BSC spot markets. Wallet-first execution.</h2>
-              <p className="mt-2 text-xs leading-5 text-slate-400">WOLV reads market data server-side and requests user approval for on-chain transactions. The connected wallet remains in control of signing.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-300">WOLV reads market data server-side and requests user approval for on-chain transactions. The connected wallet remains in control of signing.</p>
+              <ul className="mt-4 flex flex-wrap gap-2 text-[10px] font-semibold text-slate-300">
+                {["Non-custodial", "On-chain policy hook", "Chainlink-checked prices"].map((item) => (
+                  <li key={item} className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.09] bg-white/[0.03] px-2.5 py-1">
+                    <span aria-hidden="true" className="size-1 rounded-full bg-[#d9a80a]" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3">
-              <span className="grid size-10 place-items-center rounded-xl border border-[#d9a80a]/25 bg-[#d9a80a]/[0.07] text-sm font-black text-[#d9a80a]">B</span>
+            <div className="flex shrink-0 items-center gap-3.5 rounded-xl border border-[#d9a80a]/20 bg-black/30 px-5 py-4 shadow-[0_10px_30px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <span className="grid size-11 place-items-center rounded-xl border border-[#d9a80a]/40 bg-gradient-to-br from-[#d9a80a]/20 to-[#d9a80a]/[0.04] text-base font-black text-[#f2c94c] shadow-[0_0_24px_rgba(217,168,10,0.18)]">B</span>
               <div>
-                <p className="text-xs font-bold text-white">BNB Smart Chain</p>
-                <p className="mt-1 text-[9px] uppercase tracking-wider text-slate-500">Mainnet · Chain 56</p>
+                <p className="text-sm font-bold text-white">BNB Smart Chain</p>
+                <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-400">Mainnet · Chain 56</p>
               </div>
             </div>
           </div>
