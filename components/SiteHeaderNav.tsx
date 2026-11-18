@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
+import { connectedAddressFromWagmiStore, shortAddress } from "@/lib/walletSession";
 
 const LINKS = [
   { href: "/markets", label: "Markets", match: (path: string) => path === "/markets" || path.startsWith("/stock/") },
@@ -37,10 +39,44 @@ export function SiteHeaderLinks() {
   );
 }
 
-/** Header wallet action; hidden where the page itself is the connect flow (/wallet, /agent). */
+function subscribeWalletSession(onChange: () => void) {
+  // "storage" covers other tabs; focus/visibility cover returning from a wallet popup or tab.
+  window.addEventListener("storage", onChange);
+  window.addEventListener("focus", onChange);
+  document.addEventListener("visibilitychange", onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener("focus", onChange);
+    document.removeEventListener("visibilitychange", onChange);
+  };
+}
+
+function readWalletSession(): string {
+  try {
+    return connectedAddressFromWagmiStore(window.localStorage.getItem("wagmi.store")) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Header wallet action: shows the connected wallet, or Connect; hidden on /wallet and /agent. */
 export function SiteHeaderWalletAction() {
   const pathname = usePathname() ?? "/";
+  const address = useSyncExternalStore(subscribeWalletSession, readWalletSession, () => "");
   if (pathname === "/wallet" || pathname === "/agent") return null;
+  if (address) {
+    return (
+      <Link
+        href="/wallet"
+        title={address}
+        aria-label={`Connected wallet ${address}. Open portfolio`}
+        className="inline-flex items-center gap-2 rounded-lg border border-[#d9a80a]/35 bg-[#d9a80a]/[0.08] px-3 py-2 font-mono text-[11px] font-bold text-[#f2c94c] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:bg-[#d9a80a]/[0.14]"
+      >
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+        {shortAddress(address)}
+      </Link>
+    );
+  }
   return (
     <Link href="/wallet" className="wolv-connect-button rounded-lg px-3 py-2 text-[11px] font-black sm:px-4">
       <span className="sm:hidden">Connect</span>
