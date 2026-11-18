@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto"
+import { createHash } from "node:crypto"
 import postgres, { type Sql } from "postgres"
 import { BSC_USDT_ADDRESS, EVM_ADDRESS_PATTERN, isValidBinanceQuoteId } from "../lib/apiValidation.ts"
 import { postgresTlsOptions } from "../lib/postgresTls.ts"

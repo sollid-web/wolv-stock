@@ -70,7 +70,7 @@ export async function createBrowserTradeQuote(
 
     try {
         await store.initialize()
-    } catch (error) {
+    } catch {
         throw new BrowserTradeQuoteError(
             "STORE_UNAVAILABLE",
             "Durable trade-intent storage is unavailable; quote retrieval is disabled.",

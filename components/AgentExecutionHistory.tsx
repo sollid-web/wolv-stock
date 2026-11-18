@@ -82,7 +82,7 @@ export default function AgentExecutionHistory({ chainId, tokenLabel = "token" }:
                                 {item.receivedAmount ? ` → ${formatUnits(BigInt(item.receivedAmount), 18)} ${tokenLabel}` : ""}
                             </span>
                             {item.transactionHash ? (
-                                <a className="break-all text-sky-300 underline" href={`${base}/tx/${item.transactionHash}`} target="_blank" rel="noreferrer">{shortHash(item.transactionHash)}</a>
+                                <a className="break-all text-[#d9a80a] underline decoration-[#d9a80a]/40 underline-offset-2 hover:text-[#f2c94c]" href={`${base}/tx/${item.transactionHash}`} target="_blank" rel="noreferrer">{shortHash(item.transactionHash)}</a>
                             ) : item.userOperationHash ? (
                                 <span className="break-all text-slate-500">UserOp {shortHash(item.userOperationHash)}</span>
                             ) : <span className="text-slate-600">not submitted</span>}
