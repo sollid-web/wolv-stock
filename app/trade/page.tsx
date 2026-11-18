@@ -45,9 +45,9 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-0">
       <SiteHeader />
 
-      <div className="grid grid-cols-2 gap-3 px-4 py-4 sm:flex sm:flex-wrap sm:px-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-3 gap-2 px-4 py-4 sm:flex sm:flex-wrap sm:gap-3 sm:px-6">
         {platforms.map((p) => (
-          <div key={p.platformId} className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
+          <div key={p.platformId} className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-3 py-3 sm:px-4">
             <div className="flex items-center gap-2 mb-1">
               {p.logoUrl && <Image src={p.logoUrl} width={20} height={20} className="rounded-full" alt={p.platformId} />}
               <span className="font-bold text-sm capitalize">{p.platformId}</span>
@@ -56,8 +56,8 @@ export default async function Trade({ searchParams }: { searchParams: Promise<{ 
             <div className="text-[#64748b] text-xs">{list.err ? "feed unavailable" : "on BSC"}</div>
           </div>
         ))}
-        <div className="min-w-0 rounded-xl border border-[#1b1b35] bg-[#0e0e1c] px-4 py-3">
-          <div className="text-[#64748b] text-xs mb-1">Total Available</div>
+        <div className="min-w-0 rounded-xl border border-[#d9a80a]/20 bg-[#0e0e1c] px-3 py-3 sm:px-4">
+          <div className="mb-1 truncate text-sm font-bold text-white">Total</div>
           <div className="text-[#d9a80a] font-black text-xl">{list.err ? "—" : allTokens.length}</div>
           <div className="text-[#64748b] text-xs">{list.err ? "feed unavailable" : "on BSC chain"}</div>
         </div>
