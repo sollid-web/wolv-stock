@@ -52,7 +52,7 @@ export function normalizePerSharePrice(value: unknown, tokenToShareRatio: unknow
 }
 
 export function signedPercent(value: number): string {
-  return `${value > 0 ? "+" : ""}${value.toFixed(3)}%`;
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
 export function marketLabel(token: { statusInfo?: { openState?: boolean | null; marketStatus?: string | null } | null }): string {

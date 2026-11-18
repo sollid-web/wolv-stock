@@ -13,6 +13,7 @@ import {
 import { useAccount, useSignMessage, useWalletClient } from "wagmi"
 import AgentSetupForm, { type AgentConfiguredStrategy } from "@/components/AgentSetupForm"
 import AgentExecutionHistory from "@/components/AgentExecutionHistory"
+import AgentConnectCard from "@/components/AgentConnectCard"
 import { assertOfficialPolicyHookFeed } from "@/lib/agentPermission"
 import {
     AGENT_POLICY_HOOK_ABI
@@ -637,7 +638,12 @@ export default function AgentPolicyPanel() {
                 )}
             </div>
 
-            {!isConnected && <p className="mb-5 text-sm text-slate-400">Connect your owner wallet to load or configure its on-chain policy.</p>}
+            {!isConnected && (
+                <>
+                    <p className="sr-only">Connect your owner wallet to load or configure its on-chain policy.</p>
+                    <AgentConnectCard />
+                </>
+            )}
             {isConnected && !correctChain && (
                 <p className="mb-5 text-sm text-amber-300">
                     Switch your wallet to {configuredNetworkName} to continue.
