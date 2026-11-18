@@ -5,7 +5,9 @@ import { isRwaToken } from "@/lib/rwaTypes";
 
 const BASE = "https://www.wolv.space";
 
-export const revalidate = 3600;
+// Rendered at request time: Binance rejects requests from the build region (compliance
+// restriction 40304), while the fra1 runtime can read the (hour-cached) asset list.
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
