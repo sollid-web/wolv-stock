@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
 import { marketQuoteUsd, type Q } from "@/lib/quotes";
+import { quoteWithSizeFallback, type QuoteFailureReason } from "@/lib/quoteFallback";
 import { getMarketPulseRows, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
 import Link from "next/link";
 import Image from "next/image";
@@ -72,21 +73,27 @@ export default async function StockPage({ params }: { params: Promise<{ address:
   if (!token) notFound();
 
   const errs: string[] = [];
+  const alternativeVenues = rawTokens.filter(isRwaToken).filter((candidate) =>
+    candidate.tokenContractAddress.toLowerCase() !== address.toLowerCase() &&
+    (candidate.underlyingTicker ?? "").trim().toUpperCase() === (token.underlyingTicker ?? "").trim().toUpperCase() &&
+    isSpotEligibleAsset(candidate)
+  );
   const ticker = (token.underlyingTicker ?? "").trim().toUpperCase();
   const trackedTicker = MARKET_PULSE_TICKERS.find((candidate) => candidate === ticker);
-  const loadQuote = async (): Promise<Q> => {
-    if (!trackedTicker) return marketQuoteUsd(address);
+  const liveQuote = () => quoteWithSizeFallback((size) => marketQuoteUsd(address, size));
+  const loadQuote = async (): Promise<Q & { sizeUsdt?: number; reason?: QuoteFailureReason }> => {
+    if (!trackedTicker) return liveQuote();
     try {
       const [row] = await getMarketPulseRows([trackedTicker]);
       const venue = row?.venues.find((item) =>
         item.token.tokenContractAddress.toLowerCase() === address.toLowerCase()
       );
-      if (venue) return venue.quote;
+      if (venue?.quote.ok) return { ...venue.quote, sizeUsdt: 100 };
       errs.push("market pulse: no stored quote is available for this venue");
-      return { ok: false, err: "Stored market pulse quote unavailable", ts: 0 };
+      return liveQuote();
     } catch (error) {
       errs.push("market pulse: " + (error instanceof Error ? error.message : String(error)));
-      return { ok: false, err: "Stored market pulse is temporarily unavailable", ts: 0 };
+      return liveQuote();
     }
   };
   const [market, profile, candles, dailyCandles, q] = await Promise.all([
@@ -211,21 +218,21 @@ export default async function StockPage({ params }: { params: Promise<{ address:
               <div className="mb-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-3">
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Indicative estimate</div>
-                  <div className="font-bold text-sm">${perShare!.toFixed(3)}</div>
+                  <div className="font-bold text-sm">${perShare!.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Reference</div>
-                  <div className="font-bold text-sm">{refShare == null ? "—" : `$${refShare.toFixed(3)}`}</div>
+                  <div className="font-bold text-sm">{refShare == null ? "—" : `$${refShare.toFixed(2)}`}</div>
                 </div>
                 <div>
                   <div className="text-xs text-[#64748b] mb-1">Gap</div>
                   <div className="font-black text-lg text-[#d9a80a]">
-                    {gap == null ? "—" : (gap > 0 ? "+" : "") + gap.toFixed(3) + "%"}
+                    {gap == null ? "—" : (gap > 0 ? "+" : "") + gap.toFixed(2) + "%"}
                   </div>
                 </div>
               </div>
               <div className="text-xs text-[#64748b] leading-relaxed">
-                What 100 USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult!.toFixed(4)} shares per token. This is a server-side estimate using a placeholder wallet, not a wallet-bound executable quote.
+                What {q.sizeUsdt ?? 100} USDT buys through the router ({q.vendor} {q.mode}), divided by the {mult!.toFixed(4)} shares per token. This is a server-side estimate using a placeholder wallet, not a wallet-bound executable quote.
                 Reference price is a per-share value derived from the on-chain token price according to Binance&apos;s RWA data;
                 it is not an independent stock-market quote. The indicative estimate reflects what the aggregator returns for the placeholder-wallet request.
               </div>
@@ -239,7 +246,34 @@ export default async function StockPage({ params }: { params: Promise<{ address:
               Per-share comparison unavailable: the live response is missing a valid token-to-share ratio or indicative/reference price. No normalized price or gap is inferred.
             </div>
           ) : (
-            <div className="text-xs text-yellow-500">Quote unavailable: {q.err}</div>
+            <div role="status" className="rounded-lg border border-amber-400/20 bg-amber-400/[0.05] p-3 text-xs leading-relaxed text-amber-100">
+              <div className="font-bold text-amber-200">
+                {q.reason === "no_liquidity"
+                  ? "No market maker is quoting this token right now"
+                  : q.reason === "rate_limited"
+                    ? "Quote service is busy"
+                    : "Indicative quote unavailable"}
+              </div>
+              <p className="mt-1 text-amber-100/80">
+                {q.reason === "no_liquidity"
+                  ? "Binance's aggregator found no liquidity for 100, 25 or 10 USDT. Tokenized-stock liquidity comes from market makers and changes during the day; try again shortly."
+                  : q.reason === "rate_limited"
+                    ? "Binance limited quote requests for a moment. Refresh in a few seconds."
+                    : "The quote provider did not return a valid route. No price is inferred."}
+                {" "}The listed price above is unaffected.
+              </p>
+              {alternativeVenues.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-amber-100/70">Same stock from another issuer:</span>
+                  {alternativeVenues.map((venue) => (
+                    <Link key={venue.tokenContractAddress} href={`/stock/${venue.tokenContractAddress}`} className="rounded-full border border-[#d9a80a]/35 bg-[#d9a80a]/[0.08] px-2.5 py-1 font-semibold capitalize text-[#f2c94c] transition hover:bg-[#d9a80a]/[0.15]">
+                      {ticker} · {venue.platformId} →
+                    </Link>
+                  ))}
+                </div>
+              )}
+              <p className="mt-2 text-[10px] text-amber-100/50">Provider detail: {q.err}</p>
+            </div>
           )}
         </div>
 

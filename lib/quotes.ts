@@ -142,7 +142,8 @@ export async function quoteUsd(addr: string, usdt = 100): Promise<Q> {
 // Public market-monitor price. This validates route identity and price math, but
 // deliberately does not apply wallet-execution authorization or reference-gap policies.
 export async function marketQuoteUsd(addr: string, usdt = 100): Promise<Q> {
-  const hit = marketCache.get(addr);
+  const cacheKey = `${addr.toLowerCase()}:${usdt}`;
+  const hit = marketCache.get(cacheKey);
   if (hit && isQuoteFresh(hit)) return hit;
 
   const requestedAmount = String(usdt) + "0".repeat(18);
@@ -187,7 +188,7 @@ export async function marketQuoteUsd(addr: string, usdt = 100): Promise<Q> {
       impact: asFiniteNumber(best.priceImpactPercent),
       ts: Date.now(),
     };
-    marketCache.set(addr, quote);
+    marketCache.set(cacheKey, quote);
     return quote;
   } catch (error: unknown) {
     const q: Q = {
@@ -195,7 +196,7 @@ export async function marketQuoteUsd(addr: string, usdt = 100): Promise<Q> {
       err: error instanceof Error ? error.message.slice(0, 140) : String(error).slice(0, 140),
       ts: Date.now(),
     };
-    marketCache.set(addr, q);
+    marketCache.set(cacheKey, q);
     return q;
   }
 }

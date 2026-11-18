@@ -85,6 +85,9 @@ test("wallet connection presentation distinguishes hydration, connecting, error,
 test("wallet rejection and network timeout have safe, precise user-facing copy", () => {
   assert.match(tradeErrorMessage(new Error("User rejected the request"), "failed"), /wallet could not approve/i);
   assert.match(tradeErrorMessage(new Error("request timeout"), "failed"), /No transaction was sent/i);
+  assert.match(tradeErrorMessage(new Error("API error 40374: Insufficient liquidity for a quote."), "failed"), /No market maker is quoting this amount/);
+  assert.match(tradeErrorMessage(new Error("API error 40375: Minimum order amount is 5 USD."), "failed"), /below the provider's minimum/);
+  assert.match(tradeErrorMessage(new Error("API error 42900: Rate limit exceeded"), "failed"), /quote service is busy/);
 });
 
 test("pending, confirmed, failed, unverified, and wallet-prompt phases map to visible labels", () => {
