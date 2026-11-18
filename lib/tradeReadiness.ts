@@ -56,6 +56,15 @@ export function tradeErrorMessage(error: unknown, fallback: string): string {
   if (/unknown rpc|failed to publish payload|user rejected|user denied/i.test(message)) {
     return "Your wallet could not approve this request. Check that it is connected to BSC Mainnet, then try again.";
   }
+  if (/40374|insufficient liquidity/i.test(message)) {
+    return "No market maker is quoting this amount right now. Try a smaller amount (minimum 5 USDT), the same stock from the other issuer, or again in a few minutes. No transaction was sent.";
+  }
+  if (/40375|minimum order amount/i.test(message)) {
+    return "This amount is below the provider's minimum order (5 USD). Increase the amount and request a new quote.";
+  }
+  if (/42900|rate limit/i.test(message)) {
+    return "The quote service is busy. Wait a few seconds and request the quote again. No transaction was sent.";
+  }
   if (/timeout|temporarily unavailable|network request failed|fetch failed/i.test(message)) {
     return "The service is taking too long to respond. No transaction was sent; please try again.";
   }
