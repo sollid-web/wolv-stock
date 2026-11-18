@@ -12,11 +12,12 @@ if (typeof window !== "undefined" && walletConnectProjectId && wagmiAdapter) {
     networks: [...appKitNetworks],
     defaultNetwork: defaultAppKitNetwork,
     projectId: walletConnectProjectId,
+    // Shown in the wallet's connection prompt: must match the page origin exactly.
     metadata: {
-      name: "WOLV Spot Lens",
-      description: "Cross-venue spot trading for tokenized equities",
-      url: "https://wolv-stock.vercel.app",
-      icons: ["https://wolv-stock.vercel.app/logo.png"],
+      name: "WOLV",
+      description: "Tokenized stocks on BNB Chain, compared before you trade",
+      url: window.location.origin,
+      icons: [`${window.location.origin}/icon.svg`],
     },
     themeMode: "dark",
     features: { analytics: false, email: false, socials: false, allWallets: true },
