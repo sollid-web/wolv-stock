@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { getRWATokenList, getRWAMarketData, getRWAProfile, getCandles } from "@/lib/binance";
 import { marketQuoteUsd, type Q } from "@/lib/quotes";
 import { getMarketPulseRows, MARKET_PULSE_TICKERS } from "@/lib/marketPulse";
@@ -8,7 +10,7 @@ import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
 import AssetFeedUnavailable from "@/components/AssetFeedUnavailable";
 import { marketLabel, normalizePerSharePrice, positiveNumberValue } from "@/lib/opportunityMath";
-import { normalizeCandles } from "@/lib/candles";
+import { selectChartSeries } from "@/lib/candles";
 import { validateQuote } from "@/lib/quoteValidation";
 import GlobalNav from "@/components/GlobalNav";
 import MarketChart from "@/components/MarketChart";
@@ -32,6 +34,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export async function generateMetadata({ params }: { params: Promise<{ address: string }> }): Promise<Metadata> {
+  const { address } = await params;
+  const tokens = await getRWATokenList().catch(() => null);
+  const rawTokens: unknown[] = Array.isArray(tokens?.data) ? tokens.data as unknown[] : [];
+  const token = rawTokens.filter(isRwaToken).find((t) => t.tokenContractAddress.toLowerCase() === address.toLowerCase());
+  if (!token) return { title: "Asset" };
+  const ticker = token.underlyingTicker ?? token.symbol ?? "Asset";
+  return {
+    title: `${ticker} tokenized stock`,
+    description: `${ticker} on BNB Chain: listed price, reference data, indicative estimate and market state, compared before you trade.`,
+  };
+}
+
 export default async function StockPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   const tokens = await getRWATokenList().catch((error: unknown) => {
@@ -53,15 +68,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     t.tokenContractAddress.toLowerCase() === address.toLowerCase() && isSpotEligibleAsset(t)
   );
 
-  if (!token) return (
-    <div className="min-h-screen bg-[#07070f] text-white flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <p className="text-[#64748b]">Token not found</p>
-        <Link href="/" className="text-[#d9a80a] text-sm mt-4 block">← Back</Link>
-      </div>
-    </div>
-  );
+  if (!token) notFound();
 
   const errs: string[] = [];
   const ticker = (token.underlyingTicker ?? "").trim().toUpperCase();
@@ -81,7 +88,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
       return { ok: false, err: "Stored market pulse is temporarily unavailable", ts: 0 };
     }
   };
-  const [market, profile, candles, q] = await Promise.all([
+  const [market, profile, candles, dailyCandles, q] = await Promise.all([
     getRWAMarketData(address).catch((error: unknown) => {
       errs.push("market data: " + (error instanceof Error ? error.message : String(error)));
       return null;
@@ -92,6 +99,10 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     }),
     getCandles(address, "56", "1h", "48").catch((error: unknown) => {
       errs.push("chart data: " + (error instanceof Error ? error.message : String(error)));
+      return null;
+    }),
+    getCandles(address, "56", "1d", "90").catch((error: unknown) => {
+      errs.push("daily chart data: " + (error instanceof Error ? error.message : String(error)));
       return null;
     }),
     loadQuote(),
@@ -121,7 +132,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
       : "wolv-status-muted bg-slate-400/[0.06] text-slate-300 border-slate-300/15";
   // Binance Market API candle arrays are [open, high, low, close, volume, timestamp, tradeCount].
   // Anchor validation uses the per-token listed price, not the per-share reference price.
-  const chartPoints = normalizeCandles(candles, listed);
+  const chart = selectChartSeries(candles, dailyCandles, listed);
 
   const profRows: [string, string | number][] = prof
     ? Object.entries(prof).flatMap(([key, value]) =>
@@ -179,7 +190,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           </div>
         </div>
 
-        <MarketChart points={chartPoints} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
+        <MarketChart points={chart.points} interval={chart.interval} unavailableReason={chart.unavailableReason} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
 
         <div className="wolv-glass wolv-float rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>

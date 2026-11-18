@@ -52,3 +52,28 @@ test("returns no chart for too few or implausible points", () => {
   assert.deepEqual(normalizeCandles({ data: [[770, 776, 768, 774, 1, 1710000000000, 1]] }, 776), []);
   assert.deepEqual(normalizeCandles({ data: [[77000, 77001, 76999, 77000, 1, 1710000000000, 1], [78000, 78001, 77999, 78000, 1, 1710003600000, 1]] }, 776), []);
 });
+
+test("chart selection prefers fresh hourly candles, falls back to daily, and explains stale data", async () => {
+  const { selectChartSeries } = await import("../lib/candles.ts");
+  const now = Date.UTC(2026, 10, 18, 12);
+  const hour = 60 * 60_000, day = 24 * hour;
+  const series = (count, step, end, price) => ({ data: Array.from({ length: count }, (_, i) => [price, price, price, price, 1, end - (count - 1 - i) * step, 1]) });
+
+  const fresh = selectChartSeries(series(10, hour, now - hour, 50), series(10, day, now - day, 50), 50, now);
+  assert.equal(fresh.interval, "1h");
+  assert.equal(fresh.points.length, 10);
+
+  const daily = selectChartSeries(series(10, hour, now - 3 * day, 50), series(10, day, now - day, 50), 50, now);
+  assert.equal(daily.interval, "1d");
+  assert.equal(daily.unavailableReason, null);
+
+  const stale = selectChartSeries(series(10, hour, Date.UTC(2026, 8, 28), 85), series(10, day, Date.UTC(2026, 8, 28), 85), 54, now);
+  assert.equal(stale.points.length, 0);
+  assert.match(stale.unavailableReason, /No recent on-chain trades .*28 Sept? 2026/);
+
+  const mismatch = selectChartSeries(series(10, hour, now - hour, 85), null, 54, now);
+  assert.equal(mismatch.points.length, 0);
+  assert.match(mismatch.unavailableReason, /inconsistent with the listed price/);
+
+  assert.match(selectChartSeries(null, null, 54, now).unavailableReason, /no on-chain candle data/);
+});
