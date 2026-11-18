@@ -1,7 +1,7 @@
 import SavedSnapshotNotice from "@/components/SavedSnapshotNotice";
 import Image from "next/image";
 import Link from "next/link";
-import BrandMark from "@/components/BrandMark";
+import SiteHeader from "@/components/SiteHeader";
 import type { OpportunityRow, VenueResult } from "@/lib/opportunityMath";
 import { marketLabel, MAX_RELIABLE_GAP_PERCENT, signedPercent } from "@/lib/opportunityMath";
 import { quoteAgeSeconds } from "@/lib/quotes";
@@ -18,7 +18,15 @@ type HomepageProps = {
 };
 
 function price(value: number | null): string {
-  return value == null ? "Unavailable" : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+  if (value == null) return "Unavailable";
+  const digits = Math.abs(value) < 1 ? 4 : 2;
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+function impactPercent(value: number | string | null | undefined): string {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  if (parsed == null || !Number.isFinite(parsed)) return "Unavailable";
+  return Math.abs(parsed) < 0.01 ? "<0.01%" : `${parsed.toFixed(2)}%`;
 }
 
 function isComparable(venue: VenueResult): boolean {
@@ -81,35 +89,6 @@ function Logo({ venue, ticker, size = 32 }: { venue: VenueResult; ticker: string
   );
 }
 
-function Navigation() {
-  return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.09] bg-[#070711]/70 backdrop-blur-2xl">
-      <nav aria-label="Main navigation" className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-<BrandMark />
-        <div className="hidden items-center gap-7 md:flex">
-          <Link href="/markets" className="text-xs font-semibold text-slate-400 transition hover:text-white">Markets</Link>
-          <a href="#opportunities" className="text-xs font-semibold text-slate-400 transition hover:text-white">Opportunities</a>
-          <a href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Strategies</a>
-          <Link href="/trade" className="text-xs font-semibold text-slate-400 transition hover:text-white">Trade</Link>
-          <Link href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Agent</Link>
-          <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden items-center gap-1.5 rounded-full border border-sky-300/20 bg-sky-300/[0.05] px-2.5 py-2 text-[9px] font-bold text-sky-200 sm:flex">
-            <span className="size-1.5 rounded-full bg-sky-300" /> AI market read
-          </span>
-          <span className="hidden items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.03] px-3 py-2 text-[10px] font-semibold text-slate-300 sm:flex">
-            <span className="size-1.5 rounded-full bg-[#d9a80a]" />
-            BNB Chain · Mainnet
-          </span>
-          <Link href="/wallet" className="wolv-connect-button rounded-lg px-3 py-2 text-[11px] font-black sm:px-4">
-            Connect wallet
-          </Link>
-        </div>
-      </nav>
-    </header>
-  );
-}
 
 function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavailable: boolean }) {
   const featuredVenue = row?.venues.find((venue) => venue.quote.ok) ?? row?.venues[0];
@@ -154,9 +133,9 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
         <>
           <div className="relative mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Reference / share" value={price(featuredVenue.referencePerShare)} />
-            <Metric label="Indicative estimate / share" value={price(featuredVenue.executablePerShare)} accent />
-            <Metric label="Indicative normalized price" value={price(featuredVenue.executablePerShare)} />
-            <Metric label="Reference gap" value={featuredVenue.referenceGap == null ? "Unavailable" : signedPercent(featuredVenue.referenceGap)} accent />
+            <Metric label="Indicative / share" value={price(featuredVenue.executablePerShare)} tone={featuredVenue.unreliable ? "muted" : "accent"} />
+            <Metric label="Quote size" value={`${QUOTE_AMOUNT_USDT} USDT`} />
+            <Metric label="Reference gap" value={featuredVenue.referenceGap == null ? "Unavailable" : signedPercent(featuredVenue.referenceGap)} tone={featuredVenue.unreliable ? "warn" : "accent"} />
           </div>
           <div className="relative mt-3 grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
@@ -172,7 +151,7 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
             <div className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
               <div className="text-[9px] uppercase tracking-wider text-slate-500">Quote impact</div>
               <div className="mt-1 text-xs font-bold text-slate-200">
-                {featuredVenue.quote.ok && featuredVenue.quote.impact != null ? `${featuredVenue.quote.impact}%` : "Unavailable"}
+                {featuredVenue.quote.ok ? impactPercent(featuredVenue.quote.impact) : "Unavailable"}
               </div>
             </div>
           </div>
@@ -205,11 +184,21 @@ function Terminal({ row, feedUnavailable }: { row?: OpportunityRow; feedUnavaila
   );
 }
 
-function Metric({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+type MetricTone = "default" | "accent" | "muted" | "warn";
+
+const METRIC_TONES: Record<MetricTone, string> = {
+  default: "text-white",
+  accent: "text-[#d9a80a]",
+  muted: "text-slate-400",
+  warn: "text-amber-300",
+};
+
+function Metric({ label, value, accent = false, tone }: { label: string; value: string; accent?: boolean; tone?: MetricTone }) {
+  const resolved: MetricTone = tone ?? (accent ? "accent" : "default");
   return (
-    <div className="min-w-0 rounded-lg border border-white/[0.06] bg-black/20 p-3">
-      <div className="truncate text-[9px] font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className={`mt-1 break-words text-sm font-black tracking-tight sm:text-base ${accent ? "text-[#d9a80a]" : "text-white"}`}>{value}</div>
+    <div className="min-w-0 rounded-lg border border-white/[0.07] bg-black/25 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="truncate text-[9px] font-semibold uppercase tracking-wider text-slate-500" title={label}>{label}</div>
+      <div className={`mt-1 break-words text-sm font-black tabular-nums tracking-tight sm:text-base ${METRIC_TONES[resolved]}`}>{value}</div>
     </div>
   );
 }
@@ -267,8 +256,13 @@ function OpportunityTile({ row }: { row: OpportunityRow }) {
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Metric label="Reference / share" value={price(representative.referencePerShare)} />
-        <Metric label="Indicative estimate / share" value={price(representative.executablePerShare)} accent />
+        <Metric label="Indicative / share" value={price(representative.executablePerShare)} tone={representative.unreliable ? "muted" : "accent"} />
       </div>
+      {representative.unreliable && representative.referenceGap != null && (
+        <p className="mt-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] px-2.5 py-2 text-[10px] leading-4 text-amber-200">
+          Outlier: {signedPercent(representative.referenceGap)} from reference (limit ±{MAX_RELIABLE_GAP_PERCENT}%). Excluded from comparisons.
+        </p>
+      )}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.07] pt-3 text-[10px]">
         <span className="text-slate-500">Cross-venue spread</span>
         <span className={`font-bold ${row.crossVenueSpread == null ? "text-slate-500" : "text-[#d9a80a]"}`}>
@@ -327,7 +321,7 @@ function Intelligence({ row, feedUnavailable }: { row?: OpportunityRow; feedUnav
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Metric label="Reference / share" value={price(venues[0]?.referencePerShare ?? null)} />
-          <Metric label="Indicative estimate / share" value={price(venues[0]?.executablePerShare ?? null)} accent />
+          <Metric label="Indicative / share" value={price(venues[0]?.executablePerShare ?? null)} tone={venues[0]?.unreliable ? "muted" : "accent"} />
           <Metric label="Cross-venue spread" value={row.crossVenueSpread == null ? "Unavailable" : signedPercent(row.crossVenueSpread)} />
           <Metric label="Fresh quotes" value={`${venues.filter((venue) => !venue.stale).length} / ${row.venues.length}`} />
         </div>
@@ -362,7 +356,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, savedAt = 
 
   return (
     <main className="wolv-app-shell min-h-screen overflow-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] text-white md:pb-10">
-      <Navigation />
+      <SiteHeader />
 
       <section className="wolv-hero relative mx-auto grid max-w-7xl gap-8 px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-14 lg:grid-cols-[0.94fr_1.06fr] lg:items-center">
         <div className="wolv-grid pointer-events-none absolute inset-0 opacity-40" />

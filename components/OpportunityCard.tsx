@@ -13,7 +13,9 @@ function isInReliableSpread(venue: VenueResult): boolean {
 }
 
 function price(value: number | null): string {
-  return value == null ? "—" : `$${value.toFixed(3)}`;
+  if (value == null) return "—";
+  const digits = Math.abs(value) < 1 ? 4 : 2;
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
 export default function OpportunityCard({ row }: { row: OpportunityRow }) {

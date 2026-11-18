@@ -10,7 +10,7 @@ interface WalletSelectorProps {
   onConnect: (wallet: "injected" | "walletConnect") => Promise<void>;
 }
 
-function AppKitConnectButton() {
+export function AppKitConnectButton() {
   const { open } = useAppKit();
   const { open: modalOpen, connectingWallet } = useAppKitState();
   const [isOpening, setIsOpening] = useState(false);
