@@ -81,7 +81,7 @@ function HomepageLoading() {
         </div>
       </section>
 
-      <section id="opportunities" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14" aria-busy="true">
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14" aria-busy="true">
         <div className="mb-5 flex items-end justify-between gap-3">
           <div>
             <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">Live BSC spot monitor</p>

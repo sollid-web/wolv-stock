@@ -10,7 +10,7 @@ export default function SiteHeader({ networkLabel = "BNB Chain · Mainnet" }: { 
         <div className="hidden min-w-0 items-center gap-5 md:flex lg:gap-7">
           <Link href="/markets" className="text-xs font-semibold text-slate-400 transition hover:text-white">Markets</Link>
           <Link href="/#opportunities" className="text-xs font-semibold text-slate-400 transition hover:text-white">Opportunities</Link>
-          <Link href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Strategies</Link>
+          <Link href="/gap" className="text-xs font-semibold text-slate-400 transition hover:text-white">Monitor</Link>
           <Link href="/trade" className="text-xs font-semibold text-slate-400 transition hover:text-white">Trade</Link>
           <Link href="/agent" className="text-xs font-semibold text-slate-400 transition hover:text-white">Agent</Link>
           <Link href="/wallet" className="text-xs font-semibold text-slate-400 transition hover:text-white">Portfolio</Link>
