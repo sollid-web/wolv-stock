@@ -342,7 +342,9 @@ function TradeSession({ token, wallet }: { token: TokenInfo; wallet: WalletHookV
     }
   };
 
-  // Check if approval is needed and get approval transaction data
+  // Check if approval is needed and get approval transaction data.
+  // Dormant while browser-wallet execution is disabled (quote-only mode); kept for re-enablement.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const checkApproval = async (amount?: string, vendor?: string, quote?: QuoteData): Promise<boolean> => {
     if (!isConnected || !provider || !token.address || !usdtAmount) {
       setApprovalError("Connect a wallet and enter a USDT amount before checking approval");

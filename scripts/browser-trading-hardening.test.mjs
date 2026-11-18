@@ -187,7 +187,7 @@ test("mocked quote persists a BUY intent before returning the quote", async () =
   assert.equal(intent.quoteBindingHash, hashQuoteBinding(quote.quoteBinding));
 });
 
-test("mocked quote API handler returns no-store-ready success and explicit errors", async (t) => {
+test("mocked quote API handler returns no-store-ready success and explicit errors", async () => {
   const store = new MemoryTradeStore();
   const deps = dependencies(store);
   const url = `https://wolv.test/api/quote?toToken=${TOKEN}&amount=${AMOUNT}&userWalletAddress=${WALLET}`;

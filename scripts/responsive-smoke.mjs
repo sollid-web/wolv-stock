@@ -314,6 +314,8 @@ async function clickButton(label) {
   assert.equal(clicked, true, `Could not click enabled "${label}" button`);
 }
 
+const AGENT_EXPECTED = /(?=.*Agent policy)(?=.*Connect your owner wallet to load or configure its on-chain policy)/s;
+
 async function runTradeRefusalChecks() {
   const script = `(() => {
     const account = ${JSON.stringify(mockWalletAddress)};
@@ -472,294 +474,39 @@ async function runTradeRefusalChecks() {
 }
 
 async function runAgentRefusalChecks() {
+  // /agent must render its disconnected owner state, expose no trading or release controls
+  // before an owner wallet is connected, and never request a signature or transaction.
   const script = `(() => {
-    const account = ${JSON.stringify(mockWalletAddress)};
-    let connected = sessionStorage.getItem("__WOLV_RESPONSIVE_WALLET_CONNECTED") === "1";
     window.__WOLV_AGENT_WALLET_CALLS = [];
     window.ethereum = {
       isMetaMask: true,
       request: async ({ method }) => {
         window.__WOLV_AGENT_WALLET_CALLS.push(method);
-        if (method === "eth_chainId") return "0x38";
-        if (method === "net_version") return "56";
-        if (method === "eth_accounts") return connected ? [account] : [];
-        if (method === "eth_requestAccounts") {
-          connected = true;
-          sessionStorage.setItem("__WOLV_RESPONSIVE_WALLET_CONNECTED", "1");
-          return [account];
-        }
-        if (method === "wallet_switchEthereumChain") return null;
-        if (["personal_sign", "eth_sign"].includes(method)) return "0x" + "11".repeat(65);
-        if (method === "eth_sendTransaction" || method.startsWith("eth_signTypedData")) {
-          throw new Error("Responsive test blocked transaction signing or submission");
+        if (method === "eth_chainId") return "0x61";
+        if (method === "net_version") return "97";
+        if (method === "eth_accounts") return [];
+        if (method === "personal_sign" || method === "eth_sendTransaction" || method.startsWith("eth_signTypedData")) {
+          throw new Error("Responsive test blocked signing or submission");
         }
         return null;
       },
       on() {},
       removeListener() {},
     };
-    const originalFetch = window.fetch.bind(window);
-    window.__WOLV_AGENT_ACTIONS = [];
-    window.__WOLV_AGENT_ENDPOINTS = [];
-    window.__WOLV_AGENT_SESSION_AUTHORIZED = false;
-    window.__WOLV_AGENT_SESSION_REQUESTS = [];
-    window.__WOLV_AGENT_QUOTE_MODE = "rejected";
-    window.fetch = async (input, init = {}) => {
-      const url = new URL(typeof input === "string" ? input : input.url, location.origin);
-      const method = (init.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
-      if (url.pathname === "/api/agent/execute" && method === "GET") {
-        return new Response(JSON.stringify({
-          executionMode: "wallet-confirmation",
-          agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
-          commerce: { standard: "ERC-8183", jobId: null, status: "disabled" },
-          sessionKey: { status: "disabled", reason: "Agent signing is not enabled." },
-          x402: { status: "disabled", reason: "No autonomous job is created." },
-          walletProviders: {
-            altana: { sdkAvailable: false, configured: false },
-            twak: { sdkAvailable: false, configured: false }
-          },
-          recentTransactions: []
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/session" && method === "GET") {
-        const fixtureAuthenticated = window.__WOLV_AGENT_SESSION_AUTHORIZED === true;
-        window.__WOLV_AGENT_SESSION_REQUESTS.push({ fixtureAuthenticated, method });
-        return new Response(JSON.stringify(fixtureAuthenticated
-          ? { authenticated: true, address: ${JSON.stringify(mockWalletAddress)} }
-          : { error: "BAW session is not authorized." }), {
-          status: fixtureAuthenticated ? 200 : 401,
-          headers: { "content-type": "application/json" }
-        });
-      }
-      if (url.pathname === "/api/agent/session/challenge" && method === "POST") {
-        return new Response(JSON.stringify({ message: "Responsive mock wallet challenge" }), {
-          headers: { "content-type": "application/json" }
-        });
-      }
-      if (url.pathname === "/api/agent/session" && method === "POST") {
-        window.__WOLV_AGENT_SESSION_AUTHORIZED = true;
-        return new Response(JSON.stringify({
-          authenticated: true,
-          address: ${JSON.stringify(mockWalletAddress)}
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/session" && method === "DELETE") {
-        window.__WOLV_AGENT_SESSION_AUTHORIZED = false;
-        return new Response(null, { status: 204 });
-      }
-      if (url.pathname === "/api/agent/wallet" && method === "GET") {
-        return new Response(JSON.stringify({
-          connected: true,
-          fetchedAt: new Date().toISOString(),
-          chains: [{ binanceChainId: "56", name: "BNB Smart Chain", simpleName: "BSC" }],
-          addresses: [],
-          balances: [],
-          settings: null,
-          errors: []
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/status" && method === "GET") {
-        return new Response(JSON.stringify({
-          telemetry: {
-            executionMode: "execution-blocked",
-            agentIdentity: { standard: "ERC-8004", registrationId: null, status: "not-registered" },
-            commerce: { standard: "ERC-8183", jobId: null, status: "disabled" },
-            sessionKey: { status: "disabled", reason: "Agent signing is not enabled in wallet-confirmation mode." },
-            x402: { status: "disabled", reason: "No autonomous commerce job is created in wallet-confirmation mode." },
-            walletProviders: {
-              altana: { sdkAvailable: false, configured: false },
-              twak: { sdkAvailable: false, configured: false }
-            },
-            scopedSession: {
-              provider: "zerodev",
-              mode: "simulation-only",
-              status: "not-granted",
-              chainId: 97,
-              ownerAddress: ${JSON.stringify(mockWalletAddress)},
-              permissions: {
-                targetType: "router",
-                selector: "swapExactETHForTokens",
-                targetAddress: null,
-                assetAllowlist: [],
-                nativeValueLimitWei: "500000000000000000",
-                validitySeconds: 604800,
-                slippageBps: 100,
-                maxPriceImpactBps: 300
-              },
-              prohibited: ["arbitrary-contract-calls", "token-transfers", "native-token-withdrawals", "mainnet-submission", "signature-generation"],
-              executionEnabled: false,
-              reason: "Scoped session grants are not enabled; wallet signing and UserOperation submission remain blocked."
-            },
-            recentTransactions: []
-          },
-          sessionPlans: [],
-          checkedAt: Date.now()
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/control" && method === "GET") {
-        const stopReason = "Responsive fixture global stop state";
-        return new Response(JSON.stringify({
-          control: {
-            emergency_stop: true,
-            stop_monitoring: true,
-            reject_new_opportunities: true,
-            stop_reason: stopReason,
-            permission_expires_at: null,
-            permission_active: false,
-            updated_at: Date.now()
-          },
-          activity: [],
-          nextCursor: null,
-          proposals: [],
-          policyRefusals: [],
-          observations: [],
-          activePolicy: null,
-          opportunities: [],
-          analyses: [],
-          strategyEvaluations: [],
-          execution: { enabled: false, status: "EXECUTION_BLOCKED" },
-          configuration: {
-            orchestrationEnabled: false,
-            collectorEnabled: false,
-            databaseConfigured: true
-          }
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/execute" && method === "POST") {
-        const body = JSON.parse(init.body);
-        window.__WOLV_AGENT_ACTIONS.push(body.action);
-        if (body.action === "simulate" || body.action === "preview") {
-          return new Response(JSON.stringify({
-            requestId: "responsive-mock-draft",
-            status: body.action === "simulate" ? "mock-evaluated" : "local-draft",
-            strategy: {
-              side: "buy",
-              ticker: "AAPL",
-              amount: "0.1",
-              amountUnit: "BNB",
-              triggerDirection: "down",
-              triggerPercent: 2,
-              maxSlippagePercent: 1
-            },
-            execution: { mode: "wallet-confirmation", transactionBroadcast: false, automatedExecution: false },
-            ...(body.action === "simulate" ? { mockTrigger: { triggered: true, changePercent: -2 } } : {})
-          }), { headers: { "content-type": "application/json" } });
-        }
-        return new Response(JSON.stringify({ error: "Responsive fixture blocked execution." }), { status: 503, headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/simulation" && method === "POST") {
-        return new Response(JSON.stringify({
-          status: "SIMULATION_PASSED",
-          chainId: 97,
-          blockNumber: "123",
-          account: mockWalletAddress,
-          router: "0x0000000000000000000000000000000000000123",
-          targetToken: "0x0000000000000000000000000000000000000456",
-          tokenPath: ["0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000456"],
-          amountBnb: "0.001",
-          expectedAmountOut: "1000",
-          minimumAmountOut: "990",
-          slippageBps: 100,
-          priceImpactBps: 35,
-          estimatedGas: "100000",
-          estimatedGasPriceWei: "3",
-          estimatedNetworkFeeWei: "300000",
-          execution: { signingRequested: false, transactionBroadcast: false, executionEnabled: false }
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (url.pathname === "/api/agent/quote" && method === "POST") {
-        window.__WOLV_AGENT_ENDPOINTS.push("quote");
-        if (window.__WOLV_AGENT_QUOTE_MODE === "rejected") {
-          return new Response(JSON.stringify({
-            status: "REJECTED",
-            eligibility: "REJECTED",
-            rejectionReasons: ["Provider semantics are not verified."],
-            error: "Provider semantics are not verified."
-          }), { status: 422, headers: { "content-type": "application/json" } });
-        }
-        const quoteFetchedAt = Date.now() - 60000;
-        return new Response(JSON.stringify({
-          status: "QUOTED",
-          eligibility: "ELIGIBLE",
-          rejectionReasons: [],
-          direction: "BUY",
-          chainId: "56",
-          tokenAddress: ${JSON.stringify(fixtureTokenAddress)},
-          underlyingTicker: "TEST",
-          walletAddress: ${JSON.stringify(mockWalletAddress)},
-          fromTokenAddress: "0x55d398326f99059ff775485246999027b3197955",
-          toTokenAddress: ${JSON.stringify(fixtureTokenAddress)},
-          fromCoinSymbol: "USDT",
-          fromCoinAmount: "5",
-          toCoinSymbol: "TESTon",
-          toCoinAmount: "0.05",
-          slippage: 0.01,
-          slippageBps: 100,
-          tokenPriceUsd: 100,
-          referencePrice: 100,
-          referenceGapPercent: 0,
-          tokenDecimals: 6,
-          quoteFetchedAt,
-          expiresAt: quoteFetchedAt + 30000,
-          quoteBindingId: "a".repeat(64),
-          quoteBinding: "responsive-mock-binding",
-          execution: { transactionSubmitted: false, signingRequested: false }
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (/^\\/api\\/agent\\/(?:approve|execute)$/.test(url.pathname)) {
-        window.__WOLV_AGENT_ENDPOINTS.push(url.pathname.slice("/api/agent/".length));
-        return new Response(JSON.stringify({ status: "REJECTED", error: "Responsive fixture blocked BAW actions." }), { status: 503, headers: { "content-type": "application/json" } });
-      }
-      return originalFetch(input, init);
-    };
   })()`;
   await send("Page.addScriptToEvaluateOnNewDocument", { source: script });
-  await navigate(new URL("/agent", baseUrl).href, /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s);
-  await waitForCondition(
-    `document.body.innerText.includes("A short-lived browser-wallet session is required for control changes.")`,
-    "unauthorized BAW quote refusal",
-  );
-  assert.equal(await evaluate(`window.__WOLV_AGENT_ENDPOINTS.includes("quote")`), false);
-  assert.equal(await evaluate(`Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim() === "Authorize control plane")`), true);
-  console.log("PASS agent terminal · disconnected BAW authorization disables quote request");
-
-  await navigate(new URL("/wallet", baseUrl).href, /Connect your wallet|Wallet connection/);
-  await waitForCondition(
-    `Array.from(document.querySelectorAll("button")).some((button) => button.innerText.trim().startsWith("Connect browser wallet") && !button.disabled)`,
-    "enabled mock wallet connect action",
-  );
-  await clickButton("Connect browser wallet");
-  await waitForCondition(
-    `document.body.innerText.includes("Wallet Address") && document.body.innerText.includes("Disconnect Wallet")`,
-    "mock browser wallet connection",
-  );
-  await navigate(new URL("/agent", baseUrl).href, /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s);
-  await waitForCondition(
-    `document.body.innerText.includes("Authorize control plane")`,
-    "connected browser wallet authorization action",
-  );
-  await clickButton("Authorize control plane");
-  await waitForCondition(
-    `document.body.innerText.includes("Emergency controls") && document.body.innerText.includes("EXECUTION_BLOCKED")`,
-    "authorized persistent control-plane dashboard",
-  );
+  await navigate(new URL("/agent", baseUrl).href, AGENT_EXPECTED);
   const agentState = await evaluate(`(() => ({
     text: document.body.innerText,
-    actions: window.__WOLV_AGENT_ACTIONS,
-    endpoints: window.__WOLV_AGENT_ENDPOINTS,
-    executionButtons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()).filter((label) => /Approve and Execute|Review and prepare/.test(label))
+    calls: window.__WOLV_AGENT_WALLET_CALLS,
+    buttons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()),
   }))()`);
-  assert.match(agentState.text, /Emergency controls/);
-  assert.match(agentState.text, /Pending proposals/);
-  assert.match(agentState.text, /Opportunity queue/);
-  assert.match(agentState.text, /Persisted activity/);
-  assert.match(agentState.text, /EXECUTION_BLOCKED/);
-  assert.match(agentState.text, /Wallet and capability controls/);
-  assert.match(agentState.text, /SESSION KEY/);
-  assert.match(agentState.text, /SCOPED TESTNET SESSION/i);
-  assert.match(agentState.text, /BSC 97/i);
-  assert.deepEqual(agentState.executionButtons, []);
-  console.log("PASS agent terminal · authorized control plane remains execution-blocked and exposes proposal/policy controls");
+  assert.match(agentState.text, /Policy permissions are enforced by the BNB Chain smart account hook/);
+  assert.match(agentState.text, /Connect your owner wallet to load or configure its on-chain policy/);
+  assert.equal(agentState.buttons.some((label) => /Release global stop|Enable autonomous execution|Re-authorize agent|Configure Agent/.test(label)), false,
+    "no autonomous trading control may be offered before the owner wallet connects");
+  assert.equal(agentState.calls.some((method) => /sign|sendTransaction/i.test(method)), false, "the page must not request a signature on load");
+  console.log("PASS agent · disconnected owner state exposes no trading controls and requests no signatures");
 }
 
 async function run() {
@@ -769,7 +516,7 @@ async function run() {
     { path: "/markets", expected: /Browse tokenized markets|BSC spot directory/ },
     { path: "/trade", expected: /Select an Asset to Trade/ },
     { path: "/wallet", expected: /Wallet Address|Connect your wallet|Checking wallet connection/ },
-    { path: "/agent", expected: /(?=.*Deterministic risk policy)(?=.*Quote only — no transaction submitted)/s },
+    { path: "/agent", expected: AGENT_EXPECTED },
   ];
 
   for (const width of widths) {
@@ -807,10 +554,10 @@ async function run() {
     for (const route of [
       { path: `/stock/${fixtureTokenAddress}`, expected: /Live asset signal/i },
       { path: `/trade/${fixtureTokenAddress}`, expected: /Trade TEST|Connect your wallet|Checking wallet connection/ },
-      { path: "/stock/not-a-contract", expected: /Token not found/ },
-      { path: "/trade/not-a-contract", expected: /Asset not found/ },
-      { path: `/stock/${missingTokenAddress}`, expected: /Token not found/ },
-      { path: `/trade/${missingTokenAddress}`, expected: /Asset not found/ },
+      { path: "/stock/not-a-contract", expected: /This page or asset isn.t listed/ },
+      { path: "/trade/not-a-contract", expected: /This page or asset isn.t listed/ },
+      { path: `/stock/${missingTokenAddress}`, expected: /This page or asset isn.t listed/ },
+      { path: `/trade/${missingTokenAddress}`, expected: /This page or asset isn.t listed/ },
       { path: `/stock/${unavailableTokenAddress}`, expected: /Live asset signal.*(?:Indicative )?quote unavailable.*(?:no route|no valid market route)/is },
     ]) {
         const url = new URL(route.path, baseUrl).href;

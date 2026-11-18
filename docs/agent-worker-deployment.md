@@ -50,6 +50,17 @@ docker run -d --name wolv-agent-worker-testnet --restart unless-stopped --networ
 
 The database must be reachable from the worker host. Use a dedicated restricted database role and TLS where supported. Keep the delegated signer key in the host's secret store, restrict access to worker operators, and fund it only as required for the testnet session.
 
+### Production worker (Railway)
+
+Project `wolv-agent-worker`, service `agent-worker`. The service builds `Dockerfile.agent-worker` via the `RAILWAY_DOCKERFILE_PATH` variable (no `railway.json`; Railway ignored it). Dashboard settings: 1 replica, Serverless off. The default restart policy is fine: the worker retries a failed start itself (5 s → 5 min backoff) and does not exit on transient errors, so a paid "Always" policy is not required. It also refreshes the market-pulse snapshot every 5 minutes when `MARKET_PULSE_REFRESH_URL` and `CRON_SECRET` are set. Deploy with `railway up --service agent-worker --detach`.
+
+Optional operations variables (server-only):
+
+- `WOLV_ALERT_WEBHOOK_URL`: HTTPS webhook (Discord/Slack-compatible) that receives CRITICAL worker alerts, de-duplicated per 10 minutes.
+- `AGENT_RPC_FALLBACK_URLS`, `AGENT_BUNDLER_FALLBACK_URLS`: comma-separated HTTPS endpoints tried in order when the primary fails.
+
+Point an uptime monitor at `https://www.wolv.space/api/agent/health` (200 = heartbeat < 60 s, 503 = stale) to be paged if the worker stops.
+
 ## Web application configuration
 
 The web application that owns the schedule-registration API also needs:
