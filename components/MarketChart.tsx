@@ -14,11 +14,13 @@ function pointsForSvg(points: ChartPoint[], width: number, height: number, pad: 
   });
 }
 
-export default function MarketChart({ points, ticker, status }: { points: ChartPoint[]; ticker: string; status: string }) {
+export default function MarketChart({ points, ticker, status, interval = "1h", unavailableReason }: {
+  points: ChartPoint[]; ticker: string; status: string; interval?: "1h" | "1d" | null; unavailableReason?: string | null;
+}) {
   if (points.length < 2) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.025] text-sm text-slate-500">
-        Binance candle data is temporarily unavailable.
+      <div className="flex h-64 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.025] px-6 text-center text-sm text-slate-500">
+        {unavailableReason ?? "Binance candle data is temporarily unavailable."}
       </div>
     );
   }
@@ -43,7 +45,7 @@ export default function MarketChart({ points, ticker, status }: { points: ChartP
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
             <span className="wolv-pulse size-2 rounded-full bg-[#d9a80a]" /> Binance market pulse
           </div>
-          <div className="mt-1 break-words text-xs leading-5 text-slate-500">1-hour candles · last {points.length} observations · {status}</div>
+          <div className="mt-1 break-words text-xs leading-5 text-slate-500">{interval === "1d" ? "Daily" : "1-hour"} candles · last {points.length} observations · {status}</div>
         </div>
         <div className={`text-right text-sm font-black ${positive ? "text-emerald-400" : "text-rose-400"}`}>
           {positive ? "+" : ""}{change.toFixed(2)}%

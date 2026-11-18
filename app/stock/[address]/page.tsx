@@ -8,7 +8,7 @@ import { isSpotEligibleAsset } from "@/lib/compliance";
 import { isRwaToken } from "@/lib/rwaTypes";
 import AssetFeedUnavailable from "@/components/AssetFeedUnavailable";
 import { marketLabel, normalizePerSharePrice, positiveNumberValue } from "@/lib/opportunityMath";
-import { normalizeCandles } from "@/lib/candles";
+import { selectChartSeries } from "@/lib/candles";
 import { validateQuote } from "@/lib/quoteValidation";
 import GlobalNav from "@/components/GlobalNav";
 import MarketChart from "@/components/MarketChart";
@@ -81,7 +81,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
       return { ok: false, err: "Stored market pulse is temporarily unavailable", ts: 0 };
     }
   };
-  const [market, profile, candles, q] = await Promise.all([
+  const [market, profile, candles, dailyCandles, q] = await Promise.all([
     getRWAMarketData(address).catch((error: unknown) => {
       errs.push("market data: " + (error instanceof Error ? error.message : String(error)));
       return null;
@@ -92,6 +92,10 @@ export default async function StockPage({ params }: { params: Promise<{ address:
     }),
     getCandles(address, "56", "1h", "48").catch((error: unknown) => {
       errs.push("chart data: " + (error instanceof Error ? error.message : String(error)));
+      return null;
+    }),
+    getCandles(address, "56", "1d", "90").catch((error: unknown) => {
+      errs.push("daily chart data: " + (error instanceof Error ? error.message : String(error)));
       return null;
     }),
     loadQuote(),
@@ -121,7 +125,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
       : "wolv-status-muted bg-slate-400/[0.06] text-slate-300 border-slate-300/15";
   // Binance Market API candle arrays are [open, high, low, close, volume, timestamp, tradeCount].
   // Anchor validation uses the per-token listed price, not the per-share reference price.
-  const chartPoints = normalizeCandles(candles, listed);
+  const chart = selectChartSeries(candles, dailyCandles, listed);
 
   const profRows: [string, string | number][] = prof
     ? Object.entries(prof).flatMap(([key, value]) =>
@@ -179,7 +183,7 @@ export default async function StockPage({ params }: { params: Promise<{ address:
           </div>
         </div>
 
-        <MarketChart points={chartPoints} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
+        <MarketChart points={chart.points} interval={chart.interval} unavailableReason={chart.unavailableReason} ticker={token.underlyingTicker ?? "Asset"} status={String(status)} />
 
         <div className="wolv-glass wolv-float rounded-xl p-5">
           <div className="text-xs text-[#64748b] mb-1 uppercase tracking-wider">Listed price (per token)</div>

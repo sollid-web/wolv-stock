@@ -75,3 +75,61 @@ export function normalizeCandles(response: unknown, anchorPrice?: number | null)
 
   return points;
 }
+
+export type ChartSeries = {
+  points: NormalizedCandle[];
+  interval: "1h" | "1d" | null;
+  /** Why no chart is shown, in plain language; null when points are shown. */
+  unavailableReason: string | null;
+};
+
+const HOURLY_MAX_AGE_MS = 6 * 60 * 60_000;
+const DAILY_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+
+function latestTimestamp(response: unknown): number | null {
+  let latest: number | null = null;
+  for (const record of extractRecords(response)) {
+    const raw = Array.isArray(record) ? record[5] : isRecord(record) ? (record.timestamp ?? record.time ?? record.openTime ?? record.closeTime) : null;
+    const timestamp = timestampMs(raw);
+    if (timestamp != null && (latest == null || timestamp > latest)) latest = timestamp;
+  }
+  return latest;
+}
+
+/**
+ * Picks the most recent trustworthy series: hourly if its last candle is under 6 h old, else daily
+ * if under 7 days old. Never shows stale or price-inconsistent candles; explains why instead.
+ */
+export function selectChartSeries(
+  hourly: unknown,
+  daily: unknown,
+  anchorPrice: number | null | undefined,
+  now = Date.now(),
+): ChartSeries {
+  const candidates = [
+    { response: hourly, interval: "1h" as const, maxAgeMs: HOURLY_MAX_AGE_MS },
+    { response: daily, interval: "1d" as const, maxAgeMs: DAILY_MAX_AGE_MS },
+  ];
+  let mismatch = false;
+  for (const candidate of candidates) {
+    const last = latestTimestamp(candidate.response);
+    if (last == null || now - last > candidate.maxAgeMs) continue;
+    const points = normalizeCandles(candidate.response, anchorPrice);
+    if (points.length >= 2) {
+      const labelled = candidate.interval === "1d"
+        ? points.map((point) => ({ ...point, time: new Date(point.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) }))
+        : points;
+      return { points: labelled, interval: candidate.interval, unavailableReason: null };
+    }
+    if (normalizeCandles(candidate.response).length >= 2) mismatch = true;
+  }
+  if (mismatch) {
+    return { points: [], interval: null, unavailableReason: "Recent on-chain trades are inconsistent with the listed price, so no chart is shown." };
+  }
+  const lastTrade = [latestTimestamp(hourly), latestTimestamp(daily)].filter((value): value is number => value != null);
+  if (lastTrade.length) {
+    const date = new Date(Math.max(...lastTrade)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    return { points: [], interval: null, unavailableReason: `No recent on-chain trades for this token on BSC (last recorded ${date}).` };
+  }
+  return { points: [], interval: null, unavailableReason: "Binance has no on-chain candle data for this token." };
+}
