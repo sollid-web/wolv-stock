@@ -45,8 +45,8 @@ export default function GlobalNav() {
         <Link href="/markets" aria-current={isActive("/markets") ? "page" : undefined} aria-label="Markets" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/markets") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="markets" /><span>Markets</span>
         </Link>
-        <Link href="/#intelligence" aria-label="AI market analysis" className="flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold text-sky-300 transition-colors hover:text-sky-200">
-          <span className="relative"><NavIcon name="ai" /><span className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-sky-300" /></span><span>AI read</span>
+        <Link href="/#intelligence" aria-label="AI market analysis" className="flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold text-slate-500 transition-colors hover:text-slate-200">
+          <span className="relative"><NavIcon name="ai" /><span aria-hidden="true" className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-[#d9a80a]/80" /></span><span>AI read</span>
         </Link>
         <Link href="/trade" aria-current={isActive("/trade") || pathname.startsWith("/trade/") ? "page" : undefined} aria-label="Trade" className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition-colors ${isActive("/trade") || pathname.startsWith("/trade/") ? "text-[#d9a80a]" : "text-slate-500 hover:text-slate-200"}`}>
           <NavIcon name="trade" /><span>Trade</span>
