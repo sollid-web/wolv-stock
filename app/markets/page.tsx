@@ -1,6 +1,5 @@
+import SiteHeader from "@/components/SiteHeader";
 import { getRWATokenList } from "@/lib/binance";
-import Link from "next/link";
-import BrandMark from "@/components/BrandMark";
 import StockList from "@/components/StockList";
 import CategoryTabs from "@/components/CategoryTabs";
 import { RWA_TABS, parseTabId } from "@/lib/rwaData";
@@ -35,20 +34,7 @@ export default async function Markets({ searchParams }: { searchParams: Promise<
 
   return (
     <main className="wolv-app-shell min-h-screen pb-[calc(6rem+env(safe-area-inset-bottom))] text-white">
-      <nav className="sticky top-0 z-10 border-b border-white/[0.1] bg-[#070711]/72 px-4 py-4 backdrop-blur-2xl sm:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3" aria-label="Back to WOLV home">
-            <BrandMark compact linked={false} />
-            <div>
-              <span className="block text-sm font-black tracking-[0.18em] text-white">WOLV</span>
-              <span className="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 sm:block">Spot Lens</span>
-            </div>
-          </Link>
-          <Link href="/gap" className="rounded-full border border-[#d9a80a]/40 bg-[#d9a80a]/10 px-3 py-2 text-xs font-bold text-[#d9a80a] transition hover:bg-[#d9a80a]/20 sm:px-4">
-            Price monitor <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-      </nav>
+      <SiteHeader />
 
       <section className="mx-auto max-w-7xl px-4 pb-5 pt-8 sm:px-8 sm:pt-12">
         <div className="max-w-3xl">

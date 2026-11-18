@@ -12,6 +12,12 @@ function isInReliableSpread(venue: VenueResult): boolean {
     venue.executablePerShare > 0;
 }
 
+function formatImpact(value: number | string | null | undefined): string {
+  const parsed = typeof value === "string" ? Number(value) : value;
+  if (parsed == null || !Number.isFinite(parsed)) return "n/a";
+  return Math.abs(parsed) < 0.01 ? "<0.01%" : `${parsed.toFixed(2)}%`;
+}
+
 function price(value: number | null): string {
   if (value == null) return "—";
   const digits = Math.abs(value) < 1 ? 4 : 2;
@@ -124,7 +130,7 @@ export default function OpportunityCard({ row }: { row: OpportunityRow }) {
                         : `Reference difference ${signedPercent(venue.referenceGap)}${usable ? " · included" : ""}`}
                   </div>
                   <div className="mt-2 break-words text-[10px] text-slate-500">
-                    {venue.quote.vendor} · {venue.quote.mode} · impact {venue.quote.impact == null ? "n/a" : `${venue.quote.impact}%`} · {quoteAgeSeconds(venue.quote)}s old
+                    {venue.quote.vendor} · {venue.quote.mode} · impact {formatImpact(venue.quote.impact)} · {quoteAgeSeconds(venue.quote)}s old
                   </div>
                   {venue.stale && <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-yellow-300">Stale quote · refresh before trading</div>}
                 </>
