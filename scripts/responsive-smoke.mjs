@@ -314,7 +314,7 @@ async function clickButton(label) {
   assert.equal(clicked, true, `Could not click enabled "${label}" button`);
 }
 
-const AGENT_EXPECTED = /(?=.*Agent policy)(?=.*Connect your owner wallet to load or configure its on-chain policy)/s;
+const AGENT_EXPECTED = /(?=.*Agent command center)(?=.*Connect your owner wallet to load or configure its on-chain policy)/s;
 
 async function runTradeRefusalChecks() {
   const script = `(() => {
@@ -502,6 +502,7 @@ async function runAgentRefusalChecks() {
     buttons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()),
   }))()`);
   assert.match(agentState.text, /Policy permissions are enforced by the BNB Chain smart account hook/);
+  assert.match(agentState.text, /Who controls what/);
   assert.match(agentState.text, /Connect your owner wallet to load or configure its on-chain policy/);
   assert.equal(agentState.buttons.some((label) => /Release global stop|Enable autonomous execution|Re-authorize agent|Configure Agent/.test(label)), false,
     "no autonomous trading control may be offered before the owner wallet connects");
