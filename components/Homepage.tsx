@@ -1,3 +1,4 @@
+import AgentLivePanel from "@/components/AgentLivePanel";
 import SavedSnapshotNotice from "@/components/SavedSnapshotNotice";
 import Image from "next/image";
 import Link from "next/link";
@@ -425,6 +426,7 @@ export default function Homepage({ rows, assetCount, feedUnavailable, savedAt = 
       <Ticker rows={rows} />
 
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-10 sm:space-y-16 sm:px-6 sm:py-14">
+        <AgentLivePanel variant="compact" />
         <AIInsightStrip row={featured} />
         <section id="opportunities" className="scroll-mt-24">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">

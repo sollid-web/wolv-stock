@@ -14,6 +14,8 @@ import { useAccount, useSignMessage, useWalletClient } from "wagmi"
 import AgentSetupForm, { type AgentConfiguredStrategy } from "@/components/AgentSetupForm"
 import AgentExecutionHistory from "@/components/AgentExecutionHistory"
 import AgentConnectCard from "@/components/AgentConnectCard"
+import AgentLivePanel from "@/components/AgentLivePanel"
+import AgentRolesExplainer from "@/components/AgentRolesExplainer"
 import { assertOfficialPolicyHookFeed } from "@/lib/agentPermission"
 import {
     AGENT_POLICY_HOOK_ABI
@@ -598,13 +600,20 @@ export default function AgentPolicyPanel() {
     return (
         <section className="mx-auto w-full max-w-6xl px-4 py-8">
             <div className="mb-5">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">WOLV · BNB Chain</p>
-                <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">Agent policy</h1>
-                <p className="mt-1 text-sm text-slate-400">
-                    Policy permissions are enforced by the BNB Chain smart account hook. Every setup or revocation step requires owner authorization.
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#d9a80a]">WOLV · Autonomous trading</p>
+                <h1 className="mt-1 text-2xl font-black tracking-tight text-white sm:text-3xl">Agent command center</h1>
+                <p className="mt-1 max-w-3xl text-sm text-slate-400">
+                    Watch what the agent is doing and why, inspect every verified execution, and control its on-chain policy. Policy permissions are enforced by the BNB Chain smart account hook; every setup or revocation step requires owner authorization.
                 </p>
             </div>
+            <AgentLivePanel />
+            <AgentRolesExplainer />
+            <div className="mb-5 mt-10 flex items-center gap-3">
+                <h2 className="text-lg font-black tracking-tight text-white">Owner policy &amp; controls</h2>
+                <span className="h-px flex-1 bg-gradient-to-r from-[#d9a80a]/30 to-transparent" aria-hidden="true" />
+            </div>
 
+            {isConnected && (
             <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
                 <div className="flex flex-wrap gap-x-6 gap-y-3">
                     <StatusIndicator
@@ -637,6 +646,7 @@ export default function AgentPolicyPanel() {
                     </p>
                 )}
             </div>
+            )}
 
             {!isConnected && (
                 <>

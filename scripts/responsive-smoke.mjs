@@ -314,7 +314,7 @@ async function clickButton(label) {
   assert.equal(clicked, true, `Could not click enabled "${label}" button`);
 }
 
-const AGENT_EXPECTED = /(?=.*Agent policy)(?=.*Connect your owner wallet to load or configure its on-chain policy)/s;
+const AGENT_EXPECTED = /(?=.*Agent command center)(?=.*Connect your owner wallet to load or configure its on-chain policy)/s;
 
 async function runTradeRefusalChecks() {
   const script = `(() => {
@@ -466,7 +466,8 @@ async function runTradeRefusalChecks() {
   await waitForCondition(`document.body.innerText.includes("Responsive mock quote unavailable")`, "quote error state");
   const prohibitedCalls = await evaluate(`(() => ({
     wallet: window.__WOLV_WALLET_CALLS.filter((method) => /sendTransaction|signTypedData|personal_sign/.test(method)),
-    api: window.__WOLV_API_CALLS.filter((pathname) => pathname !== "/api/quote")
+    // Read-only endpoints allowed on the trade page: the quote under test and the public agent status (GET).
+    api: window.__WOLV_API_CALLS.filter((pathname) => pathname !== "/api/quote" && pathname !== "/api/agent/status")
   }))()`);
   assert.deepEqual(prohibitedCalls.wallet, [], "A wallet signing or transaction method was called");
   assert.deepEqual(prohibitedCalls.api, [], "A transaction/approval endpoint was called");
@@ -502,6 +503,7 @@ async function runAgentRefusalChecks() {
     buttons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()),
   }))()`);
   assert.match(agentState.text, /Policy permissions are enforced by the BNB Chain smart account hook/);
+  assert.match(agentState.text, /Who controls what/i);
   assert.match(agentState.text, /Connect your owner wallet to load or configure its on-chain policy/);
   assert.equal(agentState.buttons.some((label) => /Release global stop|Enable autonomous execution|Re-authorize agent|Configure Agent/.test(label)), false,
     "no autonomous trading control may be offered before the owner wallet connects");
