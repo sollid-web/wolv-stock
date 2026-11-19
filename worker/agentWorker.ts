@@ -5,7 +5,6 @@ import { createHash, randomUUID } from "node:crypto"
 import { resolve } from "node:path"
 import type { AgentSmartAccountConfig } from "../lib/smartAccount.ts"
 import {
-    buildAgentBuyCall,
     createAgentPublicClient,
     getAgentSmartAccountConfig
 } from "../lib/smartAccount.ts"
@@ -20,66 +19,24 @@ import {
     createViemValidatorReader,
     MAX_TRADE_BNB,
     type AgentStrategy,
-    type AgentCycleTelemetry,
-    type MarketSnapshot
+    type AgentCycleTelemetry
 } from "../services/agentWorker.ts"
 import { closeIntentNonceTracker } from "../services/agentIntentNonceTracker.ts"
 import { AgentMemoryStore } from "../services/agentMemoryStore.ts"
 import { loadWorkerEnvironment } from "./workerEnvironment.ts"
+import { fetchMarketData } from "../services/agentMarketData.ts"
 import {
     getAddress,
     isAddress,
     parseEther,
     type Hex
 } from "viem"
-import { readContract } from "viem/actions"
 import { privateKeyToAccount } from "viem/accounts"
-import type { PublicClient } from "viem"
 
 const POLL_INTERVAL_MS = 5_000
 const QUOTE_SUBMISSION_BUDGET_MS = 15_000
 /** A CLAIMED (never submitted) schedule run older than this is released as LEASE_EXPIRED. */
 const EXECUTION_LEASE_MS = 5 * 60_000
-
-const policyFeedAbi = [
-    {
-        type: "function",
-        name: "tokenUsdFeeds",
-        stateMutability: "view",
-        inputs: [{ name: "token", type: "address" }],
-        outputs: [{ type: "address" }]
-    },
-    {
-        type: "function",
-        name: "tokenFeedMaxAge",
-        stateMutability: "view",
-        inputs: [{ name: "token", type: "address" }],
-        outputs: [{ type: "uint32" }]
-    }
-] as const
-
-const chainlinkFeedAbi = [
-    {
-        type: "function",
-        name: "decimals",
-        stateMutability: "view",
-        inputs: [],
-        outputs: [{ type: "uint8" }]
-    },
-    {
-        type: "function",
-        name: "latestRoundData",
-        stateMutability: "view",
-        inputs: [],
-        outputs: [
-            { type: "uint80" },
-            { type: "int256" },
-            { type: "uint256" },
-            { type: "uint256" },
-            { type: "uint80" }
-        ]
-    }
-] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -98,81 +55,6 @@ function loadPrivateKey() {
  * on-chain, plus live PancakeSwap reserves. Off-chain evaluation therefore cannot disagree with
  * the contract about price; the contract remains authoritative.
  */
-export async function fetchMarketData(
-    strategy: AgentStrategy,
-    config: AgentSmartAccountConfig,
-    client: PublicClient
-): Promise<MarketSnapshot> {
-    const snapshot = await fetchChainlinkMarketData(strategy, config, client)
-    return { ...snapshot, receivedAt: Date.now() }
-}
-
-async function fetchChainlinkMarketData(
-    strategy: AgentStrategy,
-    config: AgentSmartAccountConfig,
-    client: PublicClient
-): Promise<MarketSnapshot> {
-    const [feed, maxAge] = await Promise.all([
-        readContract(client, {
-            address: config.policyHookAddress,
-            abi: policyFeedAbi,
-            functionName: "tokenUsdFeeds",
-            args: [strategy.targetToken]
-        }),
-        readContract(client, {
-            address: config.policyHookAddress,
-            abi: policyFeedAbi,
-            functionName: "tokenFeedMaxAge",
-            args: [strategy.targetToken]
-        })
-    ])
-    if (feed === "0x0000000000000000000000000000000000000000" || maxAge < 60 || maxAge > 86_400) {
-        throw new Error("Target token has no valid guardian-allowlisted Chainlink USD feed.")
-    }
-    const [decimals, round] = await Promise.all([
-        readContract(client, {
-            address: feed,
-            abi: chainlinkFeedAbi,
-            functionName: "decimals"
-        }),
-        readContract(client, {
-            address: feed,
-            abi: chainlinkFeedAbi,
-            functionName: "latestRoundData"
-        })
-    ])
-    const [roundId, answer, , updatedAt, answeredInRound] = round
-    const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
-    if (
-        decimals > 18
-        || roundId === BigInt(0)
-        || answer <= BigInt(0)
-        || updatedAt === BigInt(0)
-        || updatedAt > nowSeconds
-        || nowSeconds - updatedAt > BigInt(maxAge)
-        || answeredInRound < roundId
-    ) {
-        throw new Error("Chainlink target-token USD feed is invalid, incomplete, future-dated, or stale.")
-    }
-    const normalizedPrice = answer * (BigInt(10) ** BigInt(18 - decimals))
-    if (normalizedPrice <= BigInt(0) || normalizedPrice > BigInt(10) ** BigInt(36)) {
-        throw new Error("Chainlink target-token USD price is outside supported bounds.")
-    }
-    const priceMicros = (normalizedPrice - BigInt(1)) / BigInt(1_000_000_000_000) + BigInt(1)
-    const marketCall = await buildAgentBuyCall(client, {
-        accountAddress: strategy.account,
-        amountBnb: strategy.amountBnb,
-        slippageBps: strategy.slippageBps,
-        maxPriceImpactBps: strategy.maxPriceImpactBps
-    }, config)
-    const observedAt = Date.now()
-    return {
-        priceMicros,
-        reserves: marketCall.reserves,
-        observedAt,
-        receivedAt: observedAt
-    }
-}
 
 type ActiveScheduleClaim = {
     claimId: string
