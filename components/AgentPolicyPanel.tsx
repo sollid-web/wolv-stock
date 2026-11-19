@@ -613,6 +613,7 @@ export default function AgentPolicyPanel() {
                 <span className="h-px flex-1 bg-gradient-to-r from-[#d9a80a]/30 to-transparent" aria-hidden="true" />
             </div>
 
+            {isConnected && (
             <div className="mb-5 rounded-xl border border-slate-800 bg-[#0e0e1c] p-4 sm:p-5">
                 <div className="flex flex-wrap gap-x-6 gap-y-3">
                     <StatusIndicator
@@ -645,6 +646,7 @@ export default function AgentPolicyPanel() {
                     </p>
                 )}
             </div>
+            )}
 
             {!isConnected && (
                 <>
