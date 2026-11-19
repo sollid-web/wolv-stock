@@ -313,6 +313,23 @@ async function createPersistentWorkerRuntime() {
             log: event => {
                 context.lastTelemetry = event
                 console.info(JSON.stringify(event))
+                void store.recordScheduleEvaluation({
+                    ownerAddress: String(schedule.ownerAddress),
+                    scheduleId,
+                    at: Date.now(),
+                    evaluation: {
+                        reasonCode: event.reasonCode,
+                        timestamp: event.timestamp,
+                        targetToken: event.targetToken,
+                        currentPriceMicros: event.currentPriceMicros ?? null,
+                        entryPriceMicros: strategy.entryPriceMicros.toString(),
+                        attemptedTradeBnb: event.attemptedTradeBnb,
+                        priceImpactBps: event.priceImpactBps ?? null,
+                        slippageBps: event.slippageBps,
+                    },
+                }).catch(error => {
+                    console.error("Could not persist agent evaluation:", error instanceof Error ? error.message : String(error))
+                })
             },
             alert: async event => {
                 console.error(JSON.stringify(event))

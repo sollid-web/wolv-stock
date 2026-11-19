@@ -582,6 +582,19 @@ test("agent control-plane PostgreSQL persistence, ownership, recovery, approvals
     assert.equal(historyRow?.receivedAmount, "450041711401365");
     assert.equal((await store.listExecutionHistory(ownerB, 50)).some(row => row.claimId === activeClaimId), false,
       "execution history must never include another owner's claims");
+
+    await store.recordScheduleEvaluation({
+      ownerAddress: ownerA, scheduleId: autonomousScheduleId, at: now + 70_500,
+      evaluation: { reasonCode: "TRIGGER_NOT_MET", currentPriceMicros: "1950000000", entryPriceMicros: "1900000000" },
+    });
+    const publicStatus = await store.getPublicAgentStatus(97);
+    const publicSchedule = publicStatus.schedules.find(row => row.name === "bsc-autonomous-entry");
+    assert.equal(publicSchedule?.lastEvaluation?.reasonCode, "TRIGGER_NOT_MET");
+    assert.ok(publicStatus.totals.confirmed >= 1);
+    assert.ok(publicStatus.recentExecutions.some(row => row.transactionHash === "0x" + "ab".repeat(32)));
+    const publicJson = JSON.stringify(publicStatus).toLowerCase();
+    assert.equal(publicJson.includes(ownerA.toLowerCase()), false, "public status must not contain owner addresses");
+    assert.equal(publicJson.includes(ownerB.toLowerCase()), false, "public status must not contain owner addresses");
     const claimedAfterSettlement = await store.claimDueAutonomousAgentSchedules(now + 70_000, 20);
     assert.equal(claimedAfterSettlement.length, 1);
     assert.equal(claimedAfterSettlement[0].scheduleId, autonomousScheduleId);
