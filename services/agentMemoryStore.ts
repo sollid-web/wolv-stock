@@ -658,7 +658,29 @@ const MIGRATIONS = [{
       SET execution_evidence = (execution_evidence #>> '{}')::jsonb
       WHERE jsonb_typeof(execution_evidence) = 'string'`,
   ],
+}, {
+  version: 14,
+  statements: [
+    `ALTER TABLE wolv_agent_schedules
+      ADD COLUMN IF NOT EXISTS last_evaluation jsonb,
+      ADD COLUMN IF NOT EXISTS last_evaluated_at timestamptz`,
+  ],
 }];
+
+export type PublicAgentStatusSnapshot = {
+  worker: { lastSeenAt: number | null; globallyPaused: boolean; pauseReason: string | null; executionGateEnabled: boolean } | null;
+  control: { emergencyStop: boolean; releaseExpiresAt: number | null } | null;
+  schedules: Array<{
+    name: string; enabled: boolean; intervalSeconds: number; nextRunAt: number | null; lastRunAt: number | null;
+    lastEvaluatedAt: number | null; lastEvaluation: Record<string, unknown> | null;
+  }>;
+  totals: { confirmed: number; failed: number; inFlight: number };
+  recentExecutions: Array<{
+    status: string; failureCode: string | null; scheduleName: string | null; transactionHash: string | null;
+    blockNumber: string | null; amountIn: string | null; receivedAmount: string | null; createdAt: number | null; settledAt: number | null;
+  }>;
+  recentAlerts: Array<{ severity: string; kind: string; createdAt: number | null }>;
+};
 
 const MIGRATION_LOCK_ID = 7_891_230_458;
 const MAX_PAGE_SIZE = 100;
@@ -850,6 +872,8 @@ export interface AgentMemoryStorePort {
   }): Promise<{ scheduleId: string }>;
   listSchedules(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   listExecutionHistory(ownerAddress: string, limit?: number): Promise<Array<Record<string, unknown>>>;
+  recordScheduleEvaluation(input: { ownerAddress: string; scheduleId: string; evaluation: Record<string, unknown>; at: number }): Promise<void>;
+  getPublicAgentStatus(chainId: number): Promise<PublicAgentStatusSnapshot>;
   setScheduleEnabled(ownerAddress: string, scheduleId: string, enabled: boolean, updatedAt: number): Promise<void>;
   claimDueSchedules(ownerAddress: string, now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
   claimDueAutonomousAgentSchedules?(now: number, limit?: number): Promise<Array<Record<string, unknown>>>;
@@ -2426,6 +2450,93 @@ export class AgentMemoryStore implements AgentMemoryStorePort {
       RETURNING schedule_id
     `;
     return { scheduleId: String(rows[0].schedule_id) };
+  }
+
+  async recordScheduleEvaluation(input: { ownerAddress: string; scheduleId: string; evaluation: Record<string, unknown>; at: number }): Promise<void> {
+    await this.ready;
+    const owner = requireOwnerAddress(input.ownerAddress);
+    if (!Number.isSafeInteger(input.at) || input.at <= 0) throw new TypeError("Evaluation time is invalid.");
+    await this.sql`
+      UPDATE wolv_agent_schedules
+      SET last_evaluation = ${this.sql.json(jsonValue(input.evaluation))}, last_evaluated_at = ${new Date(input.at)}
+      WHERE schedule_id = ${input.scheduleId} AND owner_address = ${owner}
+    `;
+  }
+
+  /** Owner-free snapshot of autonomous runtime state for public display. Never includes addresses. */
+  async getPublicAgentStatus(chainId: number): Promise<PublicAgentStatusSnapshot> {
+    await this.ready;
+    const [heartbeat] = await this.sql`
+      SELECT worker_id, last_seen_at, metadata FROM wolv_agent_worker_heartbeats
+      WHERE chain_id = ${chainId} ORDER BY last_seen_at DESC LIMIT 1`;
+    const [control] = await this.sql`
+      SELECT emergency_stop, permission_expires_at FROM wolv_agent_control WHERE control_id = true`;
+    const schedules = await this.sql`
+      SELECT name, enabled, interval_seconds, next_run_at, last_run_at, last_evaluation, last_evaluated_at
+      FROM wolv_agent_schedules
+      WHERE strategy_type = 'BSC_AGENT_TRADE' AND execution_mode = 'AUTONOMOUS'
+      ORDER BY updated_at DESC LIMIT 10`;
+    const [counts] = await this.sql`
+      SELECT count(*) FILTER (WHERE status = 'CONFIRMED')::int AS confirmed,
+        count(*) FILTER (WHERE status = 'FAILED')::int AS failed,
+        count(*) FILTER (WHERE status IN ('CLAIMED', 'SUBMITTED'))::int AS in_flight
+      FROM wolv_agent_execution_claims`;
+    const recent = await this.sql`
+      SELECT c.status, c.failure_code, c.execution_evidence, c.created_at, c.confirmed_at, c.failed_at, s.name AS schedule_name
+      FROM wolv_agent_execution_claims c
+      LEFT JOIN wolv_agent_schedules s ON s.schedule_id = c.schedule_id AND s.owner_address = c.owner_address
+      ORDER BY c.created_at DESC LIMIT 12`;
+    const alerts = await this.sql`
+      SELECT severity, kind, created_at FROM wolv_agent_alerts ORDER BY created_at DESC LIMIT 5`;
+    const time = (value: unknown) => value === null || value === undefined ? null : new Date(String(value)).getTime();
+    const metadata = heartbeat ? parseJson<Record<string, unknown>>(heartbeat.metadata) : null;
+    return {
+      worker: heartbeat ? {
+        lastSeenAt: time(heartbeat.last_seen_at),
+        globallyPaused: metadata?.globallyPaused === true,
+        pauseReason: typeof metadata?.pauseReason === "string" ? metadata.pauseReason : null,
+        executionGateEnabled: metadata?.executionGateEnabled === true,
+      } : null,
+      control: control ? {
+        emergencyStop: control.emergency_stop === true,
+        releaseExpiresAt: time(control.permission_expires_at),
+      } : null,
+      schedules: schedules.map((row) => ({
+        name: String(row.name),
+        enabled: row.enabled === true,
+        intervalSeconds: Number(row.interval_seconds),
+        nextRunAt: time(row.next_run_at),
+        lastRunAt: time(row.last_run_at),
+        lastEvaluatedAt: time(row.last_evaluated_at),
+        lastEvaluation: row.last_evaluation ? parseJson<Record<string, unknown>>(row.last_evaluation) : null,
+      })),
+      totals: {
+        confirmed: Number(counts?.confirmed ?? 0),
+        failed: Number(counts?.failed ?? 0),
+        inFlight: Number(counts?.in_flight ?? 0),
+      },
+      recentExecutions: recent.map((row) => {
+        const evidence = row.execution_evidence && typeof row.execution_evidence === "object"
+          ? row.execution_evidence as Record<string, unknown> : null;
+        const text = (value: unknown) => typeof value === "string" ? value : null;
+        return {
+          status: String(row.status),
+          failureCode: row.failure_code === null ? null : String(row.failure_code),
+          scheduleName: row.schedule_name === null ? null : String(row.schedule_name),
+          transactionHash: text(evidence?.transactionHash),
+          blockNumber: text(evidence?.blockNumber),
+          amountIn: text(evidence?.amountIn),
+          receivedAmount: text(evidence?.receivedAmount),
+          createdAt: time(row.created_at),
+          settledAt: time(row.confirmed_at) ?? time(row.failed_at),
+        };
+      }),
+      recentAlerts: alerts.map((row) => ({
+        severity: String(row.severity),
+        kind: String(row.kind),
+        createdAt: time(row.created_at),
+      })),
+    };
   }
 
   async listExecutionHistory(ownerAddress: string, limit = 25): Promise<Array<Record<string, unknown>>> {
