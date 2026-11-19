@@ -16,6 +16,7 @@ import AgentExecutionHistory from "@/components/AgentExecutionHistory"
 import AgentConnectCard from "@/components/AgentConnectCard"
 import AgentLivePanel from "@/components/AgentLivePanel"
 import AgentRolesExplainer from "@/components/AgentRolesExplainer"
+import AgentSimulator from "@/components/AgentSimulator"
 import { assertOfficialPolicyHookFeed } from "@/lib/agentPermission"
 import {
     AGENT_POLICY_HOOK_ABI
@@ -608,6 +609,7 @@ export default function AgentPolicyPanel() {
             </div>
             <AgentLivePanel />
             <AgentRolesExplainer />
+            <AgentSimulator />
             <div className="mb-5 mt-10 flex items-center gap-3">
                 <h2 className="text-lg font-black tracking-tight text-white">Owner policy &amp; controls</h2>
                 <span className="h-px flex-1 bg-gradient-to-r from-[#d9a80a]/30 to-transparent" aria-hidden="true" />
