@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 
 const HEADERS = { "Cache-Control": "no-store" };
 const MARKET_CACHE_MS = 10_000;
+const MARKET_PROBE_BNB = BigInt("1000000000000000"); // 0.001 BNB
 const marketCache = new Map<string, { at: number; snapshot: Promise<MarketSnapshot> }>();
 
 /**
@@ -32,10 +33,13 @@ export async function POST(request: Request) {
     const config = getAgentSmartAccountConfig();
     const client = createAgentPublicClient(config);
     const result = await simulateAgentDecision(input, config.targetTokenAddress, (strategy) => {
-      const key = strategy.amountBnb.toString();
+      // Price and reserves do not depend on trade size; read them with a small probe so the
+      // production decision logic (not the reader) evaluates price impact for the real amount.
+      const key = "market";
       const cached = marketCache.get(key);
       if (cached && Date.now() - cached.at < MARKET_CACHE_MS) return cached.snapshot;
-      const snapshot = fetchMarketData(strategy, config, client);
+      const probe = { ...strategy, amountBnb: MARKET_PROBE_BNB, slippageBps: 500, maxPriceImpactBps: 500 };
+      const snapshot = fetchMarketData(probe, config, client);
       marketCache.set(key, { at: Date.now(), snapshot });
       snapshot.catch(() => marketCache.delete(key));
       return snapshot;
