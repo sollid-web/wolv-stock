@@ -466,7 +466,8 @@ async function runTradeRefusalChecks() {
   await waitForCondition(`document.body.innerText.includes("Responsive mock quote unavailable")`, "quote error state");
   const prohibitedCalls = await evaluate(`(() => ({
     wallet: window.__WOLV_WALLET_CALLS.filter((method) => /sendTransaction|signTypedData|personal_sign/.test(method)),
-    api: window.__WOLV_API_CALLS.filter((pathname) => pathname !== "/api/quote")
+    // Read-only endpoints allowed on the trade page: the quote under test and the public agent status (GET).
+    api: window.__WOLV_API_CALLS.filter((pathname) => pathname !== "/api/quote" && pathname !== "/api/agent/status")
   }))()`);
   assert.deepEqual(prohibitedCalls.wallet, [], "A wallet signing or transaction method was called");
   assert.deepEqual(prohibitedCalls.api, [], "A transaction/approval endpoint was called");
